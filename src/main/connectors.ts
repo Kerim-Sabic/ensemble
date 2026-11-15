@@ -5,9 +5,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { getDefaultEnvironment, StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import { LOOKS_SECRET, toSlug, type Connector, type ConnectorInput, type ConnectorSpec, type ConnectorTest, type ConnectorView, type FoundConnector } from '@shared/connectors'
+import { LOOKS_SECRET, appOnly, toSlug, type Connector, type ConnectorInput, type ConnectorSpec, type ConnectorTest, type ConnectorView, type FoundConnector } from '@shared/connectors'
 import type { Account } from '@shared/types'
 import { readJson, uid, writeJson } from './util'
+import { NeedsSignIn, renew, signIn as oauthSignIn, cancelSignIn, type OAuthState } from './connector-auth'
 
 // The connectors the team uses: kept in Ensemble's data folder with their secrets encrypted,
 // handed to every agent when it starts, and tested on request. Connectors already set up in
@@ -22,6 +23,9 @@ export interface Sealer {
 const PLAIN: Sealer = { seal: (s) => `plain:${s}`, open: (s) => (s.startsWith('plain:') ? s.slice(6) : s) }
 
 /** Windows starts npx and friends through cmd, the way Claude Code itself expects. */
+/** What a service says when it wants a sign-in before anything else. */
+const WANTS_SIGN_IN = /\b401\b|unauthori[sz]ed|authori[sz]ation required|invalid_token|missing.{0,20}token|-32001/i
+
 const SHIMS = new Set(['npx', 'npm', 'pnpm', 'pnpx', 'yarn', 'bunx', 'uvx', 'uv'])
 function launch(spec: ConnectorSpec): { command: string; args: string[] } {
   const cmd = spec.command || ''
@@ -33,6 +37,8 @@ function launch(spec: ConnectorSpec): { command: string; args: string[] } {
 export class ConnectorStore {
   private file: string
   private list: Connector[]
+  /** Opens a sign-in page in the person's browser. */
+  opener: (url: string) => void = () => undefined
 
   constructor(
     dataDir: string,
@@ -50,6 +56,30 @@ export class ConnectorStore {
     return this.list
   }
 
+  private oauthOf(c: Connector): OAuthState {
+    if (!c.oauth) return {}
+    try {
+      return JSON.parse(this.sealer.open(c.oauth)) as OAuthState
+    } catch {
+      return {}
+    }
+  }
+
+  private saveOauth(id: string, st: OAuthState): void {
+    const c = this.list.find((x) => x.id === id)
+    if (!c) return
+    c.oauth = this.sealer.seal(JSON.stringify(st))
+    this.persist()
+  }
+
+  /** The headers an online connector is called with, a sign-in's token included. */
+  private bearer(c: Connector, s: ConnectorSpec): Record<string, string> | undefined {
+    if (s.kind === 'stdio') return s.headers
+    const token = this.oauthOf(c).tokens?.access_token
+    if (!token || Object.keys(s.headers || {}).some((k) => k.toLowerCase() === 'authorization')) return s.headers
+    return { ...(s.headers || {}), Authorization: `Bearer ${token}` }
+  }
+
   /** What the window may see: secret values left out. */
   views(): ConnectorView[] {
     return this.list.map((c) => {
@@ -65,7 +95,8 @@ export class ConnectorStore {
         }
         return out
       }
-      return { ...c, spec: { ...c.spec, env: hide(c.spec.env), headers: hide(c.spec.headers) }, saved }
+      const { oauth, ...rest } = c
+      return { ...rest, spec: { ...c.spec, env: hide(c.spec.env), headers: hide(c.spec.headers) }, saved, signedIn: !!(oauth && this.oauthOf(c).tokens?.access_token) }
     })
   }
 
@@ -127,6 +158,8 @@ export class ConnectorStore {
       catalogId: input.catalogId ?? had?.catalogId,
       // A changed connection has not been tried yet.
       test: had && JSON.stringify(had.spec) === JSON.stringify(spec) ? had.test : undefined,
+      // A sign-in belongs to the address it was made for.
+      oauth: had && had.spec.url === spec.url ? had.oauth : undefined,
       createdAt: had?.createdAt || Date.now(),
     }
     this.list = had ? this.list.map((x) => (x.id === c.id ? c : x)) : [...this.list, c]
@@ -155,7 +188,10 @@ export class ConnectorStore {
       if (s.kind === 'stdio') {
         const l = launch(s)
         out[c.slug] = { type: 'stdio', command: l.command, args: l.args, ...(s.env ? { env: s.env } : {}) }
-      } else out[c.slug] = { type: s.kind, url: s.url, ...(s.headers ? { headers: s.headers } : {}) }
+      } else {
+        const headers = this.bearer(c, s)
+        out[c.slug] = { type: s.kind, url: s.url, ...(headers ? { headers } : {}) }
+      }
     }
     return out
   }
@@ -169,7 +205,10 @@ export class ConnectorStore {
       if (s.kind === 'stdio') {
         const l = launch(s)
         out[c.slug] = { command: l.command, args: l.args, ...(s.env ? { env: s.env } : {}), startup_timeout_sec: 60, tool_timeout_sec: 300 }
-      } else out[c.slug] = { url: s.url, ...(s.headers ? { http_headers: s.headers } : {}), tool_timeout_sec: 300 }
+      } else {
+        const headers = this.bearer(c, s)
+        out[c.slug] = { url: s.url, ...(headers ? { http_headers: headers } : {}), tool_timeout_sec: 300 }
+      }
     }
     return out
   }
@@ -179,6 +218,23 @@ export class ConnectorStore {
     const c = this.list.find((x) => x.id === id)
     if (!c) return { ok: false, tools: [], error: 'That connector no longer exists.', at: Date.now() }
     const s = this.open(c)
+    if (appOnly(s)) {
+      const r: ConnectorTest = { ok: false, tools: [], at: Date.now(), error: 'This tool is part of the Codex desktop app and only runs inside it. Remove it here; Codex keeps it.' }
+      this.setTest(id, r)
+      return r
+    }
+    if (s.kind !== 'stdio' && this.oauthOf(c).tokens) {
+      try {
+        await renew(s.url || '', this.oauthOf(c), (st) => this.saveOauth(id, st))
+      } catch (e) {
+        if (e instanceof NeedsSignIn) {
+          const r: ConnectorTest = { ok: false, tools: [], at: Date.now(), needsSignIn: true, error: 'The sign-in ran out. Sign in again.' }
+          this.setTest(id, r)
+          return r
+        }
+      }
+    }
+    const headers = this.bearer(c, s) || {}
     const client = new Client({ name: 'ensemble', version: '1.0.0' })
     let result: ConnectorTest
     try {
@@ -186,8 +242,8 @@ export class ConnectorStore {
         s.kind === 'stdio'
           ? new StdioClientTransport({ ...launch(s), env: { ...getDefaultEnvironment(), ...process.env, ...(s.env || {}) } as Record<string, string>, stderr: 'ignore' })
           : s.kind === 'sse'
-            ? new SSEClientTransport(new URL(s.url || ''), { requestInit: { headers: s.headers || {} } })
-            : new StreamableHTTPClientTransport(new URL(s.url || ''), { requestInit: { headers: s.headers || {} } })
+            ? new SSEClientTransport(new URL(s.url || ''), { requestInit: { headers } })
+            : new StreamableHTTPClientTransport(new URL(s.url || ''), { requestInit: { headers } })
       const work = (async () => {
         await client.connect(transport)
         const { tools } = await client.listTools()
@@ -197,12 +253,19 @@ export class ConnectorStore {
       result = { ok: true, tools, at: Date.now() }
     } catch (e) {
       const msg = (e as Error).message || String(e)
+      const keyed = c.secrets.length > 0 && Object.values({ ...s.env, ...s.headers }).some(Boolean)
+      const wantsSignIn = s.kind !== 'stdio' && !keyed && WANTS_SIGN_IN.test(msg)
       result = {
         ok: false,
         tools: [],
         at: Date.now(),
-        error: /401|403|unauthori[sz]ed|forbidden/i.test(msg)
-          ? 'The service refused the key, or needs a sign-in. Check the token and its permissions.'
+        needsSignIn: wantsSignIn || undefined,
+        error: wantsSignIn
+          ? this.oauthOf(c).tokens
+            ? 'The service turned the sign-in down. Sign in again.'
+            : 'Sign in to start using it.'
+          : /401|403|unauthori[sz]ed|forbidden/i.test(msg)
+          ? 'The service refused the key. Check the token and its permissions.'
           : /ENOENT|not recognized|cannot find/i.test(msg)
             ? `${s.command} is not installed on this computer.${s.command === 'uvx' ? ' Install uv from astral.sh/uv.' : s.command === 'npx' ? ' Install Node.js from nodejs.org.' : ''}`
             : msg.slice(0, 300),
@@ -212,6 +275,46 @@ export class ConnectorStore {
     }
     this.setTest(id, result)
     return result
+  }
+
+  /** Signs in to an online connector with the service's own page, then tries it. */
+  async signIn(id: string): Promise<ConnectorTest> {
+    const c = this.list.find((x) => x.id === id)
+    if (!c || c.spec.kind === 'stdio') throw new Error('Only online connectors have a sign-in.')
+    await oauthSignIn(c.spec.url || '', this.oauthOf(c), (st) => this.saveOauth(id, st), this.opener)
+    return this.test(id)
+  }
+
+  cancelSignIn(): void {
+    cancelSignIn()
+  }
+
+  /** Forgets a connector's sign-in. */
+  signOut(id: string): void {
+    const c = this.list.find((x) => x.id === id)
+    if (!c) return
+    delete c.oauth
+    c.test = undefined
+    this.persist()
+  }
+
+  /**
+   * Renews sign-ins that run out soon. True when any token changed, so agents can be restarted with it.
+   * One that only a new sign-in can fix is marked, so the window can ask for it.
+   */
+  async renewAll(): Promise<boolean> {
+    let changed = false
+    for (const c of this.list) {
+      if (!c.enabled || !c.oauth || c.spec.kind === 'stdio') continue
+      const st = this.oauthOf(c)
+      if (!st.tokens) continue
+      try {
+        if (await renew(c.spec.url || '', st, (next) => this.saveOauth(c.id, next), 15 * 60e3)) changed = true
+      } catch (e) {
+        if (e instanceof NeedsSignIn) this.setTest(c.id, { ok: false, tools: [], at: Date.now(), needsSignIn: true, error: 'The sign-in ran out. Sign in again.' })
+      }
+    }
+    return changed
   }
 }
 
@@ -263,7 +366,7 @@ export function findConnectors(accounts: Account[]): FoundConnector[] {
     if (!spec || name === 'team') return
     const key = `${source}:${where}:${name}`
     if (out.some((f) => f.key === key)) return
-    out.push({ key, name, slug: toSlug(name), source, where, spec, mayNeedSignIn: spec.kind !== 'stdio' && !Object.keys(spec.headers || {}).length && !/[?&](key|token|api)/i.test(spec.url || '') })
+    out.push({ key, name, slug: toSlug(name), source, where, spec, appOnly: appOnly(spec) || undefined, mayNeedSignIn: spec.kind !== 'stdio' && !Object.keys(spec.headers || {}).length && !/[?&](key|token|api)/i.test(spec.url || '') })
   }
   for (const a of accounts.filter((x) => x.provider === 'claude')) {
     const file = a.configDir ? path.join(a.configDir, '.claude.json') : path.join(home, '.claude.json')

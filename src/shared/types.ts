@@ -642,6 +642,8 @@ export type HubEvent =
   | { type: 'update'; state: 'downloading' | 'ready'; version: string }
   /** Progress of installing Claude Code from the first-run screen. */
   | { type: 'setup'; stage: 'download' | 'install' | 'done' | 'failed'; pct?: number; message?: string }
+  /** Connectors changed in the background (a sign-in renewed or ran out): the window re-reads them. */
+  | { type: 'connectors' }
   /** The window was brought up from the tray or the global shortcut. */
   | { type: 'summon'; fresh?: boolean }
 
@@ -698,6 +700,10 @@ export interface EnsembleApi {
   connectorSave(input: ConnectorInput): Promise<ConnectorView>
   connectorRemove(id: string): Promise<void>
   connectorTest(id: string): Promise<ConnectorTest>
+  /** Opens the service's own sign-in page in the browser and resolves once signed in and tried. */
+  connectorSignIn(id: string): Promise<ConnectorTest>
+  connectorCancelSignIn(): Promise<void>
+  connectorSignOut(id: string): Promise<void>
 
   /** Sites the team's browser is signed in to (it keeps their cookies), and signing out of one. */
   browserSites(): Promise<{ site: string; cookies: number }[]>

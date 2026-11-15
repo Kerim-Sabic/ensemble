@@ -94,6 +94,8 @@ interface State {
   update: { state: 'downloading' | 'ready'; version: string } | null
   /** Installing Claude Code from the first-run screen. */
   setup: { stage: 'download' | 'install' | 'done' | 'failed'; pct?: number; message?: string } | null
+  /** Bumped when connectors change in the background, so an open Connectors window re-reads them. */
+  connectorsTick: number
   /** null means the blank "new chat" screen. */
   chatId: string | null
   /** Which teammate each chat is showing. */
@@ -326,6 +328,9 @@ export const useStore = create<State>((set, get) => {
       case 'setup':
         set({ setup: { stage: ev.stage, pct: ev.pct, message: ev.message } })
         return
+      case 'connectors':
+        set((s) => ({ connectorsTick: s.connectorsTick + 1 }))
+        return
       case 'toast':
         get().toast(ev.text, ev.level)
         return
@@ -397,6 +402,7 @@ export const useStore = create<State>((set, get) => {
     draftLead: null,
     update: null,
     setup: null,
+    connectorsTick: 0,
     view: 'chat',
     modal: null,
     toasts: [],

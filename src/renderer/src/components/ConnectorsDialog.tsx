@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Check, CircleAlert, ExternalLink, FolderOpen, Import, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { CATALOG, fillSpec, secretKeys, toSlug, type CatalogEntry, type ConnectorSpec, type ConnectorView, type FoundConnector } from '@shared/connectors'
+import { ArrowLeft, Check, CircleAlert, ExternalLink, FolderOpen, Import, LogIn, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { CATALOG, appOnly, fillSpec, secretKeys, toSlug, type CatalogEntry, type ConnectorSpec, type ConnectorView, type FoundConnector } from '@shared/connectors'
 import { useStore } from '@/store'
 import { api, cn, errorText, relative } from '@/lib/util'
 import { Button, Modal, Segmented, Spinner, Toggle, inputClass } from './ui'
@@ -20,11 +20,20 @@ const toPairs = (text: string): Record<string, string> | undefined => {
 }
 const fromPairs = (m?: Record<string, string>): string => Object.entries(m || {}).map(([k, v]) => `${k}=${v}`).join('\n')
 
+/** Wants the service's own sign-in: marked so by a test, or an older test that failed the way unsigned-in services do. */
+function wantsSignIn(c: ConnectorView): boolean {
+  if (c.spec.kind === 'stdio' || c.test?.ok) return false
+  return !!c.test?.needsSignIn || (!!c.test && !c.signedIn && /POSTing to endpoint|authori[sz]ation required|401|unauthori[sz]ed/i.test(c.test.error || ''))
+}
+
 function TestBadge({ c }: { c: ConnectorView }) {
-  if (!c.test) return <span className="text-[11.5px] text-ink-4">Not tried yet</span>
+  if (appOnly(c.spec)) return <span className="text-[11.5px] text-ink-3">Only runs inside the Codex app</span>
+  if (wantsSignIn(c)) return <span className="flex items-center gap-1 text-[11.5px] font-medium text-warn"><LogIn className="size-3" /> {c.signedIn ? 'Sign in again' : 'Needs you to sign in'}</span>
+  if (!c.test) return <span className="text-[11.5px] text-ink-4">{c.signedIn ? 'Signed in' : 'Not tried yet'}</span>
   return c.test.ok ? (
     <span className="flex items-center gap-1 text-[11.5px] text-ok" title={c.test.tools.join(', ')}>
       <Check className="size-3" strokeWidth={2.75} /> Works · {c.test.tools.length} {c.test.tools.length === 1 ? 'tool' : 'tools'}
+      {c.signedIn ? ' · signed in' : ''}
     </span>
   ) : (
     <span className="flex min-w-0 items-center gap-1 text-[11.5px] text-bad" title={c.test.error}>
@@ -36,11 +45,24 @@ function TestBadge({ c }: { c: ConnectorView }) {
 function ConnectorRow({ c, onChange, onEdit }: { c: ConnectorView; onChange(): void; onEdit(): void }) {
   const run = useStore((s) => s.run)
   const accounts = useStore((s) => s.accounts)
+  const toast = useStore((s) => s.toast)
   const [testing, setTesting] = useState(false)
+  const [signing, setSigning] = useState(false)
   const test = async (): Promise<void> => {
     setTesting(true)
     await run(api.connectorTest(c.id))
     setTesting(false)
+    onChange()
+  }
+  const signIn = async (): Promise<void> => {
+    setSigning(true)
+    const t = await run(api.connectorSignIn(c.id))
+    setSigning(false)
+    onChange()
+    if (t) toast(t.ok ? `Signed in to ${c.name}: ${t.tools.length} tools for the whole team.` : `Signed in to ${c.name}, but it did not connect: ${t.error || 'unknown error'}`, t.ok ? 'info' : 'warn')
+  }
+  const remove = async (): Promise<void> => {
+    await run(api.connectorRemove(c.id))
     onChange()
   }
   const who = c.accounts === 'all' ? 'Every account' : accounts.filter((a) => (c.accounts as string[]).includes(a.id)).map((a) => a.name).join(', ') || 'No account'
@@ -62,9 +84,26 @@ function ConnectorRow({ c, onChange, onEdit }: { c: ConnectorView; onChange(): v
           </span>
         </span>
       </button>
-      <Button size="sm" variant="ghost" disabled={testing} onClick={() => void test()}>
-        {testing ? <Spinner className="size-3" /> : <RefreshCw className="size-3" />} {testing ? 'Trying' : 'Try it'}
-      </Button>
+      {signing ? (
+        <span className="flex items-center gap-2 text-[12px] text-ink-3">
+          <Spinner className="size-3" /> Finish in your browser…
+          <Button size="sm" variant="ghost" onClick={() => void api.connectorCancelSignIn()}>
+            Cancel
+          </Button>
+        </span>
+      ) : appOnly(c.spec) ? (
+        <Button size="sm" variant="ghost" onClick={() => void remove()}>
+          <Trash2 className="size-3" /> Remove
+        </Button>
+      ) : wantsSignIn(c) ? (
+        <Button size="sm" variant="primary" onClick={() => void signIn()}>
+          <LogIn className="size-3" /> Sign in
+        </Button>
+      ) : (
+        <Button size="sm" variant="ghost" disabled={testing} onClick={() => void test()}>
+          {testing ? <Spinner className="size-3" /> : <RefreshCw className="size-3" />} {testing ? 'Trying' : 'Try it'}
+        </Button>
+      )}
       <Toggle checked={c.enabled} onChange={(enabled) => void run(api.connectorSave({ ...c, enabled, spec: c.spec })).then(onChange)} label={`Use ${c.name}`} />
     </div>
   )
@@ -300,6 +339,7 @@ export function ConnectorsDialog() {
   const [found, setFound] = useState<FoundConnector[]>([])
   const [step, setStep] = useState<Step>({ kind: 'list' })
   const [error, setError] = useState('')
+  const tick = useStore((s) => s.connectorsTick)
 
   const load = (): void => {
     void api.connectors().then(setList, (e) => setError(errorText(e)))
@@ -310,9 +350,14 @@ export function ConnectorsDialog() {
     setStep({ kind: 'list' })
     load()
   }, [open])
+  // A sign-in renewed or ran out in the background.
+  useEffect(() => {
+    if (open && tick) load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick])
 
   const have = useMemo(() => new Set(list.map((c) => c.catalogId).filter(Boolean)), [list])
-  const fresh = found.filter((f) => !f.added)
+  const fresh = found.filter((f) => !f.added && !f.appOnly)
   const back = (): void => {
     setStep({ kind: 'list' })
     load()
@@ -321,9 +366,15 @@ export function ConnectorsDialog() {
     const c = await run(api.connectorSave({ name: f.name, slug: f.slug, spec: f.spec, source: f.source }))
     if (!c) return
     load()
-    const t = await run(api.connectorTest(c.id))
+    let t = await run(api.connectorTest(c.id))
     load()
-    toast(t?.ok ? `${f.name} works: ${t.tools.length} tools for the whole team.` : `${f.name} was added but did not connect${f.mayNeedSignIn ? ': it probably needs a sign-in in its own app' : ''}.`, t?.ok ? 'info' : 'warn')
+    // An online service that wants a sign-in gets one right away: its page opens in the browser.
+    if (t?.needsSignIn) {
+      toast(`Sign in to ${f.name} in your browser to finish.`, 'info')
+      t = await run(api.connectorSignIn(c.id))
+      load()
+    }
+    toast(t?.ok ? `${f.name} works: ${t.tools.length} tools for the whole team.` : `${f.name} was added but did not connect${t?.error ? `: ${t.error}` : '.'}`, t?.ok ? 'info' : 'warn')
   }
 
   const title = step.kind === 'catalog' ? `Connect ${step.entry.name}` : step.kind === 'custom' ? (step.edit ? step.edit.name : 'Add a connector by hand') : 'Connectors'
@@ -361,7 +412,7 @@ export function ConnectorsDialog() {
                         <span className="block truncate text-[13px] font-medium">{f.name}</span>
                         <span className="block truncate text-[11.5px] text-ink-4">
                           {f.where} · {f.spec.kind === 'stdio' ? 'a program' : 'an address'}
-                          {f.mayNeedSignIn ? ' · may need a sign-in Ensemble cannot do yet' : ''}
+                          {f.mayNeedSignIn ? ' · you sign in once in your browser' : ''}
                         </span>
                       </span>
                       <Button size="sm" onClick={() => void bring(f)}>

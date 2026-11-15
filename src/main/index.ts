@@ -384,6 +384,9 @@ function registerIpc(): void {
     connectorSave: (input: Parameters<typeof hub.connectorSave>[0]) => hub.connectorSave(input),
     connectorRemove: (id: string) => hub.connectorRemove(String(id)),
     connectorTest: (id: string) => hub.connectors.test(String(id)),
+    connectorSignIn: (id: string) => hub.connectorSignIn(String(id)),
+    connectorCancelSignIn: () => hub.connectors.cancelSignIn(),
+    connectorSignOut: (id: string) => hub.connectorSignOut(String(id)),
     browserSites: async () => {
       const ses = session.fromPartition('persist:ensemble-browser')
       const count = new Map<string, number>()
@@ -615,6 +618,7 @@ if (!(TESTING || app.requestSingleInstanceLock())) {
     registerIpc()
     createWindow()
     applyDesktop(hub.settings)
+    hub.connectors.opener = (url) => void shell.openExternal(url)
     await hub.start()
     startUpdates()
 

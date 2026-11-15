@@ -37,7 +37,7 @@ import {
 import { adviseModel, budgetLine, budgetOf, isTopModel, modelForTier, spendScore, TIER_ORDER, tierOfModel, type Tier } from '@shared/budget'
 import { familyOf, kindLabel, kindOf, Learning, type Verdict } from './learning'
 import { ConnectorStore, findConnectors, ownConnectors, type Sealer } from './connectors'
-import type { ConnectorInput, ConnectorView, FoundConnector } from '@shared/connectors'
+import type { ConnectorInput, ConnectorTest, ConnectorView, FoundConnector } from '@shared/connectors'
 import { importTranscript, scanClaudeCode, type FoundSession } from './importer'
 import { AccountManager } from './accounts'
 import { MemoryStore } from './memory'
@@ -217,6 +217,7 @@ export class Hub implements SessionHost {
   private vault: Vault | null = null
   private saveChats: ReturnType<typeof debounce<[]>>
   private timer: NodeJS.Timeout | null = null
+  private renewTimer: ReturnType<typeof setInterval> | null = null
 
   readonly dataDir: string
 
@@ -276,6 +277,19 @@ export class Hub implements SessionHost {
         if (!u || Date.now() - u.updatedAt > 4 * 60 * 1000) void this.accounts.refresh(a.id)
       }
     }, 5 * 60 * 1000)
+    // Connector sign-ins are renewed before they run out; agents pick up the new token with their next turn.
+    const renewSignIns = (): void =>
+      void this.connectors.renewAll().then(
+        (changed) => {
+          if (changed) this.retool()
+          this.emit({ type: 'connectors' })
+        },
+        () => undefined,
+      )
+    if (!this.host.demo) {
+      setTimeout(renewSignIns, 15_000)
+      this.renewTimer = setInterval(renewSignIns, 5 * 60 * 1000)
+    }
   }
 
   private file(name: string): string {
@@ -2083,6 +2097,18 @@ export class Hub implements SessionHost {
     this.retool()
   }
 
+  /** The service's own sign-in page opens in the browser; once signed in, agents get the connector with their next turn. */
+  async connectorSignIn(id: string): Promise<ConnectorTest> {
+    const result = await this.connectors.signIn(id)
+    this.retool()
+    return result
+  }
+
+  connectorSignOut(id: string): void {
+    this.connectors.signOut(id)
+    this.retool()
+  }
+
   // ----- the team board -----
 
   private boardOf(chatId: string): BoardNote[] {
@@ -2988,6 +3014,8 @@ export class Hub implements SessionHost {
   }
 
   async dispose(): Promise<void> {
+    if (this.renewTimer) clearInterval(this.renewTimer)
+    this.connectors.cancelSignIn()
     if (this.timer) clearInterval(this.timer)
     for (const t of this.waitTimers.values()) clearTimeout(t)
     for (const t of this.parked.values()) clearTimeout(t)

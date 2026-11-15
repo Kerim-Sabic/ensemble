@@ -17,6 +17,8 @@ export interface ConnectorTest {
   /** The tools it offers, by name. */
   tools: string[]
   error?: string
+  /** The service turned the connection away until someone signs in (OAuth). */
+  needsSignIn?: boolean
   at: number
 }
 
@@ -38,12 +40,16 @@ export interface Connector {
   source: ConnectorSource
   catalogId?: string
   test?: ConnectorTest
+  /** The service's own sign-in (OAuth): client registration and tokens, sealed as one JSON string. Never sent to the window. */
+  oauth?: string
   createdAt: number
 }
 
 /** What the window sees of a connector: everything but the secret values, which show as saved or not. */
-export interface ConnectorView extends Omit<Connector, 'spec'> {
+export interface ConnectorView extends Omit<Connector, 'spec' | 'oauth'> {
   spec: ConnectorSpec
+  /** Signed in to the service through its own sign-in page. */
+  signedIn?: boolean
   /** For each secret: whether a value is saved. */
   saved: Record<string, boolean>
 }
@@ -59,8 +65,10 @@ export interface FoundConnector {
   spec: ConnectorSpec
   /** Present when it is already set up in Ensemble. */
   added?: boolean
-  /** A web address with no key, which usually means the service wants a sign-in Ensemble cannot do for it. */
+  /** A web address with no key, which usually means the service asks you to sign in once it is brought in. */
   mayNeedSignIn?: boolean
+  /** A program that only runs inside the app it came from (Codex's own tools, for example). */
+  appOnly?: boolean
 }
 
 export interface ConnectorInput {
@@ -271,3 +279,8 @@ export const toSlug = (s: string): string =>
 
 /** Names that look like they hold a secret, for connectors brought in from elsewhere. */
 export const LOOKS_SECRET = /key|token|secret|password|pass|auth|cookie|credential/i
+
+/** A program shipped inside another app's install (Codex's own tools): it only works when that app starts it. */
+export function appOnly(spec: ConnectorSpec): boolean {
+  return spec.kind === 'stdio' && /\\WindowsApps\\|[\\/]app[\\/]resources[\\/]/i.test(spec.command || '')
+}
