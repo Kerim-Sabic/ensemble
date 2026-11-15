@@ -24,7 +24,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - name: Build and publish
-        run: node scripts/build-hands.mjs && pnpm exec electron-vite build && pnpm exec electron-builder --win --publish always
+      - name: Build the installer
+        run: node scripts/build-hands.mjs && pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
+      # Published here in one step rather than by electron-builder: it uploads its files in
+      # parallel, and each upload can create its own copy of a release that doesn't exist yet.
+      - name: Publish the release
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+          files="dist/Ensemble-Setup-$version.exe dist/Ensemble-Setup-$version.exe.blockmap dist/latest.yml"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" $files --clobber
+          else
+            gh release create "$tag" $files --title "Ensemble $version" --generate-notes
+          fi
