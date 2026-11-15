@@ -362,6 +362,8 @@ function registerIpc(): void {
     },
 
     discoverAccounts: () => hub.accounts.discover(),
+    setupStatus: () => hub.setupStatus(),
+    installClaude: () => hub.installClaude(),
     addAccount: (input: Parameters<typeof hub.accounts.add>[0]) => hub.accounts.add(input),
     updateAccount: (id: string, patch: Parameters<typeof hub.updateAccount>[1]) => hub.updateAccount(id, patch),
     removeAccount: (id: string) => hub.removeAccount(id),

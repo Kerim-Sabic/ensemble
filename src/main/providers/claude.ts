@@ -25,7 +25,7 @@ const MODE: Record<PermissionLevel, PermissionMode> = {
 export function claudeEnv(configDir: string | null): Record<string, string> {
   return cleanEnv({
     CLAUDE_CONFIG_DIR: configDir ?? undefined,
-    CLAUDE_AGENT_SDK_CLIENT_APP: 'ensemble/3.4.0',
+    CLAUDE_AGENT_SDK_CLIENT_APP: 'ensemble/3.4.1',
     CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: '1',
   })
 }

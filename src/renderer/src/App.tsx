@@ -16,7 +16,8 @@ import { LiveView } from './components/screen/LiveView'
 import { LibraryView } from './components/LibraryView'
 import { DiffDialog, TaskDialog } from './components/Inspector'
 import { AccountSheet, AddAccountDialog } from './components/Accounts'
-import { ConfirmDialog, Onboarding, Palette, SettingsDialog, ShortcutsDialog, Toasts } from './components/Dialogs'
+import { ConfirmDialog, Palette, SettingsDialog, ShortcutsDialog, Toasts } from './components/Dialogs'
+import { Onboarding } from './components/Onboarding'
 
 export function App() {
   const ready = useStore((s) => s.ready)

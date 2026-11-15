@@ -31,6 +31,7 @@ import {
   type TaskStatus,
   type VaultHit,
   type VaultInfo,
+  type SetupStatus,
   type VaultNote,
 } from '@shared/types'
 import { adviseModel, budgetLine, budgetOf, isTopModel, modelForTier, spendScore, TIER_ORDER, tierOfModel, type Tier } from '@shared/budget'
@@ -50,6 +51,7 @@ import { Hands } from './hands/hands'
 import type { HandsDrivers } from './hands/types'
 import { Vault, detectVaults } from './vault'
 import { findClaude, findCodex } from './locate'
+import { NEW_USER, installClaude, setupStatus } from './setup'
 import { ToolServer } from './toolserver'
 import { debounce, exists, readJson, slugify, truncate, uid, writeJson } from './util'
 
@@ -224,7 +226,7 @@ export class Hub implements SessionHost {
     const saved = readJson<Partial<Settings>>(this.file('settings.json'), {})
     this.settings = { ...DEFAULTS, ...saved }
     // First run: if Obsidian has a vault open on this computer, that is the team's library.
-    if (!('vaultPath' in saved)) this.settings.vaultPath = host.demo ? demoVault(this.dataDir) : detectVaults()[0]?.path || null
+    if (!('vaultPath' in saved)) this.settings.vaultPath = host.demo ? (NEW_USER ? null : demoVault(this.dataDir)) : detectVaults()[0]?.path || null
     this.openVault()
     this.hands = new Hands(
       {
@@ -2015,10 +2017,23 @@ export class Hub implements SessionHost {
     v.noted('Ensemble/Team memory.md')
   }
 
+  setupStatus(): SetupStatus {
+    return setupStatus(this.host.demo, this.settings.claudePath)
+  }
+
+  /** Installs Claude Code, then re-checks every Claude account, which may have been waiting for it. */
+  async installClaude(): Promise<boolean> {
+    const ok = await installClaude((ev) => this.emit(ev), this.host.demo, this.settings.claudePath)
+    if (ok) void this.accounts.refresh()
+    return ok
+  }
+
   /** A fresh vault for the team, for people who do not keep one yet. */
   createVault(): VaultInfo | null {
-    let root = path.join(os.homedir(), 'Documents', 'Ensemble Vault')
-    for (let n = 2; fs.existsSync(root) && fs.readdirSync(root).length; n++) root = path.join(os.homedir(), 'Documents', `Ensemble Vault ${n}`)
+    // Demo mode never writes into the person's real Documents.
+    const parent = this.host.demo ? this.dataDir : path.join(os.homedir(), 'Documents')
+    let root = path.join(parent, 'Ensemble Vault')
+    for (let n = 2; fs.existsSync(root) && fs.readdirSync(root).length; n++) root = path.join(parent, `Ensemble Vault ${n}`)
     fs.mkdirSync(path.join(root, 'Ensemble', 'Chats'), { recursive: true })
     fs.mkdirSync(path.join(root, 'Projects'), { recursive: true })
     fs.mkdirSync(path.join(root, 'Knowledge'), { recursive: true })
@@ -2027,6 +2042,14 @@ export class Hub implements SessionHost {
       '# Guide for agents\n\nThis vault is the long-term memory of an Ensemble team.\n\n- `Projects/`: one note per project: what it is, how it is built and run, decisions and why, open questions.\n- `Knowledge/`: research and facts worth keeping, with sources and dates.\n- `Ensemble/Chats/`: written by the app after each chat. Read them; do not edit them.\n- Extend the note that already covers a topic instead of starting a near-duplicate, and link related notes with [[links]].\n',
       'utf8',
     )
+    const start = path.join(root, 'Start here.md')
+    if (!fs.existsSync(start)) {
+      fs.writeFileSync(
+        start,
+        "# Start here\n\nThis is your Ensemble team's memory. It is a plain folder of Markdown notes, so you can read and edit it in [Obsidian](https://obsidian.md) (free): choose **Open folder as vault** and pick this folder.\n\n- Before your team starts on a request, Ensemble looks here for notes that matter and hands them to the agents.\n- After each substantial chat, a note about it lands in `Ensemble/Chats/`, so the next chat picks up where the last one ended.\n- Write your own notes in `Projects/` and `Knowledge/`: how you like things done, facts about your work, decisions. Your team reads them.\n",
+        'utf8',
+      )
+    }
     this.updateSettings({ vaultPath: root, vaultNotes: 'auto' })
     return this.vaultInfo()
   }

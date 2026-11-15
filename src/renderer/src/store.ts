@@ -92,6 +92,8 @@ interface State {
   logins: Record<string, LoginProgress>
   /** A newer version of Ensemble, once one is found. */
   update: { state: 'downloading' | 'ready'; version: string } | null
+  /** Installing Claude Code from the first-run screen. */
+  setup: { stage: 'download' | 'install' | 'done' | 'failed'; pct?: number; message?: string } | null
   /** null means the blank "new chat" screen. */
   chatId: string | null
   /** Which teammate each chat is showing. */
@@ -321,6 +323,9 @@ export const useStore = create<State>((set, get) => {
       case 'update':
         set({ update: { state: ev.state, version: ev.version } })
         return
+      case 'setup':
+        set({ setup: { stage: ev.stage, pct: ev.pct, message: ev.message } })
+        return
       case 'toast':
         get().toast(ev.text, ev.level)
         return
@@ -391,6 +396,7 @@ export const useStore = create<State>((set, get) => {
     draftFolder: null,
     draftLead: null,
     update: null,
+    setup: null,
     view: 'chat',
     modal: null,
     toasts: [],

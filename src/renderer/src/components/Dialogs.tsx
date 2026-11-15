@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Command } from 'cmdk'
 import { Dialog } from 'radix-ui'
 import { Activity, Plug, BookOpen, Check, CircleAlert, Download, FolderInput, Images, Info, Keyboard, LayoutGrid, MessageSquare, Moon, MousePointerClick, PanelRight, Search, Settings2, SquarePen, Sun, UserPlus, Waypoints, X } from 'lucide-react'
-import type { AccountCandidate, ModelRecord, PermissionLevel, SearchHit, Settings, VaultInfo } from '@shared/types'
+import type { ModelRecord, PermissionLevel, SearchHit, Settings, VaultInfo } from '@shared/types'
 import { leadOf, useStore } from '@/store'
 import { api, baseName, cn, PERMISSIONS, relative, tildify } from '@/lib/util'
-import { Button, Kbd, Modal, Row, Segmented, Spinner, Toggle, inputClass } from './ui'
+import { Button, Kbd, Modal, Row, Segmented, Toggle, inputClass } from './ui'
 import { Orb } from './Orb'
 import { Logo } from './Sidebar'
 import { Picker } from './Accounts'
@@ -591,129 +591,6 @@ export function Toasts() {
           </button>
         </div>
       ))}
-    </div>
-  )
-}
-
-/** First run: find the accounts already on this computer and form the team. */
-export function Onboarding() {
-  const run = useStore((s) => s.run)
-  const setModal = useStore((s) => s.setModal)
-  const existing = useStore((s) => s.accounts)
-  const [found, setFound] = useState<AccountCandidate[] | null>(null)
-  const [picked, setPicked] = useState<Record<number, boolean>>({})
-  const [names, setNames] = useState<Record<number, string>>({})
-  const [lead, setLead] = useState<number | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    void api.discoverAccounts().then(
-      (list) => {
-        setFound(list)
-        setPicked(Object.fromEntries(list.map((c, i) => [i, c.signedIn])))
-        const first = list.findIndex((c) => c.signedIn && c.provider === 'claude')
-        setLead(first >= 0 ? first : null)
-      },
-      () => setFound([]),
-    )
-  }, [])
-
-  const chosen = useMemo(() => (found || []).map((c, i) => ({ c, i })).filter((x) => picked[x.i] && x.c.signedIn), [found, picked])
-
-  const start = async (): Promise<void> => {
-    setBusy(true)
-    let leadId: string | null = null
-    for (const { c, i } of chosen) {
-      const a = await run(api.addAccount({ name: names[i]?.trim() || c.suggestedName, provider: c.provider, configDir: c.configDir }))
-      if (a && i === lead) leadId = a.id
-    }
-    await run(api.updateSettings({ onboarded: true, leadId }))
-    setBusy(false)
-  }
-
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center overflow-y-auto bg-window">
-      <div className="drag absolute inset-x-0 top-0 h-11" />
-      <div className="w-[520px] max-w-[92vw] animate-rise py-10">
-        <div className="flex flex-col items-center text-center">
-          <Logo size={56} />
-          <h1 className="mt-6 text-[30px] leading-tight font-semibold tracking-[-0.03em]">Welcome to Ensemble</h1>
-          <p className="mt-2.5 max-w-[400px] text-[14.5px] leading-relaxed text-ink-2">Your AI accounts, working as one team. One leads, the others pitch in, and you talk to all of them from here.</p>
-        </div>
-
-        <div className="mt-9 rounded-[18px] bg-surface p-2 shadow-float">
-          {found === null ? (
-            <div className="flex items-center justify-center gap-2.5 py-10 text-[13px] text-ink-3">
-              <Spinner /> Looking for accounts on this computer…
-            </div>
-          ) : found.length === 0 && existing.length === 0 ? (
-            <div className="px-6 py-8 text-center">
-              <div className="text-[14px] font-medium">No signed-in accounts found yet</div>
-              <p className="mt-1 text-[13px] text-ink-3">Sign in to your first account to begin.</p>
-              <Button variant="primary" size="lg" className="mt-5" onClick={() => setModal({ kind: 'add-account' })}>
-                Add an account
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="px-3 pt-2.5 pb-2 text-[12px] font-medium text-ink-3">Found on this computer</div>
-              {found.map((c, i) => {
-                const on = !!picked[i] && c.signedIn
-                return (
-                  <div key={`${c.provider}:${c.configDir}`} className={cn('flex items-center gap-3 rounded-[12px] px-3 py-2.5 transition-colors', c.signedIn ? 'hover:bg-hover' : 'opacity-55')}>
-                    <button
-                      role="checkbox"
-                      aria-checked={on}
-                      aria-label={`Include ${c.suggestedName}`}
-                      disabled={!c.signedIn}
-                      onClick={() => setPicked((p) => ({ ...p, [i]: !p[i] }))}
-                      className={cn('flex size-[18px] shrink-0 items-center justify-center rounded-[6px] border transition-colors', on ? 'border-ink bg-ink text-inverse' : 'border-ink-4')}
-                    >
-                      {on && <Check className="size-3" strokeWidth={3} />}
-                    </button>
-                    <Orb account={{ accent: c.provider === 'chatgpt' ? 'green' : (['clay', 'violet', 'teal', 'blue', 'amber', 'rose'] as const)[i % 6] }} size={26} off={!c.signedIn} />
-                    <div className="min-w-0 flex-1">
-                      <input
-                        value={names[i] ?? c.suggestedName}
-                        disabled={!c.signedIn}
-                        onChange={(e) => setNames((n) => ({ ...n, [i]: e.target.value }))}
-                        aria-label="Name"
-                        className="selectable -ml-1.5 w-full rounded-[6px] bg-transparent px-1.5 py-px text-[13.5px] font-medium outline-none hover:bg-active focus:bg-surface-2"
-                      />
-                      <div className="truncate text-[12px] text-ink-3">
-                        {c.provider === 'claude' ? 'Claude' : 'ChatGPT'}
-                        {c.plan ? ` · ${c.plan}` : ''}
-                        {c.signedIn ? (c.email ? ` · ${c.email}` : '') : ' · signed out, add it later'}
-                      </div>
-                    </div>
-                    {c.signedIn && c.provider === 'claude' && on && (
-                      <button
-                        onClick={() => setLead(i)}
-                        className={cn(
-                          'h-7 shrink-0 rounded-full px-3 text-[12px] font-medium transition-all',
-                          lead === i ? 'bg-ink text-inverse' : 'text-ink-3 shadow-[inset_0_0_0_1px_var(--line-2)] hover:text-ink',
-                        )}
-                      >
-                        {lead === i ? 'Lead' : 'Make lead'}
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </>
-          )}
-        </div>
-
-        {found !== null && (found.length > 0 || existing.length > 0) && (
-          <div className="mt-6 flex flex-col items-center gap-3">
-            <Button variant="primary" size="lg" className="w-[220px]" disabled={busy || (!chosen.length && !existing.length)} onClick={() => void start()}>
-              {busy ? <Spinner className="text-inverse" /> : null}
-              {chosen.length > 1 ? `Start with ${chosen.length} accounts` : 'Get started'}
-            </Button>
-            <p className="max-w-[380px] text-center text-[12px] leading-relaxed text-ink-3">The lead is who you talk to. It plans the work and hands parts of it to the others. You can add more accounts or change the lead any time.</p>
-          </div>
-        )}
-      </div>
     </div>
   )
 }

@@ -19,6 +19,7 @@ import { claudeEnv, probeClaude } from './providers/claude'
 import { codexEnv, codexLoginStatus } from './providers/codex'
 import { probeCodex } from './providers/codex-probe'
 import { findClaude, findCodex } from './locate'
+import { NEW_USER } from './setup'
 
 interface ClaudeAuthStatus {
   loggedIn?: boolean
@@ -196,6 +197,7 @@ export class AccountManager {
     const homeDir = os.homedir()
     const have = (provider: Provider, dir: string | null): boolean =>
       this.accounts.some((a) => a.provider === provider && (a.configDir || this.defaultDir(provider)).toLowerCase() === (dir || this.defaultDir(provider)).toLowerCase())
+    if (this.host.demo && NEW_USER) return []
     if (this.host.demo) return DEMO_FOUND.filter((c) => !have(c.provider, c.configDir)).map((c) => ({ ...c }))
     let names: string[] = []
     try {
@@ -343,7 +345,7 @@ export class AccountManager {
   private async doRefresh(a: Account): Promise<void> {
     const prev = this.statuses.get(a.id)
     if (this.host.demo) {
-      const known = DEMO_FOUND.find((c) => c.provider === a.provider && c.configDir === a.configDir)
+      const known = NEW_USER ? undefined : DEMO_FOUND.find((c) => c.provider === a.provider && c.configDir === a.configDir)
       const signedIn = known ? known.signedIn : !!prev && prev.state === 'ready'
       this.setStatus({
         accountId: a.id,

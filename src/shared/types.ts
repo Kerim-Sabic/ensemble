@@ -424,6 +424,17 @@ export interface AccountCandidate {
   plan?: string
 }
 
+/** What a new computer already has, for the first-run screens. */
+export interface SetupStatus {
+  /** Claude Code can be found (installed, or set in Settings). */
+  claude: boolean
+  /** The ChatGPT runtime is bundled, so this is normally true. */
+  chatgpt: boolean
+  obsidian: boolean
+  /** Windows only: Git for Windows, which Claude Code uses for its shell. */
+  gitBash: boolean
+}
+
 export interface LoginProgress {
   accountId: string
   state: 'starting' | 'waiting' | 'success' | 'failed' | 'cancelled'
@@ -629,6 +640,8 @@ export type HubEvent =
   | { type: 'vault'; vault: VaultInfo | null }
   /** A new version is on its way, or downloaded and ready to install. */
   | { type: 'update'; state: 'downloading' | 'ready'; version: string }
+  /** Progress of installing Claude Code from the first-run screen. */
+  | { type: 'setup'; stage: 'download' | 'install' | 'done' | 'failed'; pct?: number; message?: string }
   /** The window was brought up from the tray or the global shortcut. */
   | { type: 'summon'; fresh?: boolean }
 
@@ -649,6 +662,9 @@ export interface EnsembleApi {
   updateSettings(patch: Partial<Settings>): Promise<Settings>
 
   discoverAccounts(): Promise<AccountCandidate[]>
+  setupStatus(): Promise<SetupStatus>
+  /** Downloads and installs Claude Code; progress arrives as `setup` events. */
+  installClaude(): Promise<boolean>
   addAccount(input: { name: string; provider: Provider; configDir?: string | null; create?: boolean; accent?: AccentKey }): Promise<Account>
   updateAccount(id: string, patch: Partial<Pick<Account, 'name' | 'accent' | 'model' | 'effort' | 'role' | 'enabled'>>): Promise<Account>
   removeAccount(id: string): Promise<void>

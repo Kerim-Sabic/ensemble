@@ -10,6 +10,8 @@ const METHODS = [
   'bootstrap',
   'updateSettings',
   'discoverAccounts',
+  'setupStatus',
+  'installClaude',
   'addAccount',
   'updateAccount',
   'removeAccount',

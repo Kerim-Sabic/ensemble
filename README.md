@@ -79,13 +79,15 @@ Undo any reply's file changes · "Have it checked" by a fresh agent · approvals
 ## Get started
 
 1. **Download** the installer from the [latest release](https://github.com/Kerim-Sabic/ensemble/releases/latest) and run it. Windows may warn that the app is from an unknown publisher: choose *More info*, then *Run anyway*.
-2. **Have an account ready.** For Claude, install [Claude Code](https://claude.com/claude-code) and sign in once. ChatGPT accounts need nothing extra: the runtime is built in.
-3. **Open Ensemble.** It finds the accounts already signed in on your computer and asks which one should lead. Add more any time from the sidebar; each keeps its own sign-in.
-4. **Ask for something real.** "Build a pricing page with a checkout flow", "Research the three best options for X and compare them", "Find out why the tests fail and fix it". Then open the Team tab and watch.
+2. **Connect your AI.** Click *Sign in with Claude* or *Sign in with ChatGPT* and sign in in your browser, with the plan you already pay for. No API keys. Don't have Claude Code? Ensemble downloads and installs it for you from Anthropic. Accounts already signed in on your computer are found and ticked for you.
+3. **Give your team a memory.** Pick one of your Obsidian vaults, or let Ensemble make one in Documents. You don't need Obsidian installed for this to work.
+4. **Ask for something real.** "Research the three best options for X and compare them", "Build a pricing page with a checkout flow", "Find out why the tests fail and fix it". Then open the Team tab and watch.
+
+<img src="docs/screenshots/setup.png" alt="First run: sign in with Claude or ChatGPT, nothing else to configure" width="100%" />
 
 Ensemble updates itself: new versions download in the background and install the next time you close it.
 
-**Requirements:** Windows 10 or 11 (64-bit). Some connectors need [Node.js](https://nodejs.org) or [uv](https://docs.astral.sh/uv/).
+**Requirements:** Windows 10 or 11 (64-bit), and a Claude Pro or Max plan or a ChatGPT plan. Claude runs commands best with [Git for Windows](https://git-scm.com/downloads/win) installed. Some connectors need [Node.js](https://nodejs.org) or [uv](https://docs.astral.sh/uv/).
 
 ## How it works
 
