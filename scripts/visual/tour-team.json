@@ -1,0 +1,14 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 1800 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1600 },
+  { "js": "const s = window.__ensemble.getState(); await s.send('Add a pricing page with a checkout flow, and a hero image for it.'); s.setView('flow')", "wait": 6800, "shot": "t01-handing-out.png" },
+  { "wait": 5200, "shot": "t02-working.png" },
+  { "wait": 9000, "shot": "t03-review.png" },
+  { "wait": 26000, "shot": "t04-done.png" },
+  { "js": "const s = window.__ensemble.getState(); const tasks = (s.tasks[s.chatId] || []).map(t => t.id + ':' + t.status + (t.after ? ' after ' + t.after.join('+') : '') + (t.modelLabel ? ' [' + t.modelLabel + (t.effort ? ' ' + t.effort : '') + ']' : (t.effort ? ' [' + t.effort + ']' : ''))); const asks = Object.values(s.items).flat().filter(i => i.kind === 'ask').map(i => i.status + ': ' + (i.answer || '').slice(0, 50)); const busy = Object.values(s.agents).filter(a => a.phase !== 'idle').length; return 'tasks: ' + tasks.join(' | ') + ' || asks: ' + asks.join(' | ') + ' || still busy: ' + busy + ' || rows in feed: ' + document.querySelectorAll('[data-beat]').length", "wait": 300 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Replay from the start/.test(b.textContent)).click()", "wait": 2600, "shot": "t05-replay.png" },
+  { "wait": 9000 },
+  { "js": "const rows = [...document.querySelectorAll('[data-beat]')]; const q = rows.find(r => /asked/.test(r.textContent) && /second opinion/i.test(r.textContent)); if (q) q.querySelector('button.mt-0\\\\.5').click(); return 'expanded the question row: ' + !!q", "wait": 700, "shot": "t06-feed.png" },
+  { "js": "window.__ensemble.getState().setView('chat')", "wait": 1200, "shot": "t07-chat.png" },
+  { "js": "const el = document.querySelector('.overflow-y-auto.h-full'); if (el) el.scrollTop = 0; return 'scrolled chat to top: ' + !!el", "wait": 900, "shot": "t08-chat-top.png" }
+]

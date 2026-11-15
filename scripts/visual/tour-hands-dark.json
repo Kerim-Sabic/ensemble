@@ -1,0 +1,11 @@
+[
+  { "size": [1380, 880], "theme": "dark", "wait": 1800 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1600 },
+  { "js": "window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.')", "wait": 16500, "shot": "d01-working.png" },
+  { "wait": 8500, "shot": "d02-chat.png" },
+  { "js": "window.__ensemble.getState().setView('live')", "wait": 1800, "shot": "d03-live.png" },
+  { "js": "window.__ensemble.getState().setView('team')", "wait": 1500, "shot": "d04-side-by-side.png" },
+  { "js": "window.__ensemble.getState().setView('memory')", "wait": 1500 },
+  { "js": "const b = [...document.querySelectorAll('button')].find(b => /Storefront/.test(b.textContent)); if (b) b.click()", "wait": 1200, "shot": "d05-knowledge.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setView('chat'); const el = document.querySelector('aside.border-l .overflow-y-auto'); if (el) el.scrollTop = 99999; return 'inspector scrolled: ' + !!el", "wait": 900, "shot": "d06-inspector-bottom.png" }
+]

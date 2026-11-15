@@ -1,0 +1,11 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 1500 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1200 },
+  { "js": "window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.')", "wait": 19000 },
+  { "js": "const s = window.__ensemble.getState(); s.setFocus(s.accounts[1].id)", "wait": 800 },
+  { "js": "const b = [...document.querySelectorAll('button')].find(b => /Undo file changes/.test(b.textContent)); if (!b) return 'undo button: MISSING'; b.click(); return 'undo button: clicked'", "wait": 1500 },
+  { "js": "const d = document.querySelector('[role=dialog]'); const t = d ? d.innerText.replace(/\\s+/g, ' ').slice(0, 220) : 'NO DIALOG'; const go = [...document.querySelectorAll('[role=dialog] button')].find(b => /Undo changes/.test(b.textContent)); if (go) go.click(); return 'confirm: ' + t", "wait": 1800 },
+  { "js": "return 'after undo: ' + (document.body.innerText.match(/Put \\d+ files? back[^\\n]*/) || ['NO NOTICE'])[0] + ' | footer: ' + (document.body.innerText.includes('file changes undone') ? 'marked undone' : 'not marked')", "wait": 300 },
+  { "js": "const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='), c => c.charCodeAt(0)); const f = new File([bytes], 'shot.png', { type: 'image/png' }); const dt = new DataTransfer(); dt.items.add(f); const t = document.querySelector('textarea'); t.focus(); t.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))", "wait": 1500 },
+  { "js": "const img = document.querySelector('.composer img'); return 'pasted picture: ' + (img ? 'attached (' + decodeURIComponent(img.src).split(/[\\\\/]/).pop() + ')' : 'NOT ATTACHED')", "wait": 300 }
+]

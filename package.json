@@ -1,0 +1,69 @@
+{
+  "name": "ensemble",
+  "productName": "Ensemble",
+  "version": "3.4.0",
+  "description": "Every AI account you have, working as one team: a lead that plans, agents that build in parallel, and a live map of all of it.",
+  "author": "Kerim Sabic",
+  "license": "MIT",
+  "homepage": "https://github.com/Kerim-Sabic/ensemble",
+  "repository": { "type": "git", "url": "https://github.com/Kerim-Sabic/ensemble.git" },
+  "private": true,
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "icon": "electron scripts/make-icon.mjs",
+    "hands": "node scripts/build-hands.mjs",
+    "engine": "rolldown scripts/engine-test.ts --platform node --format esm --file out/test/engine-test.mjs --external @anthropic-ai/claude-agent-sdk --external @openai/codex-sdk --external zod --external @modelcontextprotocol/sdk/server/mcp.js --external @modelcontextprotocol/sdk/server/streamableHttp.js --external @modelcontextprotocol/sdk/client/index.js --external @modelcontextprotocol/sdk/client/stdio.js --external @modelcontextprotocol/sdk/client/streamableHttp.js --external @modelcontextprotocol/sdk/client/sse.js && node out/test/engine-test.mjs",
+    "pack": "node scripts/build-hands.mjs && electron-vite build && electron-builder --win --dir",
+    "dist": "node scripts/build-hands.mjs && electron-vite build && electron-builder --win"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.323",
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@openai/codex-sdk": "0.169.0",
+    "electron-updater": "^6.8.11",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@tailwindcss/vite": "^4.3.5",
+    "@tanstack/react-virtual": "^3.14.26",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "electron": "^45.3.1",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "highlight.js": "^11.12.0",
+    "lucide-react": "^1.72.0",
+    "motion": "^14.13.0",
+    "radix-ui": "^1.8.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "zustand": "^5.1.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "@swc/core",
+      "@openai/codex",
+      "@anthropic-ai/claude-agent-sdk"
+    ]
+  }
+}

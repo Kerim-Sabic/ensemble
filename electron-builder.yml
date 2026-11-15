@@ -1,0 +1,49 @@
+appId: app.ensemble.desktop
+productName: Ensemble
+copyright: Copyright © 2026 Kerim Sabic
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - build/icon.png
+  - build/icon.ico
+  - package.json
+  # Claude accounts run on the Claude Code already installed on this computer,
+  # so the copy bundled with the SDK (several hundred MB) is left out.
+  - "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
+  # Other platforms' ChatGPT runtimes, and the voice add-on we never use.
+  - "!node_modules/@openai/codex-darwin-*/**"
+  - "!node_modules/@openai/codex-linux-*/**"
+  - "!node_modules/@openai/codex-win32-arm64/**"
+  - "!node_modules/@openai/codex-*/vendor/*/codex-resources/voice/**"
+  - "!**/*.map"
+# The small program that moves the mouse and takes pictures of the screen.
+extraResources:
+  - from: resources/hands.exe
+    to: hands.exe
+asar: true
+# Programs cannot be started from inside the archive.
+asarUnpack:
+  - node_modules/@openai/codex-win32-x64/**
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Ensemble
+  artifactName: Ensemble-Setup-${version}.${ext}
+npmRebuild: false
+# Installed copies update themselves from the project's GitHub releases.
+publish:
+  provider: github
+  owner: Kerim-Sabic
+  repo: ensemble
+  releaseType: release

@@ -1,0 +1,12 @@
+[
+  { "size": [1380, 880], "theme": "dark", "wait": 1500 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1200, "shot": "59-dark-empty.png" },
+  { "js": "window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.')", "wait": 6400, "shot": "60-dark-working.png" },
+  { "wait": 12000, "shot": "60b-dark-done.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setModal({ kind: 'diff', chatId: s.chatId, path: 'src/routes.tsx' })", "wait": 900, "shot": "61-dark-diff.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setModal({ kind: 'account', id: s.accounts[0].id })", "wait": 800, "shot": "61b-dark-account.png" },
+  { "js": "window.__ensemble.getState().setModal(null); window.__ensemble.getState().send('Please simulate a limit so I can see what happens.')", "wait": 2600, "shot": "62-dark-limit.png" },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Continue with/.test(b.textContent)).click()", "wait": 9000, "shot": "62b-dark-handoff.png" },
+  { "js": "window.__ensemble.getState().setView('chat')", "size": [960, 620], "wait": 900, "shot": "63-small.png" },
+  { "js": "window.__ensemble.getState().setView('team')", "wait": 700, "shot": "64-small-team.png" }
+]

@@ -1,0 +1,15 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 1800, "shot": "01-onboarding.png" },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1500, "shot": "02-empty.png" },
+  { "js": "window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.')", "wait": 7600, "shot": "04-delegated.png" },
+  { "wait": 10500, "shot": "05-done.png" },
+  { "js": "const t = document.querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, '/'); t.dispatchEvent(new Event('input', { bubbles: true }))", "wait": 600, "shot": "05b-slash.png" },
+  { "js": "const t = document.querySelector('textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(t, ''); t.dispatchEvent(new Event('input', { bubbles: true })); window.__ensemble.getState().setView('team')", "wait": 900, "shot": "06-team.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setView('chat'); s.setModal({ kind: 'task', taskId: 't1' })", "wait": 700, "shot": "08-task.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setModal({ kind: 'diff', chatId: s.chatId, path: 'src/routes.tsx' })", "wait": 900, "shot": "09-diff.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setModal({ kind: 'account', id: s.accounts[1].id })", "wait": 900, "shot": "12-account.png" },
+  { "js": "window.__ensemble.getState().setModal({ kind: 'settings' })", "wait": 700, "shot": "14-settings.png" },
+  { "js": "window.__ensemble.getState().setModal({ kind: 'palette' })", "wait": 700, "shot": "15-palette.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setModal(null); s.setView('library')", "wait": 1200, "shot": "17-library.png" },
+  { "js": "const s = window.__ensemble.getState(); s.setFocus(s.accounts[1].id); s.setView('chat')", "wait": 900, "shot": "18-member.png" }
+]

@@ -1,0 +1,99 @@
+[
+  {
+    "size": [
+      1380,
+      880
+    ],
+    "theme": "light",
+    "wait": 1800
+  },
+  {
+    "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()",
+    "wait": 1600,
+    "shot": "h01-home.png"
+  },
+  {
+    "js": "window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.')",
+    "wait": 8500,
+    "shot": "h02-delegated.png"
+  },
+  {
+    "wait": 9000,
+    "shot": "h03-browsing.png"
+  },
+  {
+    "wait": 7000,
+    "shot": "h04-done.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const items = Object.entries(s.items).map(([k, v]) => k.split(':')[1] + '=' + v.filter(i => i.kind === 'screen').map(i => i.action + ':' + i.status + (i.shot ? '+shot' : '')).join(',')).filter(x => !x.endsWith('=')); return 'screens: ' + JSON.stringify(Object.values(s.screens).map(x => [x.accountId, x.kind, x.active, x.url && x.url.slice(-22), !!x.pointer])) + ' | steps: ' + items.join(' ; ') + ' | vault: ' + JSON.stringify(s.vault)",
+    "wait": 200
+  },
+  {
+    "js": "window.__ensemble.getState().setView('live')",
+    "wait": 1800,
+    "shot": "h05-live.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const k = Object.keys(s.screens)[0]; const acc = k.split(':')[1]; const steps = s.items[s.chatId + ':' + acc].filter(i => i.kind === 'screen'); s.setLive({ key: k, step: steps[1].id })",
+    "wait": 1200,
+    "shot": "h06-replay.png"
+  },
+  {
+    "js": "window.__ensemble.getState().setLive({ step: null })",
+    "wait": 500
+  },
+  {
+    "js": "[...document.querySelectorAll('button')].find(b => /Take the mouse/.test(b.textContent)).click()",
+    "wait": 900,
+    "shot": "h07-control.png"
+  },
+  {
+    "js": "const el = document.querySelector('main [tabindex=\"0\"]'); if (!el) return 'NO STAGE'; const r = el.getBoundingClientRect(); const at = (fx, fy) => ({ clientX: r.left + r.width * fx, clientY: r.top + r.height * fy, bubbles: true, button: 0, detail: 1 }); el.dispatchEvent(new MouseEvent('mousemove', at(0.445, 0.337))); el.dispatchEvent(new MouseEvent('mousedown', at(0.445, 0.337))); el.dispatchEvent(new MouseEvent('mouseup', at(0.445, 0.337))); return 'clicked Monthly through the live view'",
+    "wait": 1500,
+    "shot": "h08-after-my-click.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); s.setView('chat'); const sc = document.querySelector('[class*=\"overflow-y-auto\"]'); return 'cards: ' + document.querySelectorAll('canvas').length + ' canvases'",
+    "wait": 1200,
+    "shot": "h09-chat-card.png"
+  },
+  {
+    "js": "window.__ensemble.getState().setView('memory')",
+    "wait": 1500,
+    "shot": "h10-knowledge.png"
+  },
+  {
+    "js": "const i = document.querySelector('input[placeholder^=\"Search\"]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, 'pricing'); i.dispatchEvent(new Event('input', { bubbles: true }))",
+    "wait": 900
+  },
+  {
+    "js": "const b = [...document.querySelectorAll('button')].find(b => /Storefront/.test(b.textContent)); if (b) b.click(); return 'opened: ' + !!b",
+    "wait": 1200,
+    "shot": "h11-note.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); s.setView('chat'); s.setModal({ kind: 'settings' })",
+    "wait": 800
+  },
+  {
+    "js": "const d = document.querySelector('[role=dialog] .overflow-y-auto'); d.scrollTop = 420",
+    "wait": 600,
+    "shot": "h12-settings.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); s.setModal({ kind: 'task', taskId: 't2' })",
+    "wait": 800,
+    "shot": "h13-task.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); s.setModal({ kind: 'account', id: s.accounts.find(a => a.provider === 'chatgpt').id })",
+    "wait": 900,
+    "shot": "h14-chatgpt.png"
+  },
+  {
+    "js": "window.__ensemble.getState().setModal(null)",
+    "hud": "h15-hud.png",
+    "wait": 300
+  }
+]

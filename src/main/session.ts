@@ -1,0 +1,670 @@
+import path from 'node:path'
+import type { Account, AgentState, Chat, HubEvent, Item, PermissionDecision, QuestionSpec, RewindPreview } from '@shared/types'
+import fs from 'node:fs'
+import { describeTool, HIDDEN_TEAM_TOOLS, isHandsTool, mediaKind, mediaPathsIn, MEDIA_EXT, toolLine } from '@shared/tools'
+import { readJson, Saver, uid } from './util'
+import type { AgentRuntime, PermissionAsk, RuntimeEvent, RuntimeHost, TurnInput } from './providers/types'
+
+/** A turn waiting to run (or running). */
+export interface Pending {
+  /** 'ask' is a teammate's question: someone is waiting on the answer. */
+  kind: 'user' | 'task' | 'team' | 'ask'
+  /** What the model reads. */
+  text: string
+  images?: string[]
+  origin: TurnInput['origin']
+  /** Transcript rows shown as "queued" until this starts. */
+  itemIds: string[]
+  taskId?: string
+  /** The model and effort this turn should run at, when someone chose them for it. */
+  run?: RunSpec
+  /** Told how the turn ended, or that it never ran. */
+  onDone?(ev: TurnEnd): void
+  /** Run again once already, after the agent's process died under it. */
+  retried?: boolean
+  /** Run again once already on a lesser model, after the strongest one hit its limit. */
+  stepped?: boolean
+  /** The model the hub is about to give this another go on. */
+  stepTo?: string
+}
+
+export interface RunSpec {
+  model?: string | null
+  effort?: string | null
+  /** Why the app chose this model, when it did. Shown to the person; not part of what the agent runs on. */
+  why?: string
+}
+
+const specKey = (r?: RunSpec): string => `${r?.model || ''}|${r?.effort || ''}`
+
+export type TurnEnd = Extract<RuntimeEvent, { type: 'turn-end' }>
+
+export interface SessionHost {
+  dataDir: string
+  emit(ev: HubEvent): void
+  buildRuntime(session: AgentSession, run?: RunSpec): AgentRuntime
+  onTurnStart(session: AgentSession, pending: Pending): void
+  onTurnEnd(session: AgentSession, pending: Pending, ev: TurnEnd): void
+  onSessionId(session: AgentSession, id: string): void
+  onUsage(accountId: string, usage: Extract<RuntimeEvent, { type: 'usage' }>['usage']): void
+  /** A one-click way out of a failed turn, when there is one. */
+  remedyFor(session: AgentSession, pending: Pending, ev: TurnEnd): Extract<Item, { kind: 'notice' }>['action']
+  /** What to say instead of an error when the app is about to give the same work another go. */
+  retryNote(session: AgentSession, pending: Pending, ev: TurnEnd): string | null
+  onAttention(session: AgentSession, what: string): void
+  registerAsk(requestId: string, ask: OpenAsk): void
+  dropAsk(requestId: string): void
+}
+
+/** A question to the person that is still on screen. `expire` settles it as dismissed. */
+export type OpenAsk = { session: AgentSession; itemId: string; expire(): void } & (
+  | { kind: 'permission'; resolve(r: { decision: PermissionDecision; note?: string }): void }
+  | { kind: 'question'; resolve(r: Record<string, string> | null): void }
+)
+
+const IDLE_MS = 15 * 60 * 1000
+const MAX_INPUT_JSON = 12000
+
+function trimInput(input: unknown): unknown {
+  if (input === undefined) return undefined
+  try {
+    const s = JSON.stringify(input)
+    if (s.length <= MAX_INPUT_JSON) return input
+    // Keep the shape readable but drop the bulk (file contents, long patches).
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
+      out[k] = typeof v === 'string' && v.length > 2000 ? `${v.slice(0, 2000)}\n… ${v.length - 2000} more characters` : v
+    }
+    return out
+  } catch {
+    return undefined
+  }
+}
+
+export class AgentSession implements RuntimeHost {
+  items: Item[] = []
+  state: AgentState
+  private queue: Pending[] = []
+  private current: Pending | null = null
+  private runtime: AgentRuntime | null = null
+  private file: string
+  private saver: Saver
+  /** Rows by id. Transcripts run to thousands of rows and every streamed word looks one up. */
+  private byId = new Map<string, Item>()
+  /**
+   * Set when the app last closed in the middle of this agent's work: whether it had started,
+   * and what had been said to it that it never answered.
+   */
+  unfinished: { worked: boolean; inputs: Item[] } | null = null
+  private deltas = new Map<string, string>()
+  private deltaTimer: NodeJS.Timeout | null = null
+  private started = new Map<string, number>()
+  private hidden = new Set<string>()
+  private idleTimer: NodeJS.Timeout | null = null
+  private openAsks = new Set<string>()
+  /** Media already put on show, by path and when it was written, so a file is shown once per version. */
+  private shown = new Set<string>()
+  /** The process no longer matches the team (new role, model or lead): replace it before the next turn. */
+  private stale = false
+  /** The model and effort the running process was started with. */
+  private spec = specKey()
+
+  constructor(
+    private host: SessionHost,
+    readonly chat: Chat,
+    readonly account: Account,
+  ) {
+    this.file = path.join(host.dataDir, 'chats', chat.id, `${account.id}.json`)
+    this.items = readJson<Item[]>(this.file, [])
+    // Anything that was mid-flight when the app last closed is over now.
+    for (const it of this.items) {
+      if ('streaming' in it && it.streaming) it.streaming = false
+      if ('queued' in it && it.queued) it.queued = false
+      if (it.kind === 'tool' && it.status === 'running') it.status = 'done'
+      if ((it.kind === 'permission' || it.kind === 'question' || it.kind === 'signin') && it.status === 'pending') it.status = 'expired'
+      if (it.kind === 'ask' && it.status === 'waiting') {
+        it.status = 'failed'
+        it.answer = 'The app closed before the answer came.'
+      }
+      if (it.kind === 'screen' && it.status === 'running') it.status = 'error'
+      this.byId.set(it.id, it)
+    }
+    // Every reply ends with a closing row. Anything after the last one was cut short.
+    let last = -1
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (this.items[i].kind === 'turn') {
+        last = i
+        break
+      }
+    }
+    const tail = this.items.slice(last + 1)
+    const worked = tail.some((i) => i.kind === 'assistant' || i.kind === 'thinking' || i.kind === 'tool' || i.kind === 'screen' || i.kind === 'delegate' || i.kind === 'ask' || i.kind === 'outgoing')
+    const inputs = tail.filter((i) => i.kind === 'user' || i.kind === 'peer')
+    if (worked || inputs.length) this.unfinished = { worked, inputs }
+    this.state = { chatId: chat.id, accountId: account.id, phase: 'idle', queued: 0 }
+    this.saver = new Saver(this.file, () => this.items)
+  }
+
+  private persist(): void {
+    this.saver.touch()
+  }
+
+  /** Draws a line under work that was cut short, once it has been dealt with. */
+  closeTail(): void {
+    if (!this.unfinished) return
+    this.unfinished = null
+    this.add({ id: uid('e'), kind: 'turn', ts: Date.now(), status: 'interrupted', durationMs: 0 })
+  }
+
+  /** Puts everything on disk right now. For the moment before the app closes. */
+  flush(): void {
+    this.flushDeltas()
+    this.saver.flushSync()
+  }
+
+  get key(): string {
+    return `${this.chat.id}:${this.account.id}`
+  }
+
+  get busy(): boolean {
+    return this.current !== null
+  }
+
+  get currentTaskId(): string | undefined {
+    return this.current?.taskId
+  }
+
+  // ----- transcript -----
+
+  add(item: Item): void {
+    this.items.push(item)
+    this.byId.set(item.id, item)
+    this.host.emit({ type: 'item', chatId: this.chat.id, accountId: this.account.id, item })
+    this.persist()
+  }
+
+  patch(id: string, patch: Record<string, unknown>): void {
+    const it = this.byId.get(id)
+    if (!it) return
+    Object.assign(it, patch)
+    this.host.emit({ type: 'item-patch', chatId: this.chat.id, accountId: this.account.id, id, patch })
+    this.persist()
+  }
+
+  private delta(id: string, text: string): void {
+    const it = this.byId.get(id)
+    if (!it || !('text' in it)) return
+    it.text += text
+    this.deltas.set(id, (this.deltas.get(id) || '') + text)
+    // Twelve updates a second reads as smooth typing and leaves the window time for everything else.
+    if (!this.deltaTimer) this.deltaTimer = setTimeout(() => this.flushDeltas(), 85)
+    this.persist()
+  }
+
+  private flushDeltas(): void {
+    if (this.deltaTimer) clearTimeout(this.deltaTimer)
+    this.deltaTimer = null
+    for (const [id, text] of this.deltas) {
+      this.host.emit({ type: 'item-delta', chatId: this.chat.id, accountId: this.account.id, id, text })
+    }
+    this.deltas.clear()
+  }
+
+  private setState(patch: Partial<AgentState>): void {
+    Object.assign(this.state, patch, { queued: this.queue.length, taskId: this.current?.taskId ?? null })
+    this.host.emit({ type: 'agent', state: { ...this.state } })
+  }
+
+  // ----- turns -----
+
+  enqueue(p: Pending, front = false): void {
+    if (front) this.queue.unshift(p)
+    else this.queue.push(p)
+    this.setState({})
+    this.pump()
+  }
+
+  /** Removes a not-yet-started task from the queue. */
+  dequeueTask(taskId: string): boolean {
+    const i = this.queue.findIndex((q) => q.taskId === taskId)
+    if (i < 0) return false
+    const [p] = this.queue.splice(i, 1)
+    for (const id of p.itemIds) this.patch(id, { queued: false })
+    this.setState({})
+    return true
+  }
+
+  private pump(): void {
+    if (this.current || !this.queue.length) return
+    const next = this.queue.shift() as Pending
+    // Several teammate notes waiting at once are read together in one turn.
+    if (next.kind === 'team') {
+      while (this.queue[0]?.kind === 'team') {
+        const more = this.queue.shift() as Pending
+        next.text += `\n\n${more.text}`
+        next.itemIds.push(...more.itemIds)
+      }
+    }
+    for (const id of next.itemIds) this.patch(id, { queued: false })
+    this.current = next
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.setState({ phase: 'thinking', activity: 'Thinking', turnStartedAt: Date.now(), error: undefined, suggestion: undefined, steps: 0 })
+    this.host.onTurnStart(this, next)
+    try {
+      // A task can ask for its own model and effort; the conversation carries over.
+      if (this.stale || (this.runtime && this.spec !== specKey(next.run))) {
+        this.stale = false
+        this.runtime?.dispose()
+        this.runtime = null
+      }
+      if (!this.runtime) {
+        this.setState({ phase: 'starting', activity: 'Waking up' })
+        this.runtime = this.host.buildRuntime(this, next.run)
+        this.spec = specKey(next.run)
+      }
+      this.runtime.send({ text: next.text, images: next.images, origin: next.origin })
+    } catch (e) {
+      this.emit({ type: 'turn-end', status: 'error', resultText: '', durationMs: 0, reason: 'other', error: (e as Error).message })
+    }
+  }
+
+  /** A line under the agent's name while it waits on something that is not its own work. */
+  note(activity: string): void {
+    if (this.current) this.setState({ phase: 'tool', activity })
+  }
+
+  /** Something about this agent that the hub worked out, such as why it runs the model it runs. */
+  inform(patch: Pick<AgentState, 'modelWhy'>): void {
+    if (this.state.modelWhy !== patch.modelWhy) this.setState(patch)
+  }
+
+  async stop(): Promise<void> {
+    for (const p of this.queue) {
+      for (const id of p.itemIds) this.patch(id, { queued: false })
+      // Whoever was waiting on this turn learns that it is not going to happen.
+      p.onDone?.({ type: 'turn-end', status: 'interrupted', resultText: '', durationMs: 0 })
+    }
+    this.queue = []
+    this.setState({})
+    for (const id of [...this.openAsks]) this.host.dropAsk(id)
+    if (this.current && this.runtime) await this.runtime.interrupt()
+  }
+
+  async setPermission(): Promise<void> {
+    await this.runtime?.setPermission(this.chat.permission)
+  }
+
+  /** Drop the process so the next turn starts fresh (new model, new role). */
+  recycle(): void {
+    if (this.current) {
+      this.stale = true
+      return
+    }
+    this.stale = false
+    this.runtime?.dispose()
+    this.runtime = null
+  }
+
+  /** The last thing the person typed here, for carrying over to another teammate. */
+  lastUserText(): string {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      const it = this.items[i]
+      if (it.kind === 'user' && it.text.trim()) return it.text
+    }
+    return ''
+  }
+
+  /** Puts files back to how they were before the reply a turn row belongs to. */
+  async rewind(turnId: string, apply: boolean): Promise<RewindPreview> {
+    const no = (error: string): RewindPreview => ({ ok: false, error, files: [], added: 0, removed: 0 })
+    const turn = this.byId.get(turnId)
+    if (turn?.kind !== 'turn' || !turn.checkpoint) return no('There is nothing to undo for that reply.')
+    if (this.current) return no(`Wait for ${this.account.name} to finish first.`)
+    if (this.stale) this.recycle()
+    if (!this.runtime) {
+      this.runtime = this.host.buildRuntime(this)
+      this.spec = specKey()
+    }
+    if (!this.runtime.rewind) return no(`${this.account.name} cannot undo file changes.`)
+    // The provider only lists the files when asked for a preview, so look first.
+    const before = apply ? await this.runtime.rewind(turn.checkpoint, false) : null
+    const r = await this.runtime.rewind(turn.checkpoint, apply)
+    if (apply && r.ok && before?.ok && !r.files.length) r.files = before.files
+    if (apply && r.ok) {
+      // Everything after this point was built on the files being as they were.
+      const at = this.items.indexOf(turn)
+      for (const it of this.items.slice(at)) if (it.kind === 'turn' && it.checkpoint) this.patch(it.id, { undone: true })
+      const n = r.files.length
+      this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: n ? `Put ${n} ${n === 1 ? 'file' : 'files'} back to how ${n === 1 ? 'it was' : 'they were'} before that reply.` : 'Files are back to how they were before that reply.' })
+    }
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.idleTimer = setTimeout(() => this.recycle(), IDLE_MS)
+    return r
+  }
+
+  dispose(): void {
+    this.flush()
+    if (this.idleTimer) clearTimeout(this.idleTimer)
+    this.runtime?.dispose()
+    this.runtime = null
+  }
+
+  // ----- RuntimeHost -----
+
+  emit(ev: RuntimeEvent): void {
+    switch (ev.type) {
+      case 'session':
+        this.host.onSessionId(this, ev.sessionId)
+        if (ev.model) this.setState({ model: ev.model })
+        return
+
+      case 'status':
+        this.setState({ activity: ev.text })
+        return
+
+      case 'text-start':
+        this.add({ id: ev.id, kind: 'assistant', ts: Date.now(), text: '', streaming: true })
+        this.setState({ phase: 'responding', activity: 'Writing' })
+        return
+
+      case 'text-delta':
+        this.delta(ev.id, ev.text)
+        return
+
+      case 'text-end':
+        this.flushDeltas()
+        this.patch(ev.id, { text: ev.text, streaming: false })
+        return
+
+      case 'thinking-start':
+        this.started.set(ev.id, Date.now())
+        this.add({ id: ev.id, kind: 'thinking', ts: Date.now(), text: '', streaming: true })
+        this.setState({ phase: 'thinking', activity: 'Thinking' })
+        return
+
+      case 'thinking-delta':
+        this.delta(ev.id, ev.text)
+        return
+
+      case 'thinking-end': {
+        this.flushDeltas()
+        const t0 = this.started.get(ev.id)
+        const patch: Record<string, unknown> = { streaming: false }
+        if (t0) patch.durationMs = Date.now() - t0
+        if (ev.text) patch.text = ev.text
+        this.patch(ev.id, patch)
+        return
+      }
+
+      case 'tool-start': {
+        // These show up as their own cards (a handoff, a step on a screen), not as a tool row.
+        if (HIDDEN_TEAM_TOOLS.has(ev.name) || isHandsTool(ev.name)) {
+          this.hidden.add(ev.id)
+          this.setState({ phase: 'tool', activity: toolLine(ev.name, ev.input), steps: (this.state.steps || 0) + 1 })
+          return
+        }
+        this.started.set(ev.id, Date.now())
+        this.add({ id: ev.id, kind: 'tool', ts: Date.now(), name: ev.name, input: trimInput(ev.input), status: 'running', parentId: ev.parentId })
+        if (!ev.parentId) this.setState({ phase: 'tool', activity: toolLine(ev.name, ev.input), steps: (this.state.steps || 0) + 1 })
+        return
+      }
+
+      case 'tool-input': {
+        if (this.hidden.has(ev.id)) return
+        const it = this.byId.get(ev.id)
+        if (it?.kind !== 'tool') return
+        this.patch(ev.id, { input: trimInput(ev.input) })
+        if (!it.parentId && it.status === 'running') this.setState({ activity: toolLine(it.name, ev.input) })
+        return
+      }
+
+      case 'tool-end': {
+        if (this.hidden.delete(ev.id)) {
+          this.setState({ phase: 'thinking', activity: 'Thinking' })
+          return
+        }
+        const t0 = this.started.get(ev.id)
+        this.started.delete(ev.id)
+        const it = this.byId.get(ev.id)
+        this.patch(ev.id, { status: ev.isError ? 'error' : 'done', output: ev.output, durationMs: t0 ? Date.now() - t0 : undefined })
+        if (!ev.isError && it?.kind === 'tool') this.showMade(it.name, it.input, ev.output)
+        if (it?.kind === 'tool' && !it.parentId) this.setState({ phase: 'thinking', activity: 'Thinking' })
+        return
+      }
+
+      case 'image':
+        this.add({ id: uid('i'), kind: 'image', ts: Date.now(), path: ev.path })
+        return
+
+      case 'usage':
+        this.host.onUsage(this.account.id, ev.usage)
+        return
+
+      case 'notice':
+        this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: ev.level, text: ev.text })
+        return
+
+      case 'context':
+        this.setState({ context: { used: ev.used, max: ev.max } })
+        return
+
+      case 'suggestion':
+        if (!this.current) this.setState({ suggestion: ev.text })
+        return
+
+      case 'turn-end': {
+        this.flushDeltas()
+        const pending = this.current
+        for (const it of this.items) {
+          if ('streaming' in it && it.streaming) this.patch(it.id, { streaming: false })
+          if (it.kind === 'tool' && it.status === 'running') this.patch(it.id, { status: ev.status === 'done' ? 'done' : 'error' })
+        }
+        // Empty replies happen (a turn that only used tools); don't leave blank rows.
+        if (this.items.some((it) => it.kind === 'assistant' && !it.text.trim())) {
+          this.items = this.items.filter((it) => {
+            const blank = it.kind === 'assistant' && !it.text.trim()
+            if (blank) this.byId.delete(it.id)
+            return !blank
+          })
+        }
+        for (const id of [...this.openAsks]) this.host.dropAsk(id)
+        this.hidden.clear()
+        this.started.clear()
+        // A failure the app is about to put right by itself is told as what it is doing about it.
+        const retry = ev.status === 'error' && pending ? this.host.retryNote(this, pending, ev) : null
+        if (retry) {
+          this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: retry })
+        } else if (ev.status === 'error') {
+          const action = pending ? this.host.remedyFor(this, pending, ev) : undefined
+          this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'error', text: this.explain(ev), action })
+        }
+        const failed = ev.status === 'error' && !retry
+        this.add({ id: uid('e'), kind: 'turn', ts: Date.now(), status: retry ? 'interrupted' : ev.status, durationMs: ev.durationMs, steps: ev.steps, tokens: ev.tokens, checkpoint: ev.checkpoint, model: this.state.model })
+        // A finished reply is the moment to be fully on disk.
+        this.unfinished = null
+        this.saver.now()
+        this.current = null
+        this.setState({
+          phase: failed ? 'error' : 'idle',
+          activity: undefined,
+          turnStartedAt: undefined,
+          steps: undefined,
+          error: failed ? this.explain(ev) : undefined,
+        })
+        if (pending) this.host.onTurnEnd(this, pending, ev)
+        if (this.stale) this.recycle()
+        this.idleTimer = setTimeout(() => this.recycle(), IDLE_MS)
+        this.pump()
+        return
+      }
+
+      case 'exit':
+        this.runtime?.dispose()
+        this.runtime = null
+        return
+    }
+  }
+
+  /**
+   * Pictures, sound and video a step just made, put in the chat as they appear, so the person
+   * sees how the work is going without opening folders. Only files written during this reply
+   * count: something that was merely read is not news.
+   */
+  private showMade(tool: string, input: unknown, output: string): void {
+    const since = (this.state.turnStartedAt || Date.now()) - 3000
+    const found: string[] = []
+    const add = (p: string): void => {
+      const full = path.isAbsolute(p) ? p : path.resolve(this.chat.cwd, p)
+      if (MEDIA_EXT.test(full) && !found.includes(full)) found.push(full)
+    }
+    const inp = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+    for (const k of ['file_path', 'path', 'output_path', 'output', 'out', 'filename', 'output_file', 'save_path', 'image_path', 'audio_path', 'video_path']) {
+      const v = inp[k]
+      if (typeof v === 'string' && v.length < 400) add(v)
+    }
+    if (Array.isArray(inp.changes)) for (const c of inp.changes as Record<string, unknown>[]) if (typeof c.path === 'string') add(c.path)
+    // A command names what it writes, often relative to the working folder.
+    if (typeof inp.command === 'string') for (const m of inp.command.matchAll(/[^\s"'`|;&<>]+\.(?:png|jpe?g|gif|webp|svg|mp3|wav|ogg|m4a|aac|flac|opus|mp4|webm|mov)\b/gi)) add(m[0])
+    for (const p of mediaPathsIn(output || '')) add(p)
+    if (!found.length) return
+    let n = 0
+    for (const p of found) {
+      if (n >= 8) break
+      try {
+        const st = fs.statSync(p)
+        if (!st.isFile() || st.size === 0 || st.mtimeMs < since) continue
+        const key = `${p.toLowerCase()}|${Math.round(st.mtimeMs)}`
+        if (this.shown.has(key)) continue
+        this.shown.add(key)
+        const k = mediaKind(p)
+        this.add({ id: uid('i'), kind: 'image', ts: Date.now(), path: p, media: k === 'audio' || k === 'video' ? k : undefined })
+        n++
+      } catch {
+        /* not there (yet), or not a file */
+      }
+    }
+    void tool
+  }
+
+  private explain(ev: TurnEnd): string {
+    if (ev.reason === 'limit') return `${this.account.name} has used up its allowance for now. It will be available again when the limit resets.`
+    if (ev.reason === 'auth') return `${this.account.name} is signed out. Sign in again from the team panel, then resend.`
+    return ev.error || 'Something went wrong and the reply stopped.'
+  }
+
+  /** A plain sentence for the approval card: who wants to do what. */
+  private askTitle(ask: PermissionAsk): string {
+    const who = this.account.name
+    if (ask.title) return ask.title.replace(/^Claude\b/, who)
+    if (ask.toolName === 'ExitPlanMode') return `${who} has a plan ready for you to approve`
+    const s = describeTool(ask.toolName, ask.input)
+    switch (s.icon) {
+      case 'terminal':
+        return `${who} wants to run a command`
+      case 'edit':
+        return `${who} wants to edit ${s.target || 'a file'}`
+      case 'write':
+        return `${who} wants to create ${s.target || 'a file'}`
+      case 'read':
+        return `${who} wants to read ${s.target || 'a file'}`
+      case 'web':
+        return `${who} wants to go online${s.target ? `: ${s.target}` : ''}`
+      case 'plug':
+        return `${who} wants to use ${s.target}`
+      default:
+        return `${who} wants to use ${ask.toolName}`
+    }
+  }
+
+  askPermission(ask: PermissionAsk): Promise<{ decision: PermissionDecision; note?: string }> {
+    const requestId = uid('p')
+    const itemId = uid('q')
+    this.add({
+      id: itemId,
+      kind: 'permission',
+      ts: Date.now(),
+      requestId,
+      toolName: ask.toolName,
+      title: this.askTitle(ask),
+      detail: ask.detail,
+      input: trimInput(ask.input),
+      canRemember: ask.canRemember,
+      status: 'pending',
+    })
+    const before = { phase: this.state.phase, activity: this.state.activity }
+    this.setState({ phase: 'waiting', activity: 'Waiting for your OK' })
+    this.host.onAttention(this, `${this.account.name} needs your OK`)
+    this.openAsks.add(requestId)
+    return new Promise((resolve) => {
+      const done = (r: { decision: PermissionDecision; note?: string }, status: string): void => {
+        if (!this.openAsks.delete(requestId)) return
+        this.patch(itemId, { status })
+        if (this.current) this.setState(before)
+        resolve(r)
+      }
+      this.host.registerAsk(requestId, {
+        kind: 'permission',
+        session: this,
+        itemId,
+        resolve: (r) => done(r, r.decision === 'deny' ? 'denied' : r.decision === 'always' ? 'always' : 'allowed'),
+        expire: () => done({ decision: 'deny' }, 'expired'),
+      })
+      ask.signal.addEventListener('abort', () => this.host.dropAsk(requestId))
+    })
+  }
+
+  /**
+   * Puts a card in front of the user asking them to sign in to a site in this agent's browser,
+   * and waits until they say they have, or skip it. Resolves true when they signed in.
+   */
+  askSignIn(site: string, url: string, why: string): Promise<boolean> {
+    const requestId = uid('p')
+    const itemId = uid('q')
+    this.add({ id: itemId, kind: 'signin', ts: Date.now(), requestId, site, url, why: why || undefined, status: 'pending' })
+    const before = { phase: this.state.phase, activity: this.state.activity }
+    this.setState({ phase: 'waiting', activity: `Waiting for you to sign in to ${site}` })
+    this.host.onAttention(this, `${this.account.name} needs you to sign in to ${site}`)
+    this.openAsks.add(requestId)
+    return new Promise((resolve) => {
+      const done = (ok: boolean, status: 'done' | 'skipped' | 'expired'): void => {
+        if (!this.openAsks.delete(requestId)) return
+        this.patch(itemId, { status })
+        if (this.current) this.setState(before)
+        resolve(ok)
+      }
+      this.host.registerAsk(requestId, {
+        kind: 'question',
+        session: this,
+        itemId,
+        resolve: (answers) => done(!!answers, answers ? 'done' : 'skipped'),
+        expire: () => done(false, 'expired'),
+      })
+    })
+  }
+
+  askQuestion(questions: QuestionSpec[], signal: AbortSignal): Promise<Record<string, string> | null> {
+    const requestId = uid('p')
+    const itemId = uid('q')
+    this.add({ id: itemId, kind: 'question', ts: Date.now(), requestId, questions, status: 'pending' })
+    const before = { phase: this.state.phase, activity: this.state.activity }
+    this.setState({ phase: 'waiting', activity: 'Waiting for your answer' })
+    this.host.onAttention(this, `${this.account.name} has a question`)
+    this.openAsks.add(requestId)
+    return new Promise((resolve) => {
+      const done = (answers: Record<string, string> | null, status: string): void => {
+        if (!this.openAsks.delete(requestId)) return
+        this.patch(itemId, answers ? { status, answers } : { status })
+        if (this.current) this.setState(before)
+        resolve(answers)
+      }
+      this.host.registerAsk(requestId, {
+        kind: 'question',
+        session: this,
+        itemId,
+        resolve: (answers) => done(answers, answers ? 'answered' : 'expired'),
+        expire: () => done(null, 'expired'),
+      })
+      signal.addEventListener('abort', () => this.host.dropAsk(requestId))
+    })
+  }
+}

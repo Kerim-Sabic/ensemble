@@ -1,0 +1,8 @@
+[
+  { "size": [1380, 880], "theme": "dark", "wait": 1800 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1600, "shot": "td0-home.png" },
+  { "js": "const s = window.__ensemble.getState(); await s.send('Add a pricing page with a checkout flow, and a hero image for it.'); s.setView('flow')", "wait": 11500, "shot": "td1-working.png" },
+  { "wait": 36000, "shot": "td2-done.png" },
+  { "js": "window.__ensemble.getState().setView('chat')", "wait": 1500, "shot": "td3-chat-end.png" },
+  { "size": [1100, 720], "js": "window.__ensemble.getState().setView('flow')", "wait": 1500, "shot": "td4-small-window.png" }
+]

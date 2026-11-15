@@ -1,0 +1,11 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 1800 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1600, "shot": "c01-home.png" },
+  { "js": "window.__ensemble.getState().send('On my computer, write a note in the Notes app about Thursday\\'s design review.')", "wait": 4500, "shot": "c02-ask.png" },
+  { "js": "const b = [...document.querySelectorAll('button')].find(b => /Allow in this chat/.test(b.textContent)); if (!b) return 'NO CONSENT CARD'; b.click(); return 'allowed: ' + [...document.querySelectorAll('button')].filter(x => /Always allow|Don.t allow/.test(x.textContent)).length + ' other choices were offered'", "wait": 2600, "shot": "c03-working.png" },
+  { "js": "window.__ensemble.getState().setView('live')", "wait": 2200, "shot": "c04-live.png" },
+  { "wait": 5000 },
+  { "js": "const s = window.__ensemble.getState(); const k = Object.keys(s.items).find(k => s.items[k].some(i => i.kind === 'screen')); const steps = (s.items[k] || []).filter(i => i.kind === 'screen').map(i => i.action + ':' + i.status + (i.shot ? '+shot' : '') + ' [' + i.label + ']'); return 'steps: ' + steps.join(' | ') + ' || screens: ' + JSON.stringify(Object.values(s.screens).map(x => [x.kind, x.active, x.width + 'x' + x.height])) + ' || computer setting: ' + s.settings.computer", "wait": 300, "shot": "c05-live-done.png" },
+  { "js": "const s = window.__ensemble.getState(); const k = Object.keys(s.screens).find(k => k.endsWith(':desktop')); const acc = k.split(':')[1]; const steps = s.items[s.chatId + ':' + acc].filter(i => i.kind === 'screen'); s.setLive({ key: k, step: steps[1].id })", "wait": 1200, "shot": "c06-replay.png" },
+  { "js": "window.__ensemble.getState().setView('chat')", "wait": 1200, "shot": "c07-chat.png" }
+]

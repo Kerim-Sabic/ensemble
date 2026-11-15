@@ -1,0 +1,536 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ───────────── design tokens ───────────── */
+
+:root {
+  --window: #f2f1ee;
+  --surface: #ffffff;
+  --surface-2: #f6f5f2;
+  --surface-3: #eeede9;
+  --raised: #ffffff;
+  --glass: rgba(255, 255, 255, 0.62);
+  --hover: rgba(24, 20, 12, 0.045);
+  --active: rgba(24, 20, 12, 0.08);
+  --line: rgba(24, 20, 12, 0.09);
+  --line-2: rgba(24, 20, 12, 0.15);
+  --ink: #1b1a17;
+  --ink-2: #5c5a54;
+  --ink-3: #8f8c85;
+  --ink-4: #bab7b0;
+  --inverse: #ffffff;
+  --link: #2f62e0;
+  --ok: #1c9a55;
+  --warn: #b97509;
+  --bad: #d0382d;
+  --warn-soft: #fbf3e2;
+  --bad-soft: #fceeec;
+  --ok-soft: #e9f6ee;
+  --code-bg: #f7f6f3;
+  --shadow-card: 0 0 0 1px var(--line), 0 1px 2px rgba(24, 20, 12, 0.04);
+  --shadow-float: 0 0 0 1px var(--line), 0 2px 6px rgba(24, 20, 12, 0.05), 0 12px 32px -12px rgba(24, 20, 12, 0.16);
+  --shadow-pop: 0 0 0 1px var(--line), 0 4px 12px rgba(24, 20, 12, 0.08), 0 24px 60px -16px rgba(24, 20, 12, 0.28);
+  --panel-shadow: 0 0 0 1px rgba(24, 20, 12, 0.07), 0 1px 3px rgba(24, 20, 12, 0.05);
+  --hl-keyword: #a626a4;
+  --hl-string: #2f7d32;
+  --hl-number: #b5560b;
+  --hl-comment: #9a978f;
+  --hl-fn: #2f62e0;
+  --hl-type: #0b7f8a;
+  color-scheme: light;
+}
+
+.dark {
+  --window: #141413;
+  --surface: #1c1c1a;
+  --surface-2: #242422;
+  --surface-3: #2c2c29;
+  --raised: #262624;
+  --glass: rgba(255, 255, 255, 0.06);
+  --hover: rgba(255, 255, 255, 0.055);
+  --active: rgba(255, 255, 255, 0.095);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-2: rgba(255, 255, 255, 0.15);
+  --ink: #edece8;
+  --ink-2: #aaa8a1;
+  --ink-3: #7a7872;
+  --ink-4: #54524d;
+  --inverse: #151514;
+  --link: #86a9ff;
+  --ok: #45c985;
+  --warn: #e3a743;
+  --bad: #f0695e;
+  --warn-soft: rgba(227, 167, 67, 0.12);
+  --bad-soft: rgba(240, 105, 94, 0.12);
+  --ok-soft: rgba(69, 201, 133, 0.12);
+  --code-bg: #232321;
+  --shadow-card: 0 0 0 1px var(--line), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-float: 0 0 0 1px var(--line), 0 2px 6px rgba(0, 0, 0, 0.3), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 0 0 1px var(--line-2), 0 4px 12px rgba(0, 0, 0, 0.4), 0 24px 60px -16px rgba(0, 0, 0, 0.75);
+  --panel-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --hl-keyword: #d19af7;
+  --hl-string: #9ad08b;
+  --hl-number: #f0a56b;
+  --hl-comment: #77756f;
+  --hl-fn: #8fb1ff;
+  --hl-type: #6fd0d6;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'Cascadia Code', Consolas, ui-monospace, monospace;
+
+  --color-window: var(--window);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-raised: var(--raised);
+  --color-glass: var(--glass);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-inverse: var(--inverse);
+  --color-link: var(--link);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad-soft: var(--bad-soft);
+  --color-ok-soft: var(--ok-soft);
+  --color-accent: var(--a2);
+  --color-accent-soft: var(--a-soft);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-float: var(--shadow-float);
+  --shadow-pop: var(--shadow-pop);
+  --shadow-panel: var(--panel-shadow);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --animate-fade-in: fade-in 0.18s var(--ease-out) both;
+  --animate-rise: rise 0.28s var(--ease-out) both;
+  --animate-pop: pop 0.2s var(--ease-out) both;
+  --animate-shimmer: shimmer 2.2s steps(30) infinite;
+  --animate-caret: caret 1.1s ease-in-out infinite;
+  --animate-pulse-soft: pulse-soft 1.8s ease-in-out infinite;
+  --animate-float: float 7s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.97) translateY(4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes caret {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.25; transform: scale(0.8); }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+/* Things that turn do so by rotating a finished picture, which the graphics card does on
+   its own. Nothing here is painted again on every frame: with a whole team at work there
+   can be dozens of these on screen for hours. */
+@keyframes turn {
+  to { transform: rotate(360deg); }
+}
+
+/* ───────────── base ───────────── */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    font-feature-settings: 'cv11', 'ss03', 'calt';
+    font-optical-sizing: auto;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    margin: 0;
+    color: var(--ink);
+    background: var(--window);
+    overflow: hidden;
+    user-select: none;
+    cursor: default;
+  }
+  /* With Mica the OS paints the backdrop; the page only tints it. */
+  html.mica body {
+    background: rgba(246, 245, 242, 0.42);
+  }
+  html.mica.dark body {
+    background: rgba(18, 18, 17, 0.38);
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--link) 26%, transparent);
+  }
+  button {
+    cursor: default;
+  }
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--link) 70%, transparent);
+    outline-offset: 2px;
+  }
+  textarea:focus-visible,
+  input:focus-visible {
+    outline: none;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: var(--line-2);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ink-4);
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@utility drag {
+  -webkit-app-region: drag;
+}
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+@utility selectable {
+  user-select: text;
+  cursor: auto;
+}
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Text that looks alive while an agent is working. */
+@utility shimmer-text {
+  background: linear-gradient(90deg, var(--ink-3) 0%, var(--ink-3) 35%, var(--ink) 50%, var(--ink-3) 65%, var(--ink-3) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  /* Moved in steps rather than on every frame: it is text, and it has to be painted each time. */
+  animation: shimmer 2.2s steps(30) infinite;
+}
+/* While the window is not the one in use, the words stay still. Orbs keep turning, which costs nothing. */
+html[data-away='true'] .shimmer-text {
+  animation: none;
+  background: none;
+  color: var(--ink-3);
+}
+
+/* Drag regions swallow clicks even beneath an overlay, so a dialog turns them off. */
+html[data-modal='true'] * {
+  -webkit-app-region: no-drag !important;
+}
+
+/* A soft dot that trails text while it is still being written. */
+.md.streaming > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.3em;
+  border-radius: 9999px;
+  background: var(--ink-3);
+  vertical-align: baseline;
+  animation: caret 1.1s ease-in-out infinite;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+/* ───────────── the orb: an agent's face ───────────── */
+
+.orb {
+  --orb-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.4), inset 0 -0.12em 0.22em rgba(0, 0, 0, 0.2), 0 0.5px 1.5px rgba(0, 0, 0, 0.22);
+  position: relative;
+  flex: none;
+  border-radius: 9999px;
+  background: radial-gradient(125% 125% at 30% 22%, var(--a1) 0%, var(--a2) 58%, color-mix(in oklab, var(--a2) 72%, #000) 100%);
+  box-shadow: var(--orb-shadow);
+  transition: filter 0.3s, opacity 0.3s;
+}
+.orb::before {
+  content: '';
+  position: absolute;
+  inset: 8% 18% 54% 18%;
+  border-radius: 9999px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0));
+  opacity: 0.75;
+}
+.orb[data-live='true'] {
+  box-shadow: var(--orb-shadow), 0 0 0 3px color-mix(in oklab, var(--a2) 14%, transparent);
+}
+.orb[data-live='true']::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  background: conic-gradient(transparent 0 50%, color-mix(in oklab, var(--a1) 90%, white) 80%, transparent 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.75px), #000 calc(100% - 1.25px));
+  animation: turn 1.5s linear infinite;
+  will-change: transform;
+}
+.orb[data-off='true'] {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+/* The step of a plan that is being worked on right now. */
+.plan-doing {
+  background: conic-gradient(color-mix(in oklab, var(--ink) 14%, transparent) 0 55%, var(--ink) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+  animation: turn 1.1s linear infinite;
+  will-change: transform;
+}
+
+/* The Team map: a link hums while work that travelled along it is under way, and
+   each thing that passes between two of them crosses the map as a small dot. */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -24; }
+}
+.flow-dash {
+  animation: flow-dash 0.9s steps(12) infinite;
+}
+html[data-away='true'] .flow-dash {
+  animation-play-state: paused;
+}
+@keyframes flow-packet {
+  0% { transform: translate(var(--x0), var(--y0)); opacity: 0; }
+  14% { opacity: 1; }
+  84% { opacity: 1; }
+  100% { transform: translate(var(--x1), var(--y1)); opacity: 0; }
+}
+.flow-packet {
+  margin: -7px 0 0 -7px;
+  pointer-events: none;
+  animation: flow-packet 1.3s cubic-bezier(0.45, 0, 0.25, 1) both;
+}
+.flow-dot {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 9999px;
+  background: var(--c);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--c) 26%, transparent), 0 0 16px var(--c);
+}
+
+/* The team map: a dotted grid that moves with it, a ring round anyone who just joined, and
+   what passes between two cards following the curve of the link. */
+.map-grid {
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--ink) 9%, transparent) 1px, transparent 1.2px);
+}
+@keyframes map-fresh {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--a2) 55%, transparent), var(--shadow-card); }
+  70% { box-shadow: 0 0 0 14px color-mix(in oklab, var(--a2) 0%, transparent), var(--shadow-card); }
+  100% { box-shadow: 0 0 0 0 transparent, var(--shadow-card); }
+}
+.map-fresh {
+  animation: map-fresh 1.4s var(--ease-out) 3;
+}
+@keyframes flow-packet-path {
+  0% { offset-distance: 0%; opacity: 0; }
+  12% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+.flow-packet-path {
+  offset-rotate: 0deg;
+  offset-anchor: 7px 50%;
+  pointer-events: none;
+  animation: flow-packet-path 1.3s cubic-bezier(0.45, 0, 0.25, 1) both;
+}
+
+/* Where an agent just clicked on a screen: a ring that spreads and fades. */
+@keyframes click-ripple {
+  from { transform: scale(0.3); opacity: 0.9; }
+  to { transform: scale(1); opacity: 0; }
+}
+.click-ripple {
+  position: absolute;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: 2px solid var(--a2);
+  background: color-mix(in oklab, var(--a2) 18%, transparent);
+  animation: click-ripple 0.75s var(--ease-out) both;
+  pointer-events: none;
+}
+
+/* The message box takes on a faint glow in the teammate's colour while they work. */
+.composer:focus-within {
+  box-shadow: 0 0 0 1px var(--line-2), 0 2px 6px rgba(24, 20, 12, 0.05), 0 14px 36px -12px rgba(24, 20, 12, 0.2);
+}
+.composer[data-busy='true'] {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--a2) 30%, var(--line)), 0 2px 6px rgba(24, 20, 12, 0.05), 0 16px 40px -14px color-mix(in oklab, var(--a2) 45%, transparent);
+}
+
+/* A soft wash of the team's colours behind the start screen. */
+.hero {
+  background:
+    radial-gradient(520px 260px at 50% 30%, color-mix(in oklab, var(--hero-a, #e0603a) 7%, transparent), transparent 70%),
+    radial-gradient(420px 240px at 34% 36%, color-mix(in oklab, var(--hero-b, #6b4bea) 6%, transparent), transparent 70%),
+    radial-gradient(420px 240px at 66% 36%, color-mix(in oklab, var(--hero-c, #0e9c90) 6%, transparent), transparent 70%);
+}
+.hero-orb {
+  box-shadow: var(--orb-shadow), 0 10px 22px -8px color-mix(in oklab, var(--a2) 55%, transparent);
+}
+.starter::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(180px 90px at 0% 0%, var(--a-soft), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.25s;
+  pointer-events: none;
+}
+.starter:hover::after {
+  opacity: 1;
+}
+
+/* ───────────── markdown ───────────── */
+
+.md {
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: var(--ink);
+  user-select: text;
+  cursor: auto;
+  overflow-wrap: anywhere;
+}
+.md.compact {
+  font-size: 13px;
+  line-height: 1.55;
+}
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0.7em 0; }
+.md h1, .md h2, .md h3, .md h4 {
+  font-weight: 620;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  margin: 1.35em 0 0.5em;
+}
+.md h1 { font-size: 1.4em; }
+.md h2 { font-size: 1.22em; }
+.md h3 { font-size: 1.08em; }
+.md h4 { font-size: 1em; }
+.md ul, .md ol { margin: 0.6em 0; padding-left: 1.5em; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li { margin: 0.28em 0; padding-left: 0.15em; }
+.md li::marker { color: var(--ink-3); }
+.md li > p { margin: 0.3em 0; }
+.md a { color: var(--link); text-decoration: none; cursor: pointer; }
+.md a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.md strong { font-weight: 620; }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+.md blockquote {
+  margin: 0.8em 0;
+  padding: 0.1em 0 0.1em 0.95em;
+  border-left: 2px solid var(--line-2);
+  color: var(--ink-2);
+}
+.md :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  padding: 0.14em 0.38em;
+  border-radius: 5px;
+  background: var(--surface-3);
+  font-feature-settings: 'calt' 0;
+}
+.md pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  font-feature-settings: 'calt' 0;
+  tab-size: 2;
+}
+.md table {
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  font-size: 0.93em;
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.md th, .md td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 12px 7px 0;
+  text-align: left;
+  vertical-align: top;
+}
+.md th { font-weight: 600; color: var(--ink-2); font-size: 0.92em; white-space: nowrap; }
+.md img { max-width: 100%; border-radius: 10px; }
+.md input[type='checkbox'] { margin-right: 0.5em; }
+
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in, .hljs-doctag { color: var(--hl-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attr { color: var(--hl-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-meta { color: var(--hl-number); }
+.hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.hljs-title, .hljs-title.function_, .hljs-section, .hljs-name { color: var(--hl-fn); }
+.hljs-type, .hljs-title.class_, .hljs-variable.language_, .hljs-property { color: var(--hl-type); }
+.hljs-deletion { color: var(--bad); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

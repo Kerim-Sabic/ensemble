@@ -1,0 +1,6 @@
+[
+  { "size": [1280, 820], "theme": "light", "wait": 1500 },
+  { "js": "[...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)).click()", "wait": 1200 },
+  { "js": "window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.')", "wait": 7000, "screen": "20-mica-light.png" },
+  { "theme": "dark", "wait": 1500, "screen": "21-mica-dark.png" }
+]

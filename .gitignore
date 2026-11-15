@@ -1,0 +1,15 @@
+node_modules/
+out/
+dist/
+.shots/
+*.log
+.DS_Store
+scripts/visual/*.png
+scripts/visual/real-*.json
+scripts/visual/packaged-check.json
+build/.icon*.html
+build/.preview/
+*.tmp
+*.tmp.mjs
+.env
+
