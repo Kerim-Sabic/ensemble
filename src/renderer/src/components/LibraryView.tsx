@@ -5,6 +5,7 @@ import { useStore } from '@/store'
 import { api, baseName, relative } from '@/lib/util'
 import { Spinner, Tip } from './ui'
 import { Orb } from './Orb'
+import { viewFrom } from './Viewer'
 
 function Tile({ image }: { image: LibraryImage }) {
   const account = useStore((s) => s.members[image.accountId])
@@ -13,7 +14,7 @@ function Tile({ image }: { image: LibraryImage }) {
   if (gone) return null
   return (
     <figure className="group/tile relative animate-rise overflow-hidden rounded-[14px] bg-surface shadow-card transition-shadow duration-200 hover:shadow-float">
-      <button onClick={() => void api.openPath(image.path)} className="block aspect-[4/3] w-full overflow-hidden bg-surface-3" aria-label={`Open ${baseName(image.path)}`}>
+      <button data-view-path={image.path} onClick={(e) => viewFrom(e.currentTarget, image.path)} className="block aspect-[4/3] w-full cursor-zoom-in overflow-hidden bg-surface-3" aria-label={`View ${baseName(image.path)}`}>
         <img src={api.fileUrl(image.path)} alt="" loading="lazy" onError={() => setGone(true)} className="size-full object-cover transition-transform duration-500 ease-out group-hover/tile:scale-[1.03]" />
       </button>
       <figcaption className="flex items-center gap-2 px-3 py-2.5">
@@ -29,7 +30,7 @@ function Tile({ image }: { image: LibraryImage }) {
         {[
           { label: 'Go to the chat', icon: MessageSquare, run: () => void openChat(image.chatId, image.accountId) },
           { label: 'Show in folder', icon: FolderOpen, run: () => void api.showInFolder(image.path) },
-          { label: 'Open', icon: ExternalLink, run: () => void api.openPath(image.path) },
+          { label: 'Open in another app', icon: ExternalLink, run: () => void api.openPath(image.path) },
         ].map((b) => (
           <Tip key={b.label} label={b.label}>
             <button onClick={b.run} aria-label={b.label} className="flex size-7 items-center justify-center rounded-[8px] bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/75">
@@ -86,7 +87,7 @@ export function LibraryView() {
           <h2 className="text-[15px] font-semibold">Pictures the team made</h2>
           <span className="tabular text-[12px] text-ink-3">{images.length}</span>
         </div>
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
+        <div data-view-scope className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
           {images.map((im) => (
             <Tile key={`${im.chatId}:${im.path}`} image={im} />
           ))}

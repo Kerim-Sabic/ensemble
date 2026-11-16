@@ -4,6 +4,7 @@ import { compactNumber } from '@/lib/derive'
 import type { Account, AgentState, Item, Task } from '@shared/types'
 import { describeTool, mediaPathsIn } from '@shared/tools'
 import { MediaStrip, MediaView } from '../Media'
+import { viewFrom } from '../Viewer'
 import { agentKey, useStore } from '@/store'
 import { accentVars, api, baseName, cn, duration, runLabel } from '@/lib/util'
 import { Button, Spinner, inputClass } from '../ui'
@@ -52,7 +53,7 @@ export const UserBubble = memo(function UserBubble({ item }: { item: Of<'user'> 
         <div className="mb-1.5 flex max-w-[82%] flex-wrap justify-end gap-1.5">
           {item.attachments.map((a) =>
             a.kind === 'image' ? (
-              <img key={a.path} src={api.fileUrl(a.path)} alt={a.name} onClick={() => void api.openPath(a.path)} className="h-20 cursor-pointer rounded-[10px] object-cover shadow-card" />
+              <img key={a.path} src={api.fileUrl(a.path)} alt={a.name} data-view-path={a.path} onClick={(e) => viewFrom(e.currentTarget, a.path)} className="h-20 cursor-zoom-in rounded-[10px] object-cover shadow-card" />
             ) : (
               <button key={a.path} onClick={() => void api.showInFolder(a.path)} className="flex h-7 items-center gap-1.5 rounded-[8px] bg-surface-2 px-2 text-[12px] text-ink-2 shadow-card hover:text-ink">
                 <FileText className="size-3.5" />
@@ -588,13 +589,14 @@ const PictureCard = memo(function PictureCard({ item }: { item: Of<'image'> }) {
       <img
         src={api.fileUrl(item.path)}
         alt={item.caption || baseName(item.path)}
+        data-view-path={item.path}
         onError={() => setFailed(true)}
-        onClick={() => void api.openPath(item.path)}
-        className="block max-h-[340px] max-w-full cursor-pointer object-contain"
+        onClick={(e) => viewFrom(e.currentTarget, item.path)}
+        className="block max-h-[340px] max-w-full cursor-zoom-in object-contain"
       />
-      <div className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pt-8 pb-2.5 text-[12px] text-white opacity-0 transition-opacity group-hover/img:opacity-100">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pt-8 pb-2.5 text-[12px] text-white opacity-0 transition-opacity group-hover/img:opacity-100">
         <span className="min-w-0 flex-1 truncate">{baseName(item.path)}</span>
-        <button onClick={() => void api.showInFolder(item.path)} className="flex items-center gap-1.5 rounded-[7px] bg-white/20 px-2 py-1 backdrop-blur-sm hover:bg-white/30">
+        <button onClick={() => void api.showInFolder(item.path)} className="pointer-events-auto flex items-center gap-1.5 rounded-[7px] bg-white/20 px-2 py-1 backdrop-blur-sm hover:bg-white/30">
           <FolderOpen className="size-3" /> Show in folder
         </button>
       </div>

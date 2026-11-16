@@ -73,6 +73,7 @@ const METHODS = [
   'pickFiles',
   'openPath',
   'showInFolder',
+  'copyImage',
   'openExternal',
   'installUpdate',
 ] as const

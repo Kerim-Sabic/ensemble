@@ -333,7 +333,10 @@ export class Hub implements SessionHost {
   updateSettings(patch: Partial<Settings>): Settings {
     const before = this.settings
     const leadChanged = patch.leadId !== undefined && patch.leadId !== before.leadId
+    // Who led each chat that follows the usual lead, before the change.
+    const ledBy = leadChanged ? new Map([...this.chats.values()].filter((c) => !c.leadId).map((c) => [c.id, this.lead(c)])) : null
     this.settings = { ...before, ...patch }
+    if (ledBy) this.handOver(ledBy)
     writeJson(this.file('settings.json'), this.settings)
     this.emit({ type: 'settings', settings: this.settings })
     if (this.settings.vaultPath !== before.vaultPath) {
@@ -344,6 +347,31 @@ export class Hub implements SessionHost {
     const retool = (['memoryEnabled', 'browser', 'computer', 'vaultPath', 'vaultNotes', 'lightTalk', 'smartModels', 'maxAgents', 'maxPerAgent', 'economy', 'recall'] as const).some((k) => this.settings[k] !== before[k])
     if (leadChanged || retool) for (const s of this.sessions.values()) s.recycle()
     return this.settings
+  }
+
+  /**
+   * A new usual lead takes over every chat that follows it, the same way a lead changed inside one
+   * chat does: work already handed out reports to the new lead, and it is told what happened so far.
+   */
+  private handOver(ledBy: Map<string, Account | null>): void {
+    for (const [chatId, prev] of ledBy) {
+      const chat = this.chats.get(chatId)
+      const next = chat ? this.lead(chat) : null
+      if (!chat || !prev || !next || prev.id === next.id) continue
+      const old = this.sessions.get(`${chatId}:${prev.id}`)
+      for (const t of this.tasksOf(chatId)) {
+        if (t.from === prev.id && (t.status === 'running' || t.status === 'queued')) {
+          t.from = next.id
+          this.commitTask(t)
+        }
+      }
+      const talked = (old?.items.length || 0) > 0 || fs.existsSync(path.join(this.dataDir, 'chats', chatId, `${prev.id}.json`))
+      if (talked) {
+        chat.handoff = { from: prev.id, reason: 'manual' }
+        this.emit({ type: 'chat', chat })
+      }
+    }
+    this.saveChats()
   }
 
   // ----- the knowledge vault -----

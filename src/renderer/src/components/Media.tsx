@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { FolderOpen, Pause, Play, Video } from 'lucide-react'
 import { mediaKind } from '@shared/tools'
 import { api, baseName, cn } from '@/lib/util'
+import { ExpandButton, viewFrom } from './Viewer'
 
 // Pictures, sound and video an agent made or points to, shown and played right where they
 // are mentioned: in a reply, in a question that asks you to choose between them, and in the
@@ -74,13 +75,14 @@ export const VideoPlayer = memo(function VideoPlayer({ path, compact }: { path: 
   const [failed, setFailed] = useState(false)
   if (failed) return null
   return (
-    <span onClick={(e) => e.stopPropagation()} className={cn('block overflow-hidden rounded-[12px] bg-black shadow-float', compact ? 'w-full max-w-[320px]' : 'w-[520px] max-w-full')}>
+    <span data-view-path={path} onClick={(e) => e.stopPropagation()} className={cn('group/vid relative block overflow-hidden rounded-[12px] bg-black shadow-float', compact ? 'w-full max-w-[320px]' : 'w-[520px] max-w-full')}>
       <video src={api.fileUrl(path)} controls preload="metadata" onPlay={(e) => claim(e.currentTarget)} onError={() => setFailed(true)} className="block max-h-[360px] w-full" />
+      <ExpandButton path={path} className="absolute top-2 right-2 opacity-0 group-hover/vid:opacity-100" />
     </span>
   )
 })
 
-/** A picture, opened full size on click. */
+/** A picture, opened in the viewer on click. */
 export function Picture({ path, compact }: { path: string; compact?: boolean }) {
   const [failed, setFailed] = useState(false)
   if (failed) return null
@@ -89,10 +91,11 @@ export function Picture({ path, compact }: { path: string; compact?: boolean }) 
       src={api.fileUrl(path)}
       alt={baseName(path)}
       loading="lazy"
+      data-view-path={path}
       onError={() => setFailed(true)}
       onClick={(e) => {
         e.stopPropagation()
-        void api.openPath(path)
+        viewFrom(e.currentTarget, path)
       }}
       className={cn('block cursor-zoom-in rounded-[10px] object-cover shadow-card', compact ? 'h-20 max-w-[160px]' : 'max-h-[340px] max-w-full')}
     />
@@ -145,7 +148,8 @@ export function MediaTile({ path, onOpen }: { path: string; onOpen?: () => void 
   if (k === 'audio') return <AudioPlayer path={path} compact />
   return (
     <button
-      onClick={() => (onOpen ? onOpen() : void api.openPath(path))}
+      data-view-path={path}
+      onClick={(e) => (onOpen ? onOpen() : viewFrom(e.currentTarget, path))}
       title={baseName(path)}
       className="group/tile relative aspect-square w-full overflow-hidden rounded-[10px] bg-surface-3 shadow-card"
     >

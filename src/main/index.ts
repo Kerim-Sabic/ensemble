@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, powerSaveBlocker, protocol, safeStorage, screen, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, powerSaveBlocker, protocol, safeStorage, screen, session, shell, Tray } from 'electron'
 import { spawnSync } from 'node:child_process'
 import { Readable } from 'node:stream'
 import fs from 'node:fs'
@@ -482,6 +482,11 @@ function registerIpc(): void {
     },
     showInFolder: (p: string) => {
       if (exists(p)) shell.showItemInFolder(p)
+    },
+    copyImage: async (p: string) => {
+      const img = exists(p) ? nativeImage.createFromPath(p) : null
+      if (!img || img.isEmpty()) throw new Error('That picture cannot be copied.')
+      await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(img.toPNG())], { type: 'image/png' }) })])
     },
     installUpdate: () => {
       quitting = true

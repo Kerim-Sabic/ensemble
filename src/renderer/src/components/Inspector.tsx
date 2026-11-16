@@ -394,7 +394,7 @@ function MadeSection({ chatId }: { chatId: string }) {
   return (
     <Section title="Made in this chat" right={<span className="tabular text-[11.5px] text-ink-3">{made.length}</span>}>
       {tiles.length > 0 && (
-        <div className="grid grid-cols-3 gap-1.5">
+        <div data-view-scope className="grid grid-cols-3 gap-1.5">
           {(all ? tiles : tiles.slice(0, 9)).map((m) => (
             <MediaTile key={m.path} path={m.path} />
           ))}

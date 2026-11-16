@@ -246,7 +246,7 @@ export function Transcript({ chatId, accountId, compact }: { chatId: string; acc
   return (
     <div className="relative min-h-0 flex-1">
       <div ref={ref} className="h-full overflow-y-auto [scrollbar-gutter:stable_both-edges]" style={accentVars(account?.accent)}>
-        <div ref={inner} className={cn('mx-auto w-full', compact ? 'px-4 pt-3 pb-4' : 'max-w-[780px] px-7 pt-6 pb-10')}>
+        <div ref={inner} data-view-scope className={cn('mx-auto w-full', compact ? 'px-4 pt-3 pb-4' : 'max-w-[780px] px-7 pt-6 pb-10')}>
           {start > 0 && (
             <button
               onClick={earlier}

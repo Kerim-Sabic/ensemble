@@ -109,6 +109,8 @@ interface State {
   draftLead: string | null
   view: View
   modal: Modal
+  /** The picture and video viewer, open on one of `paths`. */
+  viewer: { paths: string[]; index: number } | null
   toasts: Toast[]
   dark: boolean
 
@@ -125,6 +127,8 @@ interface State {
   setLive(patch: Partial<State['live']>): void
   setFocus(accountId: string): void
   setModal(m: Modal): void
+  openViewer(paths: string[], index: number): void
+  closeViewer(): void
   setDraftCwd(cwd: string | null): void
   setDraftLead(accountId: string | null): void
   send(text: string, attachments?: Attachment[], to?: string): Promise<boolean>
@@ -405,6 +409,7 @@ export const useStore = create<State>((set, get) => {
     connectorsTick: 0,
     view: 'chat',
     modal: null,
+    viewer: null,
     toasts: [],
     dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
 
@@ -517,6 +522,14 @@ export const useStore = create<State>((set, get) => {
 
     setModal(modal) {
       set({ modal })
+    },
+
+    openViewer(paths, index) {
+      if (paths.length) set({ viewer: { paths, index: Math.min(Math.max(0, index), paths.length - 1) } })
+    },
+
+    closeViewer() {
+      set({ viewer: null })
     },
 
     setDraftCwd(draftCwd) {

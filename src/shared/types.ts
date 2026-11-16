@@ -768,6 +768,8 @@ export interface EnsembleApi {
   saveImage(bytes: ArrayBuffer, mime: string): Promise<Attachment | null>
   openPath(path: string): Promise<void>
   showInFolder(path: string): Promise<void>
+  /** Puts a picture on the clipboard. */
+  copyImage(path: string): Promise<void>
   openExternal(url: string): Promise<void>
   fileUrl(path: string): string
   pathForFile(file: File): string

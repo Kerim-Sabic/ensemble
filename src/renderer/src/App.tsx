@@ -18,6 +18,7 @@ import { DiffDialog, TaskDialog } from './components/Inspector'
 import { AccountSheet, AddAccountDialog } from './components/Accounts'
 import { ConfirmDialog, Palette, SettingsDialog, ShortcutsDialog, Toasts } from './components/Dialogs'
 import { Onboarding } from './components/Onboarding'
+import { Viewer } from './components/Viewer'
 
 export function App() {
   const ready = useStore((s) => s.ready)
@@ -128,6 +129,7 @@ export function App() {
       <DiffDialog />
       <ConfirmDialog />
       <Palette />
+      <Viewer />
       <Toasts />
     </Tooltip.Provider>
   )

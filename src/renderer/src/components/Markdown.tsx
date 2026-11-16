@@ -5,6 +5,7 @@ import rehypeHighlight from 'rehype-highlight'
 import { Check, Copy } from 'lucide-react'
 import { IMAGE_EXT } from '@shared/tools'
 import { api, baseName, cn } from '@/lib/util'
+import { viewFrom } from './Viewer'
 
 const ABS_PATH = /^(?:[A-Za-z]:[\\/]|\/)[^\n]*$/
 
@@ -65,9 +66,10 @@ const components: Components = {
         <code
           {...rest}
           role="link"
-          onClick={() => void api.openPath(text)}
+          data-view-path={text}
+          onClick={(e) => viewFrom(e.currentTarget, text)}
           className="cursor-pointer underline decoration-line-2 underline-offset-2 hover:decoration-ink-3"
-          title="Open image"
+          title="View image"
         >
           {baseName(text)}
         </code>
