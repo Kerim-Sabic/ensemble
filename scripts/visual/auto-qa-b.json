@@ -1,0 +1,183 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "\nwindow.__sleep = ms => new Promise(r => setTimeout(r, ms));\nwindow.__S = () => window.__ensemble.getState();\nwindow.__ta = () => document.querySelector('.composer textarea');\nwindow.__t = v => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); };\nwindow.__enter = el => (el || window.__ta()).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));\nwindow.__open = label => { const b = document.querySelector('.composer button[aria-label^=\"' + label + '\"]'); if (!b) return false; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return true };\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__lead = () => { const s = window.__S(); const c = window.__chat(); return (c && c.leadId) || s.settings.leadId };\nwindow.__k = () => window.__S().chatId + ':' + window.__lead();\nwindow.__phase = () => (window.__S().agents[window.__k()] || {}).phase;\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__txt = (n) => document.body.innerText.replace(/\\s+/g, ' ').slice(0, n || 600);\nwindow.__bt = re => [...document.querySelectorAll('button')].find(b => re.test(((b.textContent || '').trim()) || b.getAttribute('aria-label') || ''));\nwindow.__bl = re => [...document.querySelectorAll('button')].find(b => re.test(b.getAttribute('aria-label') || ''));\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__new = async () => { window.__S().setView('chat'); window.__S().newChat(); await window.__sleep(700); };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 40000)) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy after ' + (max || 40000) + 'ms'; };\nwindow.__items = () => (window.__S().items[window.__k()] || []).map(i => i.kind + (i.event ? ':' + i.event : '') + (i.queued ? '(queued)' : '')).join(',');\nwindow.__toasts = () => window.__S().toasts.map(t => t.text).join(' | ');\n",
+  "wait": 2000
+ },
+ {
+  "js": "\nfor (let i = 0; i < 10; i++) {\n  if (window.__S().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break; b.click(); await window.__sleep(900);\n}\nreturn 'onboarded=' + window.__S().settings.onboarded + ' accounts=' + window.__S().accounts.map(a => a.name + (a.enabled ? '' : '(off)')).join(',');\n",
+  "wait": 1000
+ },
+ {
+  "js": "await window.__S().send('Add a pricing page', undefined, undefined, { goal: { doneWhen: 'the tests pass and the page was opened' } }); await window.__sleep(2300); window.__bottom(); const g = window.__chat().goal; return 'goal ' + JSON.stringify({ status: g && g.status, round: g && g.round, checking: g && g.checking })",
+  "wait": 200,
+  "shot": "qa-b01-goal-round1.png"
+ },
+ {
+  "js": "await window.__sleep(2400); window.__bottom(); const g = window.__chat().goal; return 'goal ' + JSON.stringify({ status: g.status, round: g.round, checking: g.checking })",
+  "wait": 200,
+  "shot": "qa-b02-goal-checking.png"
+ },
+ {
+  "js": "await window.__sleep(3000); window.__bottom(); const g = window.__chat().goal; return 'goal ' + JSON.stringify({ status: g.status, round: g.round, checking: g.checking, note: g.note })",
+  "wait": 200,
+  "shot": "qa-b03-goal-round2.png"
+ },
+ {
+  "theme": "dark",
+  "js": "await window.__sleep(2000); window.__bottom(); return 'round2 dark'",
+  "wait": 300,
+  "shot": "qa-b04-goal-round2-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "for (let i = 0; i < 30; i++) { await window.__sleep(500); if (window.__chat().goal.status === 'met') break; } await window.__waitIdle(15000); window.__bottom(); const g = window.__chat().goal; return 'goal ' + g.status + ' round ' + g.round + ' log ' + g.log.length + ' toasts=' + window.__toasts()",
+  "wait": 600,
+  "shot": "qa-b05-goal-met-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'met dark'",
+  "wait": 600,
+  "shot": "qa-b06-goal-met-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__bottom(); return 'met 900'",
+  "wait": 800,
+  "shot": "qa-b07-goal-met-900.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "window.__bottom(); return 'met 900 dark'",
+  "wait": 800,
+  "shot": "qa-b07b-goal-met-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "await window.__new(); await window.__S().send('Add a dark mode toggle', undefined, undefined, { goal: { doneWhen: 'the toggle works on every page', maxRounds: 1 } }); for (let i = 0; i < 40; i++) { await window.__sleep(500); const g = window.__chat().goal; if (g && g.status !== 'active') break; } await window.__waitIdle(10000); window.__bottom(); const g = window.__chat().goal; return 'goal ' + g.status + ' round ' + g.round",
+  "wait": 600,
+  "shot": "qa-b08-goal-stopped.png"
+ },
+ {
+  "js": "await window.__new(); await window.__S().send('Check whether the deploy is live', undefined, undefined, { loop: { every: 600000, until: 'the deploy is live' } }); await window.__sleep(900); window.__bottom(); const l = (window.__chat().loops || [])[0]; return 'loop ' + JSON.stringify(l && { status: l.status, runs: l.runs, running: l.running })",
+  "wait": 300,
+  "shot": "qa-b09-loop-run1.png"
+ },
+ {
+  "js": "await window.__waitIdle(15000); window.__bottom(); const l = window.__chat().loops[0]; return 'loop ' + JSON.stringify({ status: l.status, runs: l.runs, running: l.running, nextAt: l.nextAt && Math.round((l.nextAt - Date.now()) / 1000) })",
+  "wait": 600,
+  "shot": "qa-b10-loop-waiting.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'loop dark'",
+  "wait": 600,
+  "shot": "qa-b11-loop-waiting-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const c = window.__chat(); await window.ensemble.runLoop(c.id, c.loops[0].id); await window.__sleep(800); window.__bottom(); return 'run 2 ' + JSON.stringify({ runs: window.__chat().loops[0].runs, running: window.__chat().loops[0].running })",
+  "wait": 300,
+  "shot": "qa-b12-loop-run2.png"
+ },
+ {
+  "js": "await window.__waitIdle(15000); const c = window.__chat(); await window.ensemble.runLoop(c.id, c.loops[0].id); await window.__sleep(500); await window.__waitIdle(15000); await window.__sleep(800); window.__bottom(); const l = window.__chat().loops[0]; return 'after run 3 ' + JSON.stringify({ status: l.status, runs: l.runs, note: l.note }) + ' toasts=' + window.__toasts()",
+  "wait": 600,
+  "shot": "qa-b13-loop-ended.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "window.__bottom(); return 'loop ended dark 900'",
+  "wait": 800,
+  "shot": "qa-b14-loop-ended-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "await window.__new(); window.__open('Way of working'); await window.__sleep(500); return 'mode menu: ' + [...document.querySelectorAll('[role=menuitem]')].map(i => i.textContent.trim().slice(0, 40)).join(' || ')",
+  "wait": 300,
+  "shot": "qa-b15-mode-menu.png"
+ },
+ {
+  "js": "const p = [...document.querySelectorAll('[role=menuitem]')].find(i => /Quick/.test(i.textContent)); p && p.click(); await window.__sleep(300); window.__t('What port does the dev server use?'); window.__enter(); await window.__waitIdle(20000); window.__bottom(); return 'quick done; pill=' + document.querySelector('.composer button[aria-label^=\"Way of working\"]')?.getAttribute('aria-label')",
+  "wait": 600,
+  "shot": "qa-b16-quick.png"
+ },
+ {
+  "js": "await window.__new(); window.__open('Way of working'); await window.__sleep(400); const p = [...document.querySelectorAll('[role=menuitem]')].find(i => /Plan/.test(i.textContent)); p && p.click(); await window.__sleep(300); window.__t('Add a newsletter signup to the footer'); window.__enter(); await window.__waitIdle(25000); await window.__sleep(500); window.__bottom(); return 'plan: question=' + /Go ahead with this plan/.test(document.body.textContent)",
+  "wait": 600,
+  "shot": "qa-b17-plan-question.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'plan dark'",
+  "wait": 600,
+  "shot": "qa-b18-plan-question-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^Go ahead$/.test(b.textContent.trim())); b && b.click(); await window.__sleep(1500); window.__bottom(); return 'go ahead clicked=' + !!b + ' busy=' + window.__busy()",
+  "wait": 400,
+  "shot": "qa-b19-plan-go.png"
+ },
+ {
+  "js": "await window.__waitIdle(40000); await window.__new(); await window.__S().send('Should we use Stripe or Paddle for checkout?', undefined, undefined, { mode: 'council' }); await window.__waitIdle(40000); window.__bottom(); return 'council done'",
+  "wait": 600,
+  "shot": "qa-b20-council.png"
+ },
+ {
+  "js": "await window.__new(); await window.__S().send('Make the checkout flow work end to end', undefined, undefined, { mode: 'thorough' }); await window.__sleep(6000); window.__bottom(); return 'thorough mid busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-b21-thorough-mid.png"
+ },
+ {
+  "js": "await window.__waitIdle(50000); window.__bottom(); return 'thorough done'",
+  "wait": 600,
+  "shot": "qa-b22-thorough-done.png"
+ },
+ {
+  "js": "await window.__new(); await window.__S().send('What do rivals charge for a team plan?', undefined, undefined, { mode: 'research' }); await window.__sleep(5000); window.__bottom(); return 'research mid busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-b23-research-mid.png"
+ },
+ {
+  "theme": "dark",
+  "js": "await window.__waitIdle(50000); window.__bottom(); return 'research done'",
+  "wait": 600,
+  "shot": "qa-b24-research-done-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__bottom(); return 'research 900'",
+  "wait": 800,
+  "shot": "qa-b25-research-900-light.png"
+ }
+]

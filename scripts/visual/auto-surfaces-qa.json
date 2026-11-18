@@ -1,0 +1,97 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy'; };\nwindow.__counts = () => {\n  const strip = document.querySelector('[data-network-strip] > button')?.textContent.replace(/\\s+/g, ' ').trim();\n  const insp = [...document.querySelectorAll('aside section')].find(x => /In this chat/.test(x.textContent));\n  const right = insp ? insp.querySelector('.tabular')?.textContent : '';\n  const groups = insp ? [...insp.querySelectorAll('button[aria-expanded]')].map(b => b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 30)) : [];\n  return 'strip [' + strip + '] inspector [' + right + '] groups [' + groups.join(' | ') + ']';\n};\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "await window.__S().send('Add a pricing page with a checkout flow, and a hero image for it.'); await window.ensemble.setUltra(window.__S().chatId, true); const r = await window.__waitIdle(60000); return 'first run idle after ' + r;",
+  "wait": 500
+ },
+ {
+  "js": "await window.__S().send('design the landing page', undefined, undefined, { mode: 'gocrazy' }); await window.__sleep(6000); window.__bottom(); return 'gocrazy mid busy=' + window.__busy() + ' | ' + window.__counts();",
+  "wait": 300,
+  "shot": "auto-surfaces-q01-mid-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return window.__counts();",
+  "wait": 600,
+  "shot": "auto-surfaces-q02-mid-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('now'); await window.__sleep(700); return 'mc';",
+  "wait": 300,
+  "shot": "auto-surfaces-q03-mc-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "wait": 900,
+  "shot": "auto-surfaces-q04-mc-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__S().setView('chat'); const r = await window.__waitIdle(90000); await window.__sleep(800); window.__bottom(); return 'gocrazy idle after ' + r + ' | ' + window.__counts();",
+  "wait": 600,
+  "shot": "auto-surfaces-q05-done-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return window.__counts();",
+  "wait": 600,
+  "shot": "auto-surfaces-q06-done-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('now'); await window.__sleep(700); return 'mc done';",
+  "wait": 300,
+  "shot": "auto-surfaces-q07-mc-done-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 700,
+  "shot": "auto-surfaces-q08-mc-done-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('chat'); await window.__sleep(600); window.__S().newChat(); await window.__sleep(600); await window.__S().send('What does the pricing page do?', undefined, undefined, { mode: 'quick' }); await window.__sleep(2500); await window.__waitIdle(20000); window.__S().setModal({ kind: 'palette' }); await window.__sleep(300); const el = document.querySelector('[cmdk-input]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'pricing'); el.dispatchEvent(new Event('input', { bubbles: true })); await window.__sleep(900); return 'hits: ' + [...document.querySelectorAll('[cmdk-item]')].map(i => i.textContent.trim().slice(0, 70)).join(' || ');",
+  "wait": 300,
+  "shot": "auto-surfaces-q09-palette-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 700,
+  "shot": "auto-surfaces-q10-palette-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setModal(null); await window.__sleep(400); const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = 0; await window.__sleep(300); const u = document.querySelector('.group\\/u'); const d = u && u.querySelector(':scope > .pointer-events-none'); if (d) d.style.opacity = '1'; const c = u && u.querySelector('button[aria-label=\"Copy\"]'); c && c.click(); await window.__sleep(500); return 'copy label now: ' + (c && c.getAttribute('aria-label')) + ' | toasts: ' + window.__S().toasts.map(t => t.text).join(' | ');",
+  "wait": 200,
+  "shot": "auto-surfaces-q11-copy-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 500,
+  "shot": "auto-surfaces-q12-copy-dark.png"
+ }
+]

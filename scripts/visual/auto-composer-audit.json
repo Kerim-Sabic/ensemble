@@ -1,0 +1,57 @@
+[
+ {
+  "size": [
+   1200,
+   800
+  ],
+  "theme": "light",
+  "wait": 2000
+ },
+ {
+  "js": "for (let i=0;i<8;i++){ const b=[...document.querySelectorAll('button')].find(b=>/^(Continue|Start using Ensemble|Get started)$/i.test(b.textContent.trim())); if(!b) break; b.click(); await new Promise(r=>setTimeout(r,900)); } return 'ready'",
+  "wait": 500
+ },
+ {
+  "js": "window.__h = () => { window.__ta = () => document.querySelector('.composer textarea'); window.__t = (v) => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, v); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus(); }; window.__key = (el, key, extra) => el.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key, code: key, bubbles: true, cancelable: true }, extra || {}))); window.__chat = () => { const s = window.__ensemble.getState(); return s.chats.find(c => c.id === s.chatId) }; window.__busy = () => { const s = window.__ensemble.getState(); return Object.values(s.agents).filter(a => a.chatId === s.chatId && a.phase !== 'idle' && a.phase !== 'error').length }; window.__btns = () => [...document.querySelectorAll('.composer button')].slice(-3).map(b => b.getAttribute('aria-label') + (b.disabled ? '(off)' : '')).join(' | ') }; window.__h(); await window.__ensemble.getState().send('Hi, what can you do?'); return 'chat started'",
+  "wait": 16000
+ },
+ {
+  "js": "const st = window.__ensemble; const chatId = st.getState().chatId; const N = 25; const busy = (a) => a.phase !== 'idle' && a.phase !== 'error'; const liveSig = (s) => Object.values(s.agents).filter(busy).map(a => a.chatId + ':' + a.accountId + ':' + (a.phase === 'waiting' ? 1 : 0)).join('|'); const summary = (s) => { const on = Object.values(s.agents).filter(busy); return on.length + '|' + new Set(on.map(a => a.chatId)).size }; const chatAgents = (s) => Object.values(s.agents).filter(a => a.chatId === chatId); window.__measure = async (noBatch, ms) => { window.__ensembleNoBatch = noBatch; window.__renders = { composer: 0 }; let notes = 0, whole = 0, narrowLive = 0, narrowSum = 0, narrowChat = 0; let lastLive = liveSig(st.getState()), lastSum = summary(st.getState()), lastChat = chatAgents(st.getState()); const unsub = st.subscribe((s, prev) => { notes++; if (s.agents !== prev.agents) whole++; const l = liveSig(s); if (l !== lastLive) { narrowLive++; lastLive = l } const m = summary(s); if (m !== lastSum) { narrowSum++; lastSum = m } const c = chatAgents(s); if (c.length !== lastChat.length || c.some((x, i) => x !== lastChat[i])) { narrowChat++; lastChat = c } }); let tick = 0, events = 0; const t0 = performance.now(); const iv = setInterval(() => { tick++; for (let i = 0; i < N; i++) { if ((tick + i) % 3 === 0) { st.getState().receive({ type: 'agent', state: { chatId, accountId: 'fake-' + i, phase: 'tool', activity: 'Step ' + tick + ' of agent ' + i, queued: 0, turnStartedAt: 1000 + i } }); events++ } if ((tick + i) % 2 === 0) { st.getState().receive({ type: 'item-delta', chatId, accountId: 'fake-' + i, id: 'fake-item-' + i, text: 'word ' }); events++ } } }, 40); await new Promise(r => setTimeout(r, ms)); clearInterval(iv); await new Promise(r => setTimeout(r, 250)); const sec = (performance.now() - t0) / 1000; unsub(); for (let i = 0; i < N; i++) st.getState().receive({ type: 'agent', state: { chatId, accountId: 'fake-' + i, phase: 'idle', queued: 0 } }); await new Promise(r => setTimeout(r, 300)); const f = (n) => (n / sec).toFixed(1); return { events: f(events), notes: f(notes), whole: f(whole), chatList: f(narrowLive), nowButton: f(narrowSum), chatTabs: f(narrowChat), composer: f(window.__renders.composer) } }; const before = await window.__measure(true, 4000); const after = await window.__measure(false, 4000); window.__ensembleNoBatch = false; return 'PER SECOND, 25 fake agents. BEFORE (no batching): ' + JSON.stringify(before) + ' || AFTER (batched): ' + JSON.stringify(after) + ' || whole = re-renders of each part that selects the whole agents map (Sidebar ChatList, NowButton, TeamDock, ChatView tabs and strip: 5 of them); chatList/nowButton = parts that switch to useLiveByChat/useWorkSummary; chatTabs = parts that switch to useChatAgents (the fake agents are in this chat, so they change on every batch)'",
+  "wait": 500
+ },
+ {
+  "js": "await window.__ensemble.getState().send('Add a pricing page with a checkout flow'); await new Promise(r=>setTimeout(r,1500)); window.__t('Also make the hero image warmer'); await new Promise(r=>setTimeout(r,200)); return 'typing while busy: busy=' + window.__busy() + ' | buttons: ' + window.__btns() + ' | stop all in title bar: ' + [...document.querySelectorAll('header button')].some(b => /Stop all/.test(b.textContent))",
+  "wait": 300,
+  "shot": "a01-stop-while-typing.png"
+ },
+ {
+  "js": "window.__key(window.__ta(), 'Enter'); await new Promise(r=>setTimeout(r,500)); const s = window.__ensemble.getState(); const lead = s.settings.leadId; const items = s.items[s.chatId + ':' + lead] || []; const q = items.filter(i => i.kind === 'user' && i.queued).length; window.__key(window.__ta(), 'ArrowUp'); await new Promise(r=>setTimeout(r,400)); return 'queued messages: ' + q + ' | after Up in the empty box: [' + window.__ta().value + '] | chip: ' + /Taken back/.test(document.querySelector('.composer').textContent)",
+  "wait": 300,
+  "shot": "a02-up-arrow.png"
+ },
+ {
+  "js": "window.__t(''); document.activeElement.blur(); const before = window.__busy(); window.__key(document.body, 'Escape'); await new Promise(r=>setTimeout(r,1500)); return 'Esc from outside the box: busy before ' + before + ', after ' + window.__busy()",
+  "wait": 300,
+  "shot": "a03-after-esc.png"
+ },
+ {
+  "js": "window.__t('A draft that should outlive a restart'); await new Promise(r=>setTimeout(r,700)); const saved = localStorage.getItem('ensemble.drafts'); setTimeout(() => location.reload(), 50); return 'saved: ' + (saved || '').slice(0, 120)",
+  "wait": 4000
+ },
+ {
+  "js": "await new Promise(r=>setTimeout(r,500)); const ta = document.querySelector('.composer textarea'); return 'after reload: chat ' + window.__ensemble.getState().chatId + ' | box: [' + (ta && ta.value) + ']'",
+  "wait": 300,
+  "shot": "a04-draft-after-reload.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__h = () => { window.__ta = () => document.querySelector('.composer textarea'); window.__t = (v) => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, v); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus(); }; window.__key = (el, key, extra) => el.dispatchEvent(new KeyboardEvent('keydown', Object.assign({ key, code: key, bubbles: true, cancelable: true }, extra || {}))); window.__chat = () => { const s = window.__ensemble.getState(); return s.chats.find(c => c.id === s.chatId) }; window.__busy = () => { const s = window.__ensemble.getState(); return Object.values(s.agents).filter(a => a.chatId === s.chatId && a.phase !== 'idle' && a.phase !== 'error').length }; window.__btns = () => [...document.querySelectorAll('.composer button')].slice(-3).map(b => b.getAttribute('aria-label') + (b.disabled ? '(off)' : '')).join(' | ') }; window.__h(); window.__h(); await window.__ensemble.getState().send('Find out why checkout is slow and fix it'); await new Promise(r=>setTimeout(r,1500)); window.__t('And check the mobile layout too'); return 'dark: busy=' + window.__busy() + ' | ' + window.__btns()",
+  "wait": 300,
+  "shot": "a05-stop-while-typing-dark.png"
+ },
+ {
+  "js": "window.__t(''); return 'dark empty: ' + window.__btns()",
+  "wait": 400,
+  "shot": "a06-stop-empty-dark.png"
+ }
+]

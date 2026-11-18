@@ -295,6 +295,7 @@ export function AccountSheet() {
 
   const close = (): void => setModal(null)
   const out = status?.state === 'signed-out'
+  // Only Claude plans meter their strongest model on its own, so only there is the model chosen from the allowance.
   const auto = smart && account.provider === 'claude'
   const models = [
     { value: '', label: auto ? 'Best for the allowance' : 'Account default', hint: auto ? 'The strongest model the allowance can afford, chosen each time it starts' : 'Whatever this account is set to use' },
@@ -402,7 +403,7 @@ export function AccountSheet() {
               <input
                 key={`${account.id}:${account.role || ''}`}
                 defaultValue={account.role || ''}
-                placeholder={account.provider === 'chatgpt' ? 'For example: images and a second opinion' : 'For example: frontend and visual polish'}
+                placeholder={account.provider === 'chatgpt' ? 'For example: research, or images and design' : 'For example: frontend and visual polish'}
                 aria-label="What this teammate is best at"
                 maxLength={160}
                 onBlur={(e) => (e.target.value.trim() || '') !== (account.role || '') && void run(api.updateAccount(account.id, { role: e.target.value.trim() || null }))}
@@ -410,7 +411,7 @@ export function AccountSheet() {
                 className={inputClass}
               />
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {(account.provider === 'chatgpt' ? ['Images and a second opinion', 'Research'] : ['Frontend and design', 'Backend and data', 'Tests and review', 'Research and writing']).map((r) => (
+                {(account.provider === 'chatgpt' ? ['Coding', 'Research', 'Review and testing', 'Images and design'] : ['Frontend and design', 'Backend and data', 'Tests and review', 'Research and writing']).map((r) => (
                   <button
                     key={r}
                     onClick={() => void run(api.updateAccount(account.id, { role: r }))}

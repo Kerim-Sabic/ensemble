@@ -1,0 +1,62 @@
+[
+ {
+  "size": [
+   1920,
+   1080
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy'; };\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); const ag = c.agents || []; const depth = Math.max(0, ...ag.map(a => a.spawned?.depth || 0)); const t = s.tasks[c.id] || []; return 'agents ' + ag.length + ' (gone ' + ag.filter(a => a.spawned?.gone).length + ') depth ' + depth + ' tasks ' + t.length + ' done ' + t.filter(x => x.status === 'done').length + ' busy ' + window.__busy() + ' view ' + s.view + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nwindow.__hover = (name) => { const g = [...document.querySelectorAll('.nn-node')].find(x => (x.getAttribute('aria-label') || '').startsWith(name)) || [...document.querySelectorAll('.nn-node')][3]; if (g) g.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body })); return g ? g.getAttribute('aria-label') : 'none'; };\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "localStorage.setItem('ensemble.flow.feed', '0'); await window.__S().send('What does the project do?', undefined, undefined, { mode: 'quick' }); await window.__sleep(1500); await window.__waitIdle(20000); await window.ensemble.setUltra(window.__S().chatId, true); await window.__sleep(400); window.__S().setView('flow'); await window.__sleep(500); await window.__S().send('/gocrazy design the landing page'); const calm = async (min, max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(120); const ag = (window.__S().chats.find(c => c.id === window.__S().chatId).agents || []).length; if (ag >= min && !document.querySelector('.nn-born') && !document.querySelector('.nn-grow')) return Date.now() - t0; } return 'timeout'; }; const w = await calm(7, 6000); return 'forming calm ' + w + ' | ' + window.__info();",
+  "wait": 30,
+  "shot": "doc-network-forming.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 200,
+  "shot": "doc-network-forming-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "await window.__sleep(3500); const calm = async (min, max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(120); const ag = (window.__S().chats.find(c => c.id === window.__S().chatId).agents || []).length; if (ag >= min && !document.querySelector('.nn-born') && !document.querySelector('.nn-grow')) return Date.now() - t0; } return 'timeout'; }; const w = await calm(18, 9000); return 'active calm ' + w + ' | ' + window.__info();",
+  "wait": 30,
+  "shot": "doc-network-active.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 200,
+  "shot": "doc-network-active-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const r = await window.__waitIdle(60000); await window.__sleep(2000); return 'done ' + r + ' | ' + window.__info();",
+  "wait": 50,
+  "shot": "doc-network-done.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 300,
+  "shot": "doc-network-done-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('chat'); await window.__sleep(900); window.__bottom(); await window.__sleep(300); return 'answer';",
+  "wait": 300,
+  "shot": "doc-ultra-answer.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'answer dark';",
+  "wait": 400,
+  "shot": "doc-ultra-answer-dark.png"
+ }
+]

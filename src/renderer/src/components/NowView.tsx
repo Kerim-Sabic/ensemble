@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowUpRight, Check, CircleDashed, CornerDownRight, FolderOpen, ListChecks, Pause, Play, Repeat, ShieldQuestion, Sparkles, Square, SquarePen, Target } from 'lucide-react'
+import { Activity, ArrowUpRight, Check, CircleDashed, CornerDownRight, FolderOpen, ListChecks, Maximize2, Pause, Play, Repeat, ShieldQuestion, Sparkles, Square, SquarePen, Target } from 'lucide-react'
 import { countdown, goalLine, goalOpen, liveLoops, loopLine } from '@shared/auto'
 import type { Account, AgentState, Chat, Item, Task } from '@shared/types'
 import { adviseModel, budgetOf, hoursLabel, modelForTier, type WindowBudget } from '@shared/budget'
@@ -7,11 +7,14 @@ import { agentKey, isBusy, leadOf, teamOf, useAccounts, useStore, type Step } fr
 import { accentVars, api, cn, duration, folderLabel, prettyModel, relative } from '@/lib/util'
 import { compactNumber, planFrom } from '@/lib/derive'
 import { Button, IconButton, Tip } from './ui'
-import { Orb, PaceChip } from './Orb'
+import { Orb, OrbStack, PaceChip } from './Orb'
 import { useElapsed } from './chat/Cards'
 import { useNow } from './auto/shared'
-import { AgentNetwork } from './ultra/AgentNetwork'
+import { plain } from './auto/plain'
+import { NeuralNetwork, cardHeight, useNeural } from './ultra/neural/Neural'
+import { Bench, NeuralNumbers, openNetwork } from './ultra/neural/NetworkView'
 import { UltraGlyph, UltraWord } from './ultra/Ultra'
+import { groupAgents, type AgentGroup } from './ultra/groups'
 
 const EMPTY: Item[] = []
 const NO_TASKS: Task[] = []
@@ -50,7 +53,7 @@ function AllowanceCard({ account, lead }: { account: Account; lead: boolean }) {
     <button
       onClick={() => setModal({ kind: 'account', id: account.id })}
       style={accentVars(account.accent)}
-      className="flex w-[232px] shrink-0 flex-col rounded-[14px] bg-surface px-3.5 py-3 text-left shadow-card transition-shadow hover:shadow-float"
+      className="flex min-w-0 flex-col rounded-[14px] bg-surface px-3.5 py-3 text-left shadow-card transition-shadow hover:shadow-float"
     >
       <div className="flex items-center gap-2">
         <Orb account={account} size={20} live={working > 0} off={out} />
@@ -123,7 +126,7 @@ const AgentCard = memo(function AgentCard({ chatId, account, lead, by, onOpen }:
             )}
           </span>
         </span>
-        {busy && !waiting && <span className="tabular shrink-0 text-[10.5px] text-ink-4">{duration(elapsed)}</span>}
+        {busy && !waiting && elapsed >= 1000 && <span className="tabular shrink-0 text-[10.5px] text-ink-4">{duration(elapsed)}</span>}
         <ArrowUpRight className="size-3 shrink-0 text-ink-4 opacity-0 transition-opacity group-hover/a:opacity-100" />
       </div>
       {(task || account.spawned) && (
@@ -170,6 +173,56 @@ const AgentCard = memo(function AgentCard({ chatId, account, lead, by, onOpen }:
   )
 })
 
+const MAX_CARDS = 8
+
+/** Several agents of one kind at work, as one card: their faces, how many, and what each is doing. */
+function GroupCard({ chatId, group, onOpen }: { chatId: string; group: AgentGroup; onOpen(accountId: string): void }) {
+  const lines = useStore((s) => group.members.map((a) => s.agents[agentKey(chatId, a.id)]?.activity || 'Working').join('\n'))
+  const acts = lines.split('\n')
+  const shown = group.members.slice(0, 4)
+  return (
+    <div className="flex min-w-0 flex-col rounded-[13px] bg-surface-2 px-3 py-2.5 shadow-[inset_0_0_0_1px_var(--line)]">
+      <div className="flex w-full items-center gap-2">
+        <OrbStack accounts={group.members.map((a) => ({ ...a, live: false }))} size={18} max={4} />
+        <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold">{group.label}</span>
+        <span className="tabular shrink-0 text-[11px] text-ink-3">{group.members.length} working</span>
+      </div>
+      <ul className="mt-1.5 space-y-px">
+        {shown.map((a, i) => (
+          <li key={a.id}>
+            <button onClick={() => onOpen(a.id)} className="flex w-full items-center gap-1.5 rounded-[6px] text-left text-[11.5px] leading-[18px] hover:bg-hover">
+              <Orb account={a} size={11} />
+              <span className="w-[60px] shrink-0 truncate font-medium text-ink-2">{a.name}</span>
+              <span className="shimmer-text min-w-0 flex-1 truncate">{acts[i]}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {group.members.length > shown.length && <div className="mt-1 text-[11px] text-ink-4">and {group.members.length - shown.length} more</div>}
+    </div>
+  )
+}
+
+/** The team of one chat as a small network, with its numbers and a way into the full view. */
+function NetworkCard({ chatId, ultra, onOpen }: { chatId: string; ultra: boolean; onOpen(id: string): void }) {
+  const { net } = useNeural(chatId)
+  return (
+    <div className={cn('group/net relative mt-3 overflow-hidden rounded-[13px] bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]', ultra && 'ux-ultra-frame')}>
+      <div className="flex items-center gap-2 px-3 pt-2.5">
+        <NeuralNumbers chatId={chatId} className="flex-1 text-[11.5px]" />
+        <button
+          onClick={() => openNetwork(chatId)}
+          className="flex h-6 shrink-0 items-center gap-1 rounded-[7px] px-2 text-[11.5px] font-medium text-ink-3 transition-colors hover:bg-hover hover:text-ink"
+        >
+          <Maximize2 className="size-3" /> Open network
+        </button>
+      </div>
+      <NeuralNetwork chatId={chatId} variant="card" height={cardHeight(net)} bg={ultra ? 'var(--surface)' : 'var(--surface-2)'} onOpen={onOpen} />
+      <Bench chatId={chatId} onOpen={onOpen} className="px-3 pb-2" />
+    </div>
+  )
+}
+
 /** A chat the team is working in: its plan, and everyone who is busy there. */
 function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[]; leadId: string | undefined }) {
   const openChat = useStore((s) => s.openChat)
@@ -209,6 +262,21 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
   const open = tasks.filter((t) => t.status === 'running' || t.status === 'queued')
   const finished = tasks.filter((t) => t.status === 'done').length
   const byId = useMemo(() => new Map(team.map((a) => [a.id, a])), [team])
+  // Three or more of a kind at work share one card; past eight cards the rest wait behind a button.
+  const [all, setAll] = useState(false)
+  const cards = useMemo(() => {
+    const { groups } = groupAgents(working, new Set(lead ? [lead] : []))
+    const big = groups.filter((g) => g.members.length >= 3)
+    const firstOf = new Map(big.map((g) => [g.members[0].id, g]))
+    const inBig = new Set(big.flatMap((g) => g.members.map((a) => a.id)))
+    const out: { a: Account; group?: AgentGroup }[] = []
+    for (const a of working) {
+      const g = firstOf.get(a.id)
+      if (g) out.push({ a, group: g })
+      else if (!inBig.has(a.id)) out.push({ a })
+    }
+    return out
+  }, [working, lead])
 
   const go = (accountId?: string, view: 'chat' | 'flow' = 'chat'): void => {
     void openChat(chat.id, accountId).then(() => setView(view))
@@ -235,7 +303,7 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
               {folder ? `${folder} · ` : ''}
               {folderLabel(chat.cwd, home)}
             </span>
-            {working.length > 0 && <span className="tabular shrink-0 text-ink-4">· {duration(elapsed)}</span>}
+            {working.length > 0 && started > 0 && elapsed >= 1000 && <span className="tabular shrink-0 text-ink-4">· {duration(elapsed)}</span>}
           </div>
         </div>
         <Tip label="See the team map for this chat" side="top">
@@ -254,9 +322,7 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
 
       {(chat.ultra || tasks.length > 0 || (chat.agents?.length ?? 0) > 0) && (
         // The team as a network: who works with whom, and the work under way between them.
-        <div className={cn('map-grid mt-3 rounded-[13px] bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]', chat.ultra && 'ux-ultra-frame')} style={{ backgroundSize: '16px 16px' }}>
-          <AgentNetwork chatId={chat.id} variant="panel" onOpen={(id) => go(id)} />
-        </div>
+        <NetworkCard chatId={chat.id} ultra={!!chat.ultra} onOpen={(id) => go(id)} />
       )}
 
       {plan.length > 0 && (
@@ -291,12 +357,24 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
       )}
 
       <div className={cn('mt-3 grid gap-2', working.length > 1 ? 'grid-cols-[repeat(auto-fill,minmax(210px,1fr))]' : 'grid-cols-1')}>
-        {working.map((a) => (
-          <AgentCard key={a.id} chatId={chat.id} account={a} lead={a.id === lead} by={a.spawned ? byId.get(a.spawned.by) : undefined} onOpen={(id) => go(id)} />
-        ))}
+        {cards.slice(0, all ? cards.length : MAX_CARDS).map((c) =>
+          c.group ? (
+            <GroupCard key={c.group.key} chatId={chat.id} group={c.group} onOpen={(id) => go(id)} />
+          ) : (
+            <AgentCard key={c.a.id} chatId={chat.id} account={c.a} lead={c.a.id === lead} by={c.a.spawned ? byId.get(c.a.spawned.by) : undefined} onOpen={(id) => go(id)} />
+          ),
+        )}
+        {cards.length > MAX_CARDS && (
+          <button
+            onClick={() => setAll((x) => !x)}
+            className="flex min-h-[44px] items-center justify-center rounded-[13px] text-[12px] font-medium text-ink-3 shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-hover hover:text-ink"
+          >
+            {all ? 'Show fewer' : `${cards.length - MAX_CARDS} more at work`}
+          </button>
+        )}
         {!working.length && (
           <button onClick={() => go()} className="flex items-center gap-2 rounded-[11px] px-2.5 py-2 text-left text-[12px] text-ink-3 shadow-[inset_0_0_0_1px_var(--line)] hover:bg-hover hover:text-ink">
-            <span className="min-w-0 flex-1 truncate">{chat.snippet || 'Nobody is working here right now.'}</span>
+            <span className="min-w-0 flex-1 truncate">{chat.snippet ? plain(chat.snippet) : 'Nobody is working here right now.'}</span>
             <span className="tabular shrink-0 text-[11px] text-ink-4">{relative(chat.updatedAt)}</span>
           </button>
         )}
@@ -458,7 +536,7 @@ export function NowView() {
           </Button>
         </div>
 
-        <div className="mt-5 flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+        <div className="mt-5 grid grid-cols-[repeat(auto-fill,minmax(216px,1fr))] gap-2.5">
           {team.map((a) => (
             <AllowanceCard key={a.id} account={a} lead={a.id === leadId} />
           ))}

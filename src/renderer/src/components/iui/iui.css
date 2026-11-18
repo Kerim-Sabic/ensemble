@@ -1,0 +1,171 @@
+/* Live answers (iui): the few styles the blocks need beyond Tailwind. The categorical colours are
+   the validated eight-hue order (adjacent pairs clear colour-blind separation in both modes);
+   dark mode has its own steps, not a flip. Text never wears these: marks only. */
+
+.iui {
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --s3: #1baf7a;
+  --s4: #eda100;
+  --s5: #e87ba4;
+  --s6: #008300;
+  --s7: #6250d6;
+  --s8: #e34948;
+  --grid: color-mix(in oklab, var(--ink) 7%, transparent);
+  --axis: color-mix(in oklab, var(--ink) 18%, transparent);
+  --iui-pick: var(--a2, var(--link));
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: normal;
+}
+.dark .iui {
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+  --s5: #d55181;
+  --s6: #0ca30c;
+  --s7: #9085e9;
+  --s8: #e66767;
+  --grid: color-mix(in oklab, var(--ink) 8%, transparent);
+  --axis: color-mix(in oklab, var(--ink) 20%, transparent);
+}
+
+/* Inside a reply the Markdown styles would reach into the blocks: these win. */
+.md .iui table {
+  display: table;
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+  overflow: visible;
+  width: 100%;
+}
+.md .iui th,
+.md .iui td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 12px;
+  vertical-align: top;
+}
+.md .iui th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  color: var(--ink-3);
+  font-size: 11.5px;
+  font-weight: 560;
+  white-space: nowrap;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.md .iui tbody tr:last-child td {
+  border-bottom: 0;
+}
+.md .iui tbody tr:hover td {
+  background: var(--hover);
+}
+.md .iui p,
+.md .iui ul,
+.md .iui ol {
+  margin: 0;
+}
+.md .iui ul,
+.md .iui ol {
+  list-style: none;
+  padding: 0;
+}
+.md .iui li {
+  margin: 0;
+  padding-left: 0;
+}
+/* Markdown inside a block (a tab) is Markdown again. */
+.md .iui .md p {
+  margin: 0.55em 0;
+}
+.md .iui .md ul {
+  list-style: disc;
+  padding-left: 1.4em;
+  margin: 0.5em 0;
+}
+.md .iui .md ol {
+  list-style: decimal;
+  padding-left: 1.4em;
+  margin: 0.5em 0;
+}
+.md .iui .md li {
+  margin: 0.28em 0;
+  padding-left: 0.15em;
+}
+
+/* A chart's marks ease when the data or the hover changes; nothing loops. */
+.iui-mark {
+  transition: opacity 0.15s var(--ease-out);
+}
+.iui-mark[data-on='false'] {
+  opacity: 0.3;
+}
+.iui svg text {
+  font-family: var(--font-sans);
+  font-feature-settings: 'tnum';
+}
+.iui-chart:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--link) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* A range input that looks like the rest of the app. */
+.iui-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.iui-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--iui-pick) 0 var(--fill, 50%), var(--line-2) var(--fill, 50%) 100%);
+}
+.iui-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  margin-top: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: 0 0 0 1px var(--line-2), 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: transform 0.12s var(--ease-out);
+}
+.iui-range:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+.iui-range:focus-visible {
+  outline: none;
+}
+.iui-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 1px var(--line-2), 0 0 0 4px color-mix(in oklab, var(--link) 28%, transparent);
+}
+
+/* The calm stand-in while a block is still arriving. */
+.iui-wait {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2.2s steps(30) infinite;
+}
+html[data-away='true'] .iui-wait {
+  animation: none;
+}
+
+/* A task list ([ ] and [x]) in ordinary Markdown: tickable boxes, no bullets, done items quieter. */
+.md ul.contains-task-list {
+  list-style: none;
+  padding-left: 0.15em;
+}
+.md li.task-list-item:has(> button[aria-checked='true']) {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-4);
+}

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowUp, ChevronDown, CornerDownLeft, FileText, Flame, Paperclip, Repeat, Rocket, Square, Target, TriangleAlert, WandSparkles, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, CornerDownLeft, FileText, Flame, Paperclip, Repeat, Square, Target, TriangleAlert, WandSparkles, X } from 'lucide-react'
 import type { Attachment, UsageWindow, WorkMode } from '@shared/types'
 import { goalOpen, parseEvery } from '@shared/auto'
 import { IMAGE_EXT } from '@shared/tools'
-import { agentKey, focusOf, isBusy, leadOf, uiBus, useStore, useTeam, type SendOptions } from '@/store'
+import { agentKey, focusOf, isBusy, leadOf, uiBus, useStore, useTeam, workingIn, type SendOptions } from '@/store'
 import { accentVars, api, baseName, cn, errorText, until } from '@/lib/util'
 import { IconButton, Kbd, Menu, MenuItem, MenuLabel, Spinner, Tip } from '../ui'
 import { Orb } from '../Orb'
@@ -14,14 +14,57 @@ import { ComposerPopup, popupFor } from './composer/Popup'
 import { NudgeChip, PreviewChip, UndoChip } from './composer/Chips'
 import { NO_EXTRAS, commandOf, goalOf, gocrazyAllowed, loopOf, nudgeOf, previewOf, type Extras } from './composer/extras'
 import './composer/ultra'
+import { UltraGlyph } from '../ultra/Ultra'
 
 /** Lets other parts of the screen put text into the message box. */
 export const composerBus = new EventTarget()
 export const seedComposer = (text: string): void => void composerBus.dispatchEvent(new CustomEvent('seed', { detail: text }))
 
-// What you were typing in each chat survives switching away and back, with what goes with it.
+// What you were typing in each chat survives switching away and back, and a restart, with what goes with it.
 type Draft = { text: string; attachments: Attachment[]; extras: Extras; undo: string | null }
-const drafts = new Map<string, Draft>()
+const DRAFTS_KEY = 'ensemble.drafts'
+/** Enough for every chat anyone is in the middle of; the oldest go first. */
+const DRAFTS_KEPT = 60
+
+function readDrafts(): Map<string, Draft> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}') as Record<string, Partial<Draft>>
+    return new Map(
+      Object.entries(raw).map(([slot, d]) => [slot, { text: d.text || '', attachments: d.attachments || [], extras: { ...NO_EXTRAS, ...d.extras }, undo: null }]),
+    )
+  } catch {
+    return new Map()
+  }
+}
+const drafts = readDrafts()
+
+/** Something worth keeping: words, files, or a goal, loop or way of working that was set up. */
+const worthKeeping = (d: Draft): boolean => !!d.text.trim() || d.attachments.length > 0 || d.extras.kind !== null || d.extras.mode !== 'chat' || d.extras.ultra
+let saving: ReturnType<typeof setTimeout> | null = null
+function saveDrafts(now = false): void {
+  if (saving) clearTimeout(saving)
+  saving = null
+  const write = (): void => {
+    saving = null
+    // A Map keeps the order things were last set in, so the newest are at the end.
+    const kept = [...drafts].filter(([, d]) => worthKeeping(d)).slice(-DRAFTS_KEPT)
+    try {
+      localStorage.setItem(DRAFTS_KEY, JSON.stringify(Object.fromEntries(kept.map(([slot, d]) => [slot, { text: d.text, attachments: d.attachments, extras: d.extras }]))))
+    } catch {
+      // Storage full or unavailable: drafts still last until the window closes.
+    }
+  }
+  if (now) write()
+  else saving = setTimeout(write, 400)
+}
+window.addEventListener('beforeunload', () => saveDrafts(true))
+
+/** A draft goes to the end of the order when it changes, so the ones touched last are kept. */
+function setDraft(slot: string, d: Draft): void {
+  drafts.delete(slot)
+  drafts.set(slot, d)
+  saveDrafts()
+}
 
 /** A message needs about this much to it before it is worth improving. */
 const ENHANCE_MIN = 12
@@ -30,6 +73,9 @@ const limitedWindow = (u: { session?: UsageWindow; weekly?: UsageWindow } | unde
   [u?.session, u?.weekly].find((w) => w && (w.status === 'rejected' || w.utilization >= 1) && w.resetsAt && w.resetsAt > Date.now())
 
 export function Composer() {
+  // For measuring how often the message box draws (a step script sets window.__renders).
+  const probe = (window as { __renders?: Record<string, number> }).__renders
+  if (probe) probe.composer = (probe.composer || 0) + 1
   const chatId = useStore((s) => s.chatId)
   const accounts = useStore((s) => s.accounts)
   // Everyone who can be written to here: the accounts, and the agents that were started in this chat.
@@ -39,6 +85,12 @@ export function Composer() {
   const focusId = useStore(focusOf)
   const leadId = useStore((s) => leadOf(s)?.id)
   const state = useStore((s) => (s.chatId && focusId ? s.agents[agentKey(s.chatId, focusId)] : undefined))
+  // Anyone at work in this chat, not only whoever the box is writing to: Stop stays in reach.
+  const working = useStore((s) => workingIn(s, s.chatId))
+  const leadBusy = useStore((s) => {
+    const lead = leadOf(s)?.id
+    return !!s.chatId && !!lead && isBusy(s.agents[agentKey(s.chatId, lead)])
+  })
   const hasGoal = useStore((s) => goalOpen(s.chats.find((c) => c.id === s.chatId)?.goal))
   const chatUltra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
   const storeUltra = useStore((s) => s.setUltra)
@@ -61,6 +113,10 @@ export function Composer() {
   const [improving, setImproving] = useState<string | null>(null)
   const enhancing = improving === slot
   const [dragging, setDragging] = useState(false)
+  // The message in the box was taken back from the queue to be changed.
+  const [recalled, setRecalled] = useState(false)
+  // Esc put away the list of commands or teammates for what is typed now.
+  const [popupOff, setPopupOff] = useState<string | null>(null)
   const [at, setAt] = useState(0)
   const ref = useRef<HTMLTextAreaElement>(null)
   const slotRef = useRef(slot)
@@ -87,7 +143,9 @@ export function Composer() {
   // When whoever you are writing to has run dry, the best person to take over.
   const standIn = useMemo(() => {
     if (!limited || !target) return undefined
-    return accounts.find((a) => a.enabled && a.id !== target.id && a.provider === 'claude' && statuses[a.id]?.state === 'ready' && !limitedWindow(usage[a.id]))
+    // Anyone signed in with allowance left can take over; a Claude account first when there is one.
+    const able = accounts.filter((a) => a.enabled && a.id !== target.id && statuses[a.id]?.state === 'ready' && !limitedWindow(usage[a.id]))
+    return able.find((a) => a.provider === 'claude') || able[0]
   }, [limited, target, accounts, statuses, usage])
 
   // Swap drafts when the chat changes.
@@ -100,10 +158,14 @@ export function Composer() {
     setAttachments(d?.attachments || [])
     setExtras(d?.extras || NO_EXTRAS)
     setUndo(d?.undo ?? null)
+    setRecalled(false)
+    setPopupOff(null)
     ref.current?.focus()
   }, [slot])
   useEffect(() => {
-    drafts.set(slot, { text, attachments, extras, undo })
+    const was = drafts.get(slot)
+    if (was && was.text === text && was.attachments === attachments && was.extras === extras && was.undo === undo) return
+    setDraft(slot, { text, attachments, extras, undo })
   }, [slot, text, attachments, extras, undo])
 
   const focusEnd = useCallback((): void => {
@@ -177,6 +239,8 @@ export function Composer() {
     setExtras(NO_EXTRAS)
     setUndo(null)
     drafts.delete(slot)
+    saveDrafts()
+    setRecalled(false)
     if (!chatId && extras.ultra) opts.ultra = true
     const ok = await send(body, sent.attachments, to, opts.mode || opts.goal || opts.loop || opts.ultra ? opts : undefined)
     if (!ok) {
@@ -187,9 +251,34 @@ export function Composer() {
     }
   }, [text, attachments, extras, undo, team, send, slot, chatId, leadId, ultra, settings.goalRounds, settings.goalCheck])
 
+  // Whoever you are writing to, if they are at work; otherwise the lead; otherwise everyone in the chat.
   const stop = useCallback(() => {
-    if (chatId && focusId) void api.stop(chatId, focusId)
-  }, [chatId, focusId])
+    if (!chatId) return
+    if (focusId && busy) void api.stop(chatId, focusId)
+    else if (leadId && leadBusy) void api.stop(chatId, leadId)
+    else if (working) void api.stop(chatId)
+  }, [chatId, focusId, busy, leadId, leadBusy, working])
+  const stopLabel = busy && target ? `Stop ${target.name}` : leadBusy && lead ? `Stop ${lead.name}` : working > 1 ? 'Stop everyone at work here' : 'Stop'
+
+  /** Up in an empty box: your last message back, to change it if it has not started, or to send again. */
+  const recallLast = useCallback(async (): Promise<boolean> => {
+    if (!chatId || !focusId) return false
+    const list = useStore.getState().items[agentKey(chatId, focusId)] || []
+    let last: Extract<(typeof list)[number], { kind: 'user' }> | undefined
+    for (let i = list.length - 1; i >= 0 && !last; i--) {
+      const it = list[i]
+      if (it.kind === 'user') last = it
+    }
+    if (!last) return false
+    const taken = last.queued ? await useStore.getState().dequeue(chatId, focusId, last.id, true) : null
+    const from = taken || last
+    setText(from.text)
+    if (from.attachments?.length) setAttachments(from.attachments)
+    setUndo(null)
+    setRecalled(!!taken)
+    focusEnd()
+    return true
+  }, [chatId, focusId, focusEnd])
 
   const enhance = useCallback(async () => {
     const original = text
@@ -209,7 +298,7 @@ export function Composer() {
       } else {
         // The chat was switched while it worked: the result waits in that chat's draft.
         const d = drafts.get(from)
-        if (d && d.text === original) drafts.set(from, { ...d, text: better, undo: original })
+        if (d && d.text === original) setDraft(from, { ...d, text: better, undo: original })
       }
     } catch (e) {
       const why = errorText(e)
@@ -241,11 +330,25 @@ export function Composer() {
   }, [ultra, extras.mode, patch])
 
   // Alt+G, Alt+L, Alt+U and Ctrl+Shift+E work wherever the focus is, as long as nothing is open on top.
-  const keys = useRef({ toggle, enhance, ultra: () => flipUltra(!ultra) })
-  keys.current = { toggle, enhance, ultra: () => flipUltra(!ultra) }
+  const keys = useRef({ toggle, enhance, ultra: () => flipUltra(!ultra), stop, working })
+  keys.current = { toggle, enhance, ultra: () => flipUltra(!ultra), stop, working }
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (useStore.getState().modal || e.defaultPrevented) return
+      const s = useStore.getState()
+      if (s.modal || s.viewer || e.defaultPrevented) return
+      // Esc stops the work from anywhere in the chat, as the Stop button does. Not while a menu or
+      // dialog is open (Esc is theirs), not mid-way through composing a character, and not from
+      // another text field, which uses Esc for itself.
+      if (e.key === 'Escape') {
+        if (e.isComposing || e.keyCode === 229 || !keys.current.working) return
+        if (s.view !== 'chat' && s.view !== 'flow' && s.view !== 'team') return
+        const t = e.target as HTMLElement | null
+        if (t && t !== ref.current && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+        if (document.querySelector('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]')) return
+        e.preventDefault()
+        keys.current.stop()
+        return
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.code === 'KeyG' || e.code === 'KeyL')) {
         e.preventDefault()
         keys.current.toggle(e.code === 'KeyG' ? 'goal' : 'loop')
@@ -276,7 +379,10 @@ export function Composer() {
     attach(next)
   }
 
-  const popup = useMemo(() => popupFor(text, team, target ? statuses[target.id]?.commands : undefined, ultra), [text, team, statuses, target, ultra])
+  const popup = useMemo(
+    () => (popupOff === text ? null : popupFor(text, team, target ? statuses[target.id]?.commands : undefined, ultra)),
+    [text, popupOff, team, statuses, target, ultra],
+  )
   const count = popup?.items.length || 0
   const index = Math.min(at, Math.max(0, count - 1))
 
@@ -313,7 +419,14 @@ export function Composer() {
                 : `Message ${target.name} directly`
 
   // One quiet thing at a time beside the buttons: what is happening, or what could.
-  const status = enhancing ? (
+  const status = recalled && text ? (
+    <Tip label="Taken back before it started. Change it and send it again" side="top">
+      <span className="flex h-6 min-w-0 animate-fade-in items-center gap-1.5 rounded-full bg-hover px-2 text-[11.5px] font-medium whitespace-nowrap text-ink-2">
+        <CornerDownLeft className="size-3 shrink-0" strokeWidth={2.1} />
+        <span className="truncate">Taken back</span>
+      </span>
+    </Tip>
+  ) : enhancing ? (
     <span className="shimmer-text truncate text-[11.5px] font-medium">Improving your message</span>
   ) : undo !== null ? (
     <UndoChip
@@ -443,6 +556,7 @@ export function Composer() {
               setText(e.target.value)
               setAt(0)
               if (undo !== null) setUndo(null)
+              if (recalled && !e.target.value) setRecalled(false)
             }}
             onPaste={(e) => {
               if (e.clipboardData.files.length) {
@@ -451,6 +565,16 @@ export function Composer() {
               }
             }}
             onKeyDown={(e) => {
+              if (popup && e.key === 'Escape') {
+                e.preventDefault()
+                setPopupOff(text)
+                return
+              }
+              if (e.key === 'ArrowUp' && !text && !popup && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                void recallLast()
+                return
+              }
               if (popup && count) {
                 if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                   e.preventDefault()
@@ -471,8 +595,6 @@ export function Composer() {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 void submit()
-              } else if (e.key === 'Escape' && busy && !text) {
-                stop()
               }
             }}
             className={cn(
@@ -518,7 +640,7 @@ export function Composer() {
                   key={a.id}
                   icon={<Orb account={a} size={15} off={out} />}
                   checked={a.id === focusId}
-                  hint={out ? 'Signed out' : a.id === leadId ? 'Lead · plans and hands out work' : a.role?.trim() || (a.provider === 'chatgpt' ? 'ChatGPT · can make images' : 'Teammate')}
+                  hint={out ? 'Signed out' : a.id === leadId ? 'Lead · plans and hands out work' : a.role?.trim() || (a.provider === 'chatgpt' ? 'Teammate · can make images' : 'Teammate')}
                   onSelect={() => (out && !a.spawned ? setModal({ kind: 'account', id: a.id }) : setFocus(a.id))}
                 >
                   {a.name}
@@ -560,7 +682,7 @@ export function Composer() {
                   onClick={() => flipUltra(false)}
                   className="cu-pill mr-1 flex h-7 shrink-0 animate-pop items-center gap-1.5 rounded-full pr-2.5 pl-2 text-[12.5px] font-semibold transition-colors"
                 >
-                  <Rocket className="cu-icon size-[14px]" strokeWidth={2} />
+                  <UltraGlyph size={14} />
                   <span className="cu-text">Ultra</span>
                 </button>
               </Tip>
@@ -581,7 +703,7 @@ export function Composer() {
                   onClick={() => flipUltra(true)}
                   className="no-drag inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active"
                 >
-                  <Rocket className="size-[15px]" strokeWidth={1.75} />
+                  <UltraGlyph size={15} className="opacity-70 grayscale" />
                 </button>
               </Tip>
             )}
@@ -610,11 +732,23 @@ export function Composer() {
             </IconButton>
           </span>
 
-          {busy && !canSend ? (
-            <Tip label="Stop" kbd="Esc" side="top">
+          {/* While anyone here works, Stop stays: on its own with nothing to send, beside Send while you type. */}
+          {working > 0 && canSend && (
+            <Tip label={stopLabel} kbd="Esc" side="top">
               <button
                 onClick={stop}
-                aria-label="Stop"
+                aria-label={stopLabel}
+                className="ml-1.5 flex size-8 shrink-0 animate-pop items-center justify-center rounded-full bg-hover text-ink-2 shadow-[inset_0_0_0_1px_var(--line)] transition-[color,background,transform] duration-150 hover:scale-105 hover:bg-active hover:text-ink active:scale-95"
+              >
+                <Square className="size-2.5 fill-current" strokeWidth={0} />
+              </button>
+            </Tip>
+          )}
+          {working > 0 && !canSend ? (
+            <Tip label={stopLabel} kbd="Esc" side="top">
+              <button
+                onClick={stop}
+                aria-label={stopLabel}
                 className="ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-ink text-inverse transition-transform duration-150 hover:scale-105 active:scale-95"
               >
                 <Square className="size-3 fill-current" strokeWidth={0} />

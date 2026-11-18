@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { ChevronDown, Download, Ellipsis, FolderOpen, FolderSymlink, GitBranch, PanelLeft, Pin, PinOff, ShieldCheck, Square, SquarePen, Trash2 } from 'lucide-react'
-import { useStore, type View } from '@/store'
+import { useStore, useTeam, workingIn, type View } from '@/store'
 import { api, cn, folderLabel, PERMISSIONS, permissionLabel, tildify } from '@/lib/util'
 import { IconButton, Menu, MenuItem, MenuLabel, MenuSeparator, Segmented, Tip } from './ui'
+import { DemoBar } from './DemoBar'
 
 export function TitleBar() {
   const collapsed = useStore((s) => s.settings.sidebarCollapsed)
@@ -16,11 +17,14 @@ export function TitleBar() {
   const branch = useStore((s) => (s.chatId ? s.changes[s.chatId]?.branch : undefined))
   const setModal = useStore((s) => s.setModal)
   const toast = useStore((s) => s.toast)
-  const working = useStore((s) => (s.chatId ? Object.values(s.agents).filter((a) => a.chatId === s.chatId && a.phase !== 'idle' && a.phase !== 'error').length : 0))
+  const working = useStore((s) => workingIn(s, s.chatId))
   const onScreen = useStore((s) => (s.chatId ? Object.values(s.screens).filter((sc) => sc.chatId === s.chatId && sc.active).length : 0))
   const hands = useStore((s) => s.env.canBrowse || s.env.canControl)
   const inChat = view === 'chat' || view === 'flow' || view === 'team' || view === 'live'
   const agentCount = chat?.agents?.filter((a) => !a.spawned?.gone).length || 0
+  // The same count as the strip, the network and the Inspector: everyone in the chat who has not been
+  // sent home, accounts included. Shown once the lead has started agents, when the team is more than usual.
+  const teamSize = useTeam().length
   const [renaming, setRenaming] = useState(false)
 
   const permission = chat?.permission || defaultPermission
@@ -30,6 +34,8 @@ export function TitleBar() {
   }
 
   return (
+    <>
+    <DemoBar />
     <header className="drag flex h-11 shrink-0 items-center gap-2 pr-[146px] pl-2">
       {collapsed && (
         <div className="flex items-center gap-0.5">
@@ -138,8 +144,8 @@ export function TitleBar() {
         )}
       </div>
 
-      {chat && inChat && working > 1 && (
-        <Tip label="Stop every teammate in this chat">
+      {chat && inChat && working >= 1 && (
+        <Tip label={working === 1 ? 'Stop the work in this chat' : `Stop all ${working} at work in this chat`}>
           <button
             onClick={() => void run(api.stop(chat.id))}
             className="no-drag flex h-7 animate-fade-in items-center gap-1.5 rounded-[8px] px-2 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-hover hover:text-ink"
@@ -156,7 +162,7 @@ export function TitleBar() {
           onChange={setView}
           options={[
             { value: 'chat', label: 'Chat' },
-            { value: 'flow', label: 'Team', badge: working > 1 ? working : agentCount || undefined },
+            { value: 'flow', label: 'Team', badge: agentCount ? teamSize : undefined },
             { value: 'team', label: 'Side by side' },
             ...(hands
               ? [
@@ -201,5 +207,6 @@ export function TitleBar() {
         </Menu>
       )}
     </header>
+    </>
   )
 }

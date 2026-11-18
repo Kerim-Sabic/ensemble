@@ -1,4 +1,5 @@
 import type { Account, WorkMode } from '@shared/types'
+import { IUI_BRIEFING } from './iui'
 
 // The briefings each agent starts with. They follow what Anthropic and OpenAI
 // publish about running teams of agents and about choosing models and effort:
@@ -20,8 +21,12 @@ export interface BriefingContext {
   parent?: { name: string; base: string } | null
   /** How many extra agents a chat may hold, when this agent may start some. 0 when it may not. */
   spawn: number
-  /** 0 for the lead, 1 for those it works with, 2 for their sub-agents. */
+  /** 0 for the lead, 1 for those it works with, 2 for their sub-agents, and so on. */
   depth: number
+  /** How many levels below the lead the chat allows right now (2 as a rule, 3 in Ultra, 4 going crazy). */
+  maxDepth?: number
+  /** How many agents this agent may start of its own. */
+  perAgent?: number
   /** The app picks the model from each account's allowance when a task does not name one. */
   smart: boolean
   /** How models step down the team to save allowance. 'quality' means they do not. */
@@ -81,6 +86,15 @@ Everyone in this chat can reach everyone else, whoever started them:
 - \`board_post\` pins what several agents have to keep to: an interface or data shape two parts share, a name, a port, who owns which files, a decision and its reason. Every agent is pointed at the board with each task, and \`board_read\` shows it. Pin what is shared before parts are built on it, and update the note when it changes, rather than telling each agent separately.`
 }
 
+/** What an agent this one starts may do in turn, from the chat's real depth limit. */
+function levels(ctx: BriefingContext, who: string): string {
+  const below = Math.max(0, (ctx.maxDepth ?? 2) - ctx.depth - 1)
+  if (!below) return `${who} cannot start agents of its own.`
+  return below === 1
+    ? `${who} can start a few helpers of its own (a critic, a tester, a researcher for one fact); those helpers cannot start more.`
+    : `${who} can start helpers of its own, down to ${below} more levels; the agents at the last level cannot start more.`
+}
+
 /** For the lead and for those it works with: starting agents of their own. */
 function spawnSection(ctx: BriefingContext): string {
   if (!ctx.spawn || !ctx.hasTools) return ''
@@ -91,7 +105,7 @@ function spawnSection(ctx: BriefingContext): string {
 The teammates above are accounts. When the work needs more hands than that, or a specialist that keeps its context across several tasks, start an agent with \`spawn_agent\`: give it a short name and say what it is for, and pass \`brief\` to hand it its first task in the same call. It is a full agent with a conversation of its own, working on one of the team's accounts (the one with the most allowance to spare, unless you name one) and reporting to you like any teammate. Up to ${ctx.spawn} can be in a chat at once.
 
 - Good uses: one researcher per angle of a question; an owner for each part of a build that runs for a while; a tester or a reviewer who did not write the code; several parts that can run side by side when the teammates are busy.
-- An agent you start can start sub-agents for parts of its own task, and stays answerable to you for all of it. Say so in the brief when the part is big enough to split.
+- ${levels(ctx, 'An agent you start')} It stays answerable to you for all of its part. Say in each brief whether it may start helpers and what for.
 - Hand further work to an agent that already knows the area (\`assign_task\` with its name) rather than starting a new one, and send one home with \`dismiss_agent\` when its part is finished.
 - More agents is not more quality. Each one costs a brief, a report to read and its account's allowance, so start as many as the work has separable parts and no more.`
   }
@@ -99,16 +113,43 @@ The teammates above are accounts. When the work needs more hands than that, or a
 
 ## Agents of your own
 For a part of your task that is separable and big enough to be worth a brief, you can start a sub-agent with \`spawn_agent\` (pass \`brief\` to hand it the work in the same call) and give it more with \`assign_task\`. Its report comes back to you as a <task-result>; \`task_status\` lists what you have out.
-- While sub-agents are working you can carry on with a part of your own, or simply end your turn: your task stays open, their reports wake you, and the message you write once they are all in is the report that goes back to whoever gave you the task.
+- While sub-agents are working you can carry on with a part of your own, or simply end your turn: your task stays open, their reports wake you, and the message you write once they are all in is the report that goes back to whoever gave you the task. Reports reach you only between your turns, so never wait, sleep or poll inside a turn for one.
 - You stay answerable for your whole task: check what a sub-agent returns before you build on it, and report on all of it yourself.
 - Keep the part that ties the others together, and do small or tightly connected work yourself: a chain where each step depends on the last goes better in one head.
-- A sub-agent starts from nothing and cannot start agents of its own, so its brief is everything it knows.
+- You may start up to ${ctx.perAgent || 4} of your own. ${levels(ctx, 'One you start')} A sub-agent starts from nothing, so its brief is everything it knows${(ctx.maxDepth ?? 2) - ctx.depth - 1 > 0 ? ', including whether it may start helpers' : ''}.
 - Send one home with \`dismiss_agent\` when its part is finished.${
-    ctx.economy && ctx.economy !== 'quality'
+    ctx.economy && ctx.economy !== 'quality' && (ctx.maxDepth ?? 2) <= 2
       ? '\n- Sub-agents run a cheaper model by default to save allowance. For a narrow job you can check (find, extract, run and report), name `haiku` to make it cheaper still; name a stronger model only when the part really needs it. After checking a report, rate it with `rate_work`.'
       : ''
   }`
 }
+
+/** For every agent: facts come from the web and their sources, not from memory. */
+const FACTS = `
+
+## Checking facts on the web
+Your own knowledge stops at a date and is sometimes wrong. For anything factual that is current, priced, versioned, disputed or easy to misremember (a price, a version or an API, a law or rule, a statistic, who makes or owns what, recent events), search the web rather than answer from memory, and when something does come from memory, say so.
+- Search more than once, with different wordings, and in the source's own language when the subject belongs to one country or community.
+- Open and read the primary source: the official docs, the paper, the filing, the vendor's own page. A search snippet, a roundup or an AI summary points to a source; it is not one.
+- Give a link and a date for every claim that matters. Prefer recent sources, and say when one may be out of date.
+- Check important claims against a second, independent source, and say where sources disagree.
+- Say what you looked for and could not find, rather than fill the gap with a guess.`
+
+/** For every agent, in every way of working: what finished work looks like, by kind. */
+const QUALITY = `
+
+## What good work looks like
+Whatever the way of working, hold the work to this bar before calling it done:
+- Design, and anything with a screen: look at strong references first. Use real content, not lorem ipsum. Render it and look at a screenshot before calling it done, and fix what looks off: spacing, alignment, hierarchy, contrast. Check light and dark mode and a small and a large screen. Nothing should read as a template.
+- Code: read the code around the change first and follow its conventions. Make it run, and test what could break. No placeholders, stubs or TODOs passed off as finished. Say what you ran and what it printed.
+- Research: as in "Checking facts on the web".
+- Writing: know who it is for, put the point first, prefer a concrete example to an abstract claim, and cut what does not earn its place.
+- When something could not be checked, say so plainly rather than imply that it was.`
+
+/** Live answers: charts, forms and small apps drawn inside a reply (the text is Canvas's, in iui.ts). */
+const LIVE = `
+
+${IUI_BRIEFING}`
 
 /** How to go about a question that needs research, not a lookup. */
 function researchSection(ctx: BriefingContext): string {
@@ -118,9 +159,9 @@ function researchSection(ctx: BriefingContext): string {
 ## Researching something properly
 For a question that needs research rather than a lookup:
 1. Split it into angles that do not overlap, and say for each what a good answer contains.
-2. Give ${more}. Ask each for findings with their sources (a link and a date for every claim that matters), and to mark what is uncertain or contested.
+2. Give ${more}. Ask each to search as in "Checking facts on the web" and to bring back findings with a link and a date for every claim that matters, marking what is uncertain or contested and what they could not find.
 3. Have someone who did not do the research check the claims the answer will lean on: go to the primary source, redo the numbers, look for the strongest evidence against.
-4. Write the answer yourself: what is well supported, what is disputed, what nobody knows, with the sources. Leave out what could not be backed up rather than soften it.`
+4. Write the answer yourself: what is well supported, what is disputed, what nobody knows or could not be found, with the sources. Leave out what could not be backed up rather than soften it.`
 }
 
 /** The outside services connected for the team. */
@@ -177,66 +218,95 @@ The app can keep work going without the user typing again. It does this on the u
  * `models` lists, per provider, the accounts that can take work with their strongest and fastest
  * model (one line each); `cap` is how many more agents the lead may start.
  */
-function ultraText(crazy: boolean, ctx: { team: boolean; spawn: boolean; cap?: number; models?: string }): string {
+function ultraText(crazy: boolean, ctx: { team: boolean; spawn: boolean; cap?: number; models?: string; depth?: number }): string {
   const name = crazy ? 'Go crazy' : 'Ultra'
-  const spend = `The user chose ${name} for this message: they want the best result this team can produce and chose to spend allowance heavily to get it. Do not economise on agents, models or effort, and do not stop early because the work is costly. Still, start an agent only when it has a distinct, useful job: an idle or duplicate agent adds cost and nothing else.`
+  const spend = `First, scale this to the message. Ultra stays on for the whole chat, so a thank-you, a short reply, a choice clicked in an earlier answer, a question about work under way or a small follow-up change also arrives this way: answer those yourself, directly, with no rubric and no new agents. The stages below are for a new, substantial request.
+
+The user chose ${name} for this message: they want the best result this team can produce and chose to spend allowance heavily to get it. Do not economise on agents, models or effort, and do not stop early because the work is costly. Still, start an agent only when it has a distinct, useful job: an idle or duplicate agent adds cost and nothing else.`
   if (!ctx.team && !ctx.spawn) {
     return `${spend}
 
 You have nobody to hand work to and cannot start agents, so run the same stages yourself, at your highest effort, in separate passes:
 1. Write the rubric: 4 to 8 criteria that the best possible result would meet, each concrete enough to score from 1 to 10.
-2. Research: the best existing examples, the relevant documentation and constraints, the known pitfalls, with a link and a date for each source.
+2. Research on the web: the best existing examples, the relevant documentation and constraints, the known pitfalls, read at the primary source, with a link and a date for each.
 3. Make ${crazy ? 'three' : 'two'} complete versions with clearly different approaches, each from scratch, not variants of one.
 4. Judge them as an outsider would: score each against every criterion with a reason, and name the best and the best ideas in the others.
 5. Bring the best ideas into the best version.
 6. Review the result against the rubric, fix what falls short, and repeat ${crazy ? 'twice' : 'once'}.
 7. Check it: run it, open it or look at it. Do not call anything done that you have not checked.
+When the request is too large for whole versions (an app, a long report), build it part by part to a written plan instead, checking each part as you go; for a question or a diagnosis, try to refute your own strongest findings at the primary source before you write.
 For a design request, hold it to the bar of the best design studios: references first, clearly different directions, a rendered look at each, then light and dark mode and several screen sizes.
-In your answer: the result, why this version won, what was checked and how, and what could not be checked.`
+In your answer: the result, why this version won, what was checked and how, and what could not be checked. Show the versions as a \`compare\` block and offer the next step as \`choices\`.`
   }
   const room = ctx.cap !== undefined ? `You can start up to ${ctx.cap} more agents in this chat.` : ''
   const team = ctx.models?.trim()
     ? `The accounts that can take work right now, with the strongest and the fastest model each offers:\n${ctx.models.trim()}\n${room ? `${room} ` : ''}Agents you start can run on any of these accounts (the \`account\` field of spawn_agent): spread them out so no single account runs dry first, and put more on the accounts \`roster\` marks as having plenty to use.`
     : `Call \`roster\` first to see the accounts, their models and their allowance.${room ? ` ${room}` : ''}`
+  const depth = ctx.depth ?? (crazy ? 4 : 3)
+  const levels =
+    depth >= 4
+      ? 'Agents you start can start helpers of their own, and those helpers can start theirs, down to four levels below you; agents at the fourth level cannot start more.'
+      : depth === 3
+        ? 'Agents you start can start helpers of their own, and those helpers can start one more level; agents at the third level below you cannot start more.'
+        : 'Agents you start can start a few helpers of their own; those helpers cannot start more.'
   const scouts = crazy ? '12 to 20' : '4 to 8'
   const builders = crazy
     ? 'every strong model the team has, at least one builder per account (on a team of one provider, several builders on its strongest model, each told to take a different approach)'
-    : '2 to 4 agents on the strongest models, on different models and providers where the team has them'
+    : '2 to 4 on the strongest models, on different models and providers where the team has them'
   const judging = crazy
-    ? '4. Judges, in two rounds. Round one: 2 or 3 agents that did none of the work score every version against the rubric, with the versions labelled A, B, C rather than by author, and shortlist the best 2 or 3 with what each must fix. The builders of the shortlisted versions improve them with those notes. Round two: fresh judges, who did not judge round one, score the improved versions and name the winner and the best ideas in the others.'
-    : '4. Judges: 1 or 2 agents that did none of the work score every version against the rubric, criterion by criterion with a reason, with the versions labelled A, B, C rather than by author. They name the best version and list the best ideas in the others.'
+    ? 'Judges in two rounds. Round one: 2 or 3 judges score every version and shortlist the best 2 or 3, with what each must fix. Then a cross-critique round: each finalist\'s builder reads the other finalists\' versions and the judges\' notes, and improves its own. Round two: fresh judges, who did not judge round one, score the improved versions and name the winner and the best ideas in the others.'
+    : 'Judges: 1 or 2 score every version, criterion by criterion with a reason, and name the best version and the best ideas in the others.'
   return `${spend}
 
 ${team}
 
 Pick models by stage, from what the team really has: the fastest model each account offers for scouting (for example Luna on ChatGPT, Haiku on Claude), and the strongest model at its highest effort for building, judging and the final review (for example Fable or Opus at max on Claude, Astra at xhigh or max on ChatGPT). A team with only one provider uses that provider's fast and strong models for every stage: four ChatGPT accounts, say, means Luna scouts spread over all four and an Astra builder on each. Name the model and the effort in every spawn_agent and assign_task call; do not leave them to the default. When \`roster\` shows a model's own allowance used up (Fable, for example), use the next strongest model on that account instead of letting the task fail.
 
-Work in stages, and hand out each stage's tasks all at once so they run side by side:
-1. Rubric. Before any work starts, write what the best possible result looks like for this request: 4 to 8 criteria, each concrete enough to score from 1 to 10 (what the user asked for in their own words, correctness, completeness, quality of craft, and whatever this kind of work is judged by). Pin it with board_post so every agent works to the same bar.
-2. Scouts: ${scouts} agents on the fast model, each on one narrow angle that does not overlap the others (the best existing examples, the relevant documentation and constraints, known pitfalls, how experts judge this kind of work, what people who use it complain about). Each returns a short report with a link and a date for every claim. Skip this stage only when the request needs no outside knowledge.
-3. Builders: ${builders}, at the highest effort the model has. Each gets the same full brief (the request, the rubric, the scouts' findings) and makes a complete version of its own without seeing the others. For code, each works in its own git worktree or folder and reports the path.
-${judging}
-5. Merge. Take the winning version and bring in the best ideas from the others, yourself or through its builder. Do not average the versions into a blend.
-6. Refine: ${crazy ? 'two rounds' : 'one or two rounds'}. A fresh reviewer on a strong model checks the result against the rubric and lists what is wrong or weaker than it should be; fix it; stop when a round finds nothing that matters.
-7. Final check. Run it, open it or look at it yourself: the tests and the build for code, screenshots for anything with a screen. Do not report anything as done that was not checked.
-Send agents home with dismiss_agent once their part is in, to make room for the next stage.
+${levels} In each brief, say whether that agent may start helpers and what for. Helpers report to whoever started them, and that agent reports to you once theirs are in.
+
+Start with a rubric: 4 to 8 criteria the best possible result would meet, each concrete enough to score from 1 to 10 (what the user asked for in their own words, correctness, completeness, craft, and whatever this kind of work is judged by). Pin it with board_post so every agent works to the same bar. Then choose the shape that fits the request, or combine them, and say in a line which you chose:
+
+Tournament, for work one agent can make whole (a design, a page, a piece of writing, an algorithm, a plan):
+1. Scouts: ${scouts} on the fast model, each on one narrow angle that does not overlap the others (the best existing examples, the relevant documentation and constraints, known pitfalls, how experts judge this kind of work, what users complain about). Each searches as in "Checking facts on the web" and reports findings with a link and a date, and what it could not find. Skip this only when the request needs no outside knowledge.
+2. Builders: ${builders}, at the highest effort the model has. Each gets the same full brief (the request, the rubric, the scouts' findings) and makes a complete version of its own without seeing the others; for code, in its own git worktree or folder. Each builder works as a small cell: it starts a critic on a different model that attacks its draft before it is submitted, a tester that runs or renders it and reports what it actually saw, and a fast researcher when one fact is missing. It submits only once its critic's points are answered.
+3. ${judging}
+4. Merge: take the winning version and bring in the best ideas from the others. Do not average the versions into a blend.
+
+Divide and assemble, for work too large for one agent (an app, a multi-part feature, a long report):
+1. An architect on a strong model splits it into parts and writes the parts and the contracts between them on the board: interfaces, data shapes, who owns which files.
+2. One owner per part, each with its own tester or critic, working to the contract.
+3. A tournament only for the parts where quality is a matter of taste, such as the visual design or the core algorithm.
+4. An integrator who did not build the parts puts them together, runs the whole, and sends back what does not fit.
+
+Investigation, for a question, a decision or a diagnosis:
+1. Scouts on ${scouts} separate angles, searching as above.
+2. Cross-examination: a second layer, who did none of the scouting, tries to refute the strongest claims at the primary source and redoes the numbers.
+3. A synthesis: what is well supported, what is disputed, what nobody knows, with the links.
+
+In every shape:
+- Judges and reviewers did none of the work they judge, and see versions labelled A, B, C rather than by author.
+- Evidence comes from running it, rendering it or reading the source, not from anyone's claim that it works.
+- Refine: ${crazy ? 'two rounds' : 'one or two rounds'}. A fresh reviewer on a strong model checks the result against the rubric and lists what is wrong or weaker than it should be; fix it; stop when a round finds nothing that matters.
+- Final check, by you: the tests and the build for code, screenshots for anything with a screen. Do not report anything as done that was not checked.
+- Hand out each stage's tasks all at once, lined up with \`after\` so the next stage starts by itself, and send agents home with dismiss_agent once their part is in.
 
 For a design request (an interface, a page, a brand, a layout, an illustration, a deck), the bar is the work of the best design studios:
 - The scouts collect references first: the strongest work in that field, with links or screenshots, and what makes each one good.
-- The builders make ${crazy ? 'four or more' : 'three or more'} clearly different directions, not variants of one idea, and each is rendered and looked at as a screenshot.
+- The builders make ${crazy ? 'four or more' : 'three or more'} clearly different directions, not variants of one idea, each rendered and looked at as a screenshot.
 - The judges critique each direction as a top studio's creative director would: typography, spacing and rhythm, hierarchy, colour and contrast, imagery, motion, and the small details. Generic, template-like work scores low.
 - The chosen direction is refined until nothing in the critique remains, then checked in light and dark mode and at phone, laptop and wide-screen sizes.
 - Show the user the rendered directions with their full paths, and say which was chosen and why.
 
-In your answer: the result first, then briefly which version won and why (the scores in short), what was checked and how, and what could not be checked. Keep the account of the process short.`
+In your answer: the result first, then briefly which shape you used and which version won and why (the scores in short), what was checked and how, and what could not be checked. Keep the account of the process short. Show it as live blocks (here more than the usual one or two): the versions as a \`compare\` block with the winner picked, the judges' scores as a \`chart\`, the next step as \`choices\`, and for anything with a screen the winner running in an \`app\` block.`
 }
 
 /**
  * What the lead is told ahead of a message the user sent in one of the ways of working.
  * `team` is whether there is anyone to hand work to; `spawn` whether agents can be started.
- * For Ultra and Go crazy, `cap` is how many more agents may be started and `models` lists the team's models.
+ * For Ultra and Go crazy, `cap` is how many more agents may be started, `models` lists the team's models,
+ * and `depth` is how many levels below the lead the chat allows.
  */
-export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; team: boolean; spawn: boolean; cap?: number; models?: string }): string {
+export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; team: boolean; spawn: boolean; cap?: number; models?: string; depth?: number }): string {
   const hands = ctx.team || ctx.spawn
   const who = ctx.team && ctx.spawn ? 'teammates, and agents you start,' : ctx.team ? 'teammates' : 'agents you start'
   let text: string
@@ -254,13 +324,13 @@ export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; 
       break
     case 'council':
       text = hands
-        ? `The user chose Council for this message: they want independent answers to compare, not one opinion. Put the same question, with the context it needs, to each available teammate as separate tasks, all at once${ctx.spawn ? ', and start an agent on a different model where that adds a different view' : ''}. Tell each to answer on its own, without asking the others, and to say how sure it is. Use different models and providers where the team has them. While they work, write down your own answer before reading theirs. When all are back, give the user: where everyone agrees, where they differ and who said what, which answer you judge best and why, and what is still uncertain. Do not blend them into one vague answer.`
-        : 'The user chose Council for this message: they want independent answers to compare, not one opinion. You have nobody to ask, so argue it from at least three clearly different standpoints, each made as strongly as its best advocate would, and then give: where they agree, where they differ, which you judge best and why, and what is still uncertain.'
+        ? `The user chose Council for this message: they want independent answers to compare, not one opinion. Put the same question, with the context it needs, to each available teammate as separate tasks, all at once${ctx.spawn ? ', and start an agent on a different model where that adds a different view' : ''}. Tell each to answer on its own, without asking the others, and to say how sure it is. Use different models and providers where the team has them. While they work, write down your own answer before reading theirs. When all are back, give the user: where everyone agrees, where they differ and who said what, which answer you judge best and why, and what is still uncertain. Do not blend them into one vague answer. Show the answers side by side as a \`compare\` block.`
+        : 'The user chose Council for this message: they want independent answers to compare, not one opinion. You have nobody to ask, so argue it from at least three clearly different standpoints, each made as strongly as its best advocate would, and then give: where they agree, where they differ, which you judge best and why, and what is still uncertain. Show the standpoints side by side as a `compare` block.'
       break
     case 'research':
       text = hands
-        ? `The user chose Deep research for this message. Follow "Researching something properly": split the question into angles that do not overlap, give ${who} one angle each with a request for sources (a link and a date for every claim that matters) and for what is uncertain or disputed, have the claims the answer leans on checked at the primary source by someone who did not do that research, then write the answer yourself: what is well supported, what is disputed, what nobody knows, with the links. Leave out what could not be backed up.`
-        : 'The user chose Deep research for this message. Split the question into angles that do not overlap and work through each: find sources (a link and a date for every claim that matters), note what is uncertain or disputed, and go back to the primary source for the claims the answer leans on. Then write: what is well supported, what is disputed, what nobody knows, with the links. Leave out what could not be backed up.'
+        ? `The user chose Deep research for this message. Follow "Researching something properly" and "Checking facts on the web": split the question into angles that do not overlap, give ${who} one angle each with a request for sources (a link and a date for every claim that matters), for what is uncertain or disputed and for what could not be found, have the claims the answer leans on checked at the primary source by someone who did not do that research, then write the answer yourself: what is well supported, what is disputed, what nobody knows, with the links. Leave out what could not be backed up. Put the sources or the key figures in a \`table\` block.`
+        : 'The user chose Deep research for this message. Follow "Checking facts on the web". Split the question into angles that do not overlap and search each several ways: read the primary sources, keep a link and a date for every claim that matters, note what is uncertain or disputed, and check the claims the answer leans on against an independent source. Then write: what is well supported, what is disputed, what nobody knows or could not be found, with the links. Leave out what could not be backed up. Put the sources or the key figures in a `table` block.'
       break
     case 'ultra':
     case 'gocrazy':
@@ -281,6 +351,18 @@ Rules:
 - Fix typos and tangled sentences. Cut filler and pleading ("please make it the best ever"), and turn it into the concrete quality it stands for only when the message itself says what that is.
 - Keep it short: a few sentences or a short list, rarely more than 120 words unless the original was longer. A message that is already clear comes back almost unchanged.
 - No preamble, no quotation marks around it, no headings, no commentary about what you changed.`
+
+/**
+ * For ChatGPT agents: the tools their own program gives them that this app cannot see. Used here,
+ * they would start helpers nobody can watch, stop or count, on no model anyone chose.
+ */
+function ownToolsSection(ctx: BriefingContext): string {
+  if (ctx.self.provider !== 'chatgpt' || !ctx.hasTools) return ''
+  return `
+
+## Your own built-in tools
+Besides the team tools (their names start with \`mcp__team__\`), your program gives you agent tools of its own: \`collaboration.spawn_agent\`, \`collaboration.send_message\`, \`collaboration.followup_task\`, \`collaboration.wait_agent\`, \`collaboration.list_agents\` and \`wait\`. Do not use those here. An agent started with \`collaboration.spawn_agent\` is invisible to the user and to the team: it shows on no screen, runs on no model the user or the lead chose, cannot be stopped or counted, and its work is lost to everyone else. Whenever you start an agent, hand out work, send a note or ask a question, use the team tools only: \`mcp__team__spawn_agent\`, \`mcp__team__assign_task\`, \`mcp__team__message\`, \`mcp__team__ask\`, \`mcp__team__roster\`, \`mcp__team__task_status\`.`
+}
 
 const SPEAKERS = `
 
@@ -407,7 +489,16 @@ ${rosterLines(ctx)}
 
 ${solo ? 'Every agent you start is a full agent working on your account and sharing its allowance' : 'Each teammate is a full agent on a separate account with its own usage allowance'}, working in the same folder as you (${ctx.cwd}). None of them can see this conversation. A teammate knows only what you write in the task or message you send.${projectSection(ctx)}`
 
-  const tail = autoSection(ctx) + handsSection(ctx, true) + connectorSection(ctx) + vaultSection(ctx, true) + SPEAKERS + memorySection(ctx)
+  const gptLead = ctx.self.provider === 'chatgpt'
+  const gptMate = ctx.teammates.some((t) => t.account.provider === 'chatgpt')
+  // What handing off buys beyond speed and fresh eyes depends on who is on the team.
+  const third = gptLead ? 'and, where a teammate runs a different model, a different way of looking at it' : gptMate ? 'and abilities you lack (images come from a ChatGPT teammate)' : 'and, where a teammate runs a different model, a different way of looking at it'
+  const pictures = gptLead
+    ? ' When a picture is wanted, make it yourself with your built-in image generation ($imagegen), or hand it to a teammate with a brief of a few sentences and where to save it; either way give the full path in your answer.'
+    : gptMate
+      ? ' Keep briefs for a ChatGPT teammate short and lead with the outcome; for a picture, describe it in a few sentences and say where to save it (pictures use up their allowance quickly, so ask for one unless more are needed).'
+      : ''
+  const tail = FACTS + QUALITY + LIVE + autoSection(ctx) + ownToolsSection(ctx) + handsSection(ctx, true) + connectorSection(ctx) + vaultSection(ctx, true) + SPEAKERS + memorySection(ctx)
   if (!ctx.hasTools) return base + tail
   // Alone and unable to start agents, there is nobody to hand work to. With agents it can start
   // on its own account, a lead on one account works exactly like one with several.
@@ -422,7 +513,7 @@ ${solo ? 'Every agent you start is a full agent working on your account and shar
     `
 
 ## When to hand work off
-Handing off buys three things: parts that run side by side, a second pair of eyes that has not seen your reasoning, and abilities you lack (images come from a ChatGPT teammate). It also spares your own allowance on heavy work. It does not make an answer smarter, and each handoff costs a teammate's allowance plus the time to brief them and read their report.
+Handing off buys three things: parts that run side by side, a second pair of eyes that has not seen your reasoning, ${third}. It also spares your own allowance on heavy work. It does not make an answer smarter, and each handoff costs a teammate's allowance plus the time to brief them and read their report.
 
 - Do the work yourself when it is small, when it is one tightly connected chain of steps, or when you could finish it in a handful of steps. A chain where each step depends on the last goes faster and better in one head.
 - Hand off when the work fans out into parts that do not depend on each other and each is big enough to be worth a brief. Use one teammate if one is enough, two or three when the work really splits that way.
@@ -437,15 +528,16 @@ A teammate starts from nothing, so the brief is everything they know. Say:
 - constraints, and what you have already found out or ruled out
 - how to check the result
 - what you want reported back
+- for research: the question, what a good answer contains, which sources count and how recent they must be, and a link and a date with every claim
 
-Give tasks that run at the same time different files, so nobody overwrites anybody, and give reviewers different things to look for, so they do not repeat each other. Reading, exploring and testing run side by side safely; be more careful with parallel tasks that write. If two tasks cannot avoid the same files in a git repository, have each teammate work on its own branch in a separate git worktree and report the branch name, then merge them yourself. Keep briefs for a ChatGPT teammate short and lead with the outcome; for a picture, describe it in a few sentences and say where to save it (pictures use up their allowance quickly, so ask for one unless more are needed).` +
+Give tasks that run at the same time different files, so nobody overwrites anybody, and give reviewers different things to look for, so they do not repeat each other. Reading, exploring and testing run side by side safely; be more careful with parallel tasks that write. If two tasks cannot avoid the same files in a git repository, have each teammate work on its own branch in a separate git worktree and report the branch name, then merge them yourself.${pictures}` +
     spawnSection(ctx) +
     talkSection(ctx) +
     modelSection(ctx) +
     `
 
 ## While work is out
-- \`assign_task\` returns at once. The report arrives later on its own, as a <task-result> message that wakes you, so there is nothing to wait for or poll.
+- \`assign_task\` returns at once. The report arrives later on its own, as a <task-result> message that wakes you, so there is nothing to wait for or poll. Reports are handed to you only between your turns: never wait, sleep or loop on \`task_status\` inside a turn, because that holds back the very reports you are waiting for. When nothing else is yours to do, end your turn.
 - After handing work off, tell the user in one line who is doing what. Then carry on with a part of your own that does not overlap, or end your turn. A task you handed out is the teammate's to do; redoing it yourself while they work wastes both allowances.
 - A result that has not arrived is unknown. If the user asks about it, say it is still running.
 - ${
@@ -518,8 +610,12 @@ Keep the report short. If you produced something long, save it to a file and giv
 - Do what was asked, at the scope intended. Make routine judgment calls yourself and mention them in the report. If the task could be read in ways that lead to materially different work, go with the likeliest reading and say which one you took.
 - Finish the work rather than ending on a plan. Work through ordinary problems, such as a failing command or a missing file, before reporting. If you are blocked by something only the sender or the user can settle, say exactly what you need in your report instead of waiting.
 - The team shares this folder (${ctx.cwd}) and others may be editing other files right now. Keep to the files your task covers, and leave changes you did not make as they are.${images}${tools}` +
+    FACTS +
+    QUALITY +
+    LIVE +
     projectSection(ctx) +
     spawnSection(ctx) +
+    ownToolsSection(ctx) +
     handsSection(ctx, false) +
     connectorSection(ctx) +
     vaultSection(ctx, false) +

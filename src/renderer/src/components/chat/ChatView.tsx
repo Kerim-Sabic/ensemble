@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bug, ChevronDown, ListChecks, Repeat, Target, UsersRound, CornerDownRight, Crown, FolderOpen, FolderPlus, GitCompareArrows, Globe, ImagePlus, ListTree, Map as MapIcon, Monitor, PanelRight, Search, ShieldQuestion, ScrollText, SlidersHorizontal, Sparkles, Telescope, UserMinus } from 'lucide-react'
+import type { Account, AgentPhase } from '@shared/types'
 import { adviseModel, budgetOf, modelForTier } from '@shared/budget'
 import { agentKey, focusOf, isBusy, leadOf, useStore, useTeam } from '@/store'
 import { accentVars, api, cn, folderLabel, tildify } from '@/lib/util'
@@ -10,6 +11,8 @@ import { Transcript } from './Transcript'
 import { Composer, seedComposer } from './Composer'
 import { AutoBar } from './AutoBar'
 import { NetworkStrip, UltraEdge, UltraMark, useStripShown } from '../ultra/Ultra'
+import { OverflowChip, usePhases, working } from '../ultra/Team'
+import { fitTabs, useMeasured } from '../ultra/fit'
 
 
 /** True when the window is wide enough to show the panel beside the chat. */
@@ -30,8 +33,6 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
   const chatId = useStore((s) => s.chatId)
   const focusId = useStore(focusOf)
   const leadId = useStore((s) => leadOf(s)?.id)
-  const agents = useStore((s) => s.agents)
-  const unread = useStore((s) => s.unread)
   const statuses = useStore((s) => s.statuses)
   const inspector = useStore((s) => s.settings.inspector)
   const setFocus = useStore((s) => s.setFocus)
@@ -40,23 +41,33 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
   const run = useStore((s) => s.run)
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
   const focused = team.find((a) => a.id === focusId)
+  const phases = usePhases(chatId, team)
+  const [rowRef, rowWidth] = useMeasured<HTMLDivElement>()
+  // Who has a reply you have not seen, as one string: the tabs redraw when that changes, not on every event.
+  const dotSig = useStore((s) => (chatId ? team.filter((a) => s.unread[agentKey(chatId, a.id)]).map((a) => a.id).join('|') : ''))
+  const dots = useMemo(() => new Set(dotSig.split('|').filter(Boolean)), [dotSig])
+  // The lead and the agents that matter now get tabs, as many as fit; the rest share one chip.
+  const { shown, hidden } = useMemo(
+    () => fitTabs(team, rowWidth, { leadId, focusId, phases, dots }),
+    [team, rowWidth, leadId, focusId, phases, dots],
+  )
 
   if (!team.length) return null
   return (
     <div className="mx-auto flex w-full max-w-[780px] items-center gap-1 px-7 pt-3.5 pb-1">
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
-        {team.map((a) => {
+      <div ref={rowRef} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+        {shown.map((a) => {
           const on = a.id === focusId
-          const st = chatId ? agents[agentKey(chatId, a.id)] : undefined
+          const st = { phase: phases.get(a.id) }
           const out = statuses[a.id]?.state === 'signed-out'
-          const dot = chatId ? unread[agentKey(chatId, a.id)] : 0
+          const dot = dots.has(a.id)
           const tab = (
             <button
               key={a.id}
               onClick={() => (out && !a.spawned ? setModal({ kind: 'account', id: a.id }) : setFocus(a.id))}
               style={accentVars(a.accent)}
               className={cn(
-                'relative flex h-8 shrink-0 items-center gap-2 rounded-full pr-3 pl-[7px] text-[13px] transition-all duration-150',
+                'relative flex h-8 shrink-0 items-center gap-2 rounded-full pr-3 pl-[7px] text-[13px] whitespace-nowrap transition-colors duration-150',
                 on ? 'bg-surface-2 font-medium text-ink shadow-[inset_0_0_0_1px_var(--line)]' : 'text-ink-2 hover:bg-hover hover:text-ink',
                 out && 'opacity-60',
               )}
@@ -78,6 +89,7 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
             </Tip>
           )
         })}
+        {chatId && hidden.length > 0 && <OverflowChip chatId={chatId} team={team} hidden={hidden} phases={phases} onPick={setFocus} />}
       </div>
       {ultra && chatId && <UltraMark chatId={chatId} />}
       {focused && (
@@ -116,7 +128,7 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
               Account, model and role…
             </MenuItem>
           )}
-          {chatId && isBusy(agents[agentKey(chatId, focused.id)]) && (
+          {chatId && working(phases.get(focused.id)) && (
             <>
               <MenuSeparator />
               <MenuItem danger onSelect={() => void api.stop(chatId, focused.id)}>
@@ -140,16 +152,31 @@ function LiveStrip() {
   const team = useTeam()
   const chatId = useStore((s) => s.chatId)
   const focusId = useStore(focusOf)
-  const agents = useStore((s) => s.agents)
   const setFocus = useStore((s) => s.setFocus)
+  // Who is at work here and on what, as one string: other chats' events do not redraw this.
+  const sig = useStore((s) =>
+    s.chatId
+      ? team
+          .map((a) => {
+            const st = s.agents[agentKey(s.chatId as string, a.id)]
+            return isBusy(st) ? `${a.id}\t${st?.phase}\t${st?.activity || ''}` : ''
+          })
+          .filter(Boolean)
+          .join('\n')
+      : '',
+  )
   // While the network at the top shows everyone at work, only those waiting for you stay here.
   const net = useStripShown(chatId)
-  if (!chatId) return null
-  const busy = team.filter((a) => isBusy(agents[agentKey(chatId, a.id)]))
-  const others = busy
-    .filter((a) => a.id !== focusId)
-    .map((a) => ({ a, st: agents[agentKey(chatId, a.id)] }))
-    .filter((x) => !net || x.st?.phase === 'waiting')
+  if (!chatId || !sig) return null
+  const byId = new Map(team.map((a) => [a.id, a]))
+  const others = sig
+    .split('\n')
+    .map((line) => {
+      const [id, phase, activity] = line.split('\t')
+      return { a: byId.get(id), st: { phase: phase as AgentPhase, activity: activity || undefined } }
+    })
+    .filter((x): x is { a: Account; st: { phase: AgentPhase; activity: string | undefined } } => !!x.a && x.a.id !== focusId)
+    .filter((x) => !net || x.st.phase === 'waiting')
   if (!others.length) return null
   return (
     <div className="mx-auto flex w-full max-w-[780px] flex-wrap gap-1.5 px-7 pb-2.5">
@@ -275,6 +302,7 @@ function LeadHint() {
   const draftLead = useStore((s) => s.draftLead)
   const setDraftLead = useStore((s) => s.setDraftLead)
   const hint = useMemo(() => {
+    // This hint is about the strongest Claude model's own allowance, which only Claude plans meter.
     if (!smart || !usual || usual.provider !== 'claude' || usual.model) return null
     const mine = budgetOf(usage[usual.id])
     const advice = adviseModel(mine, 'lead')

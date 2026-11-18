@@ -1,0 +1,35 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "window.__ensemble.getState().setModal({ kind: 'palette' }); await new Promise(r => setTimeout(r, 400)); const el = document.querySelector('[cmdk-input]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, 'demo'); el.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 600)); return [...document.querySelectorAll('[cmdk-item]')].map(i => i.textContent.slice(0, 40)).join(' | ');",
+  "wait": 200,
+  "shot": "auto-surfaces-demo-palette-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400,
+  "shot": "auto-surfaces-demo-palette-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__ensemble.getState().setModal(null); await new Promise(r => setTimeout(r, 300)); window.__ensemble.getState().setModal({ kind: 'settings' }); await new Promise(r => setTimeout(r, 600)); const sc = document.querySelector('[role=dialog] .overflow-y-auto'); if (sc) sc.scrollTop = sc.scrollHeight; await new Promise(r => setTimeout(r, 300)); return 'settings demo link: ' + !![...document.querySelectorAll('[role=dialog] button')].find(b => /Try the demo team/.test(b.textContent));",
+  "wait": 300,
+  "shot": "auto-surfaces-demo-settings-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400,
+  "shot": "auto-surfaces-demo-settings-dark.png"
+ }
+]

@@ -59,7 +59,7 @@ export function ModelPill({ account }: { account: Account }) {
           <MenuLabel>Model for {account.name}</MenuLabel>
           <MenuItem
             checked={!account.model}
-            hint={smart && account.provider === 'claude' ? why || 'The strongest model the allowance can afford, chosen each time it starts' : 'Whatever this account is set to use'}
+            hint={smart && account.provider === 'claude' ? why || 'The strongest model the allowance can afford, chosen each time it starts' : why || 'Whatever this account is set to use'}
             onSelect={() => set({ model: null })}
           >
             {smart && account.provider === 'claude' ? 'Best for the allowance' : 'Account default'}

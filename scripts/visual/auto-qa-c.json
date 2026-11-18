@@ -1,0 +1,185 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "\nwindow.__sleep = ms => new Promise(r => setTimeout(r, ms));\nwindow.__S = () => window.__ensemble.getState();\nwindow.__ta = () => document.querySelector('.composer textarea');\nwindow.__t = v => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); };\nwindow.__enter = el => (el || window.__ta()).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));\nwindow.__open = label => { const b = document.querySelector('.composer button[aria-label^=\"' + label + '\"]'); if (!b) return false; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return true };\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__lead = () => { const s = window.__S(); const c = window.__chat(); return (c && c.leadId) || s.settings.leadId };\nwindow.__k = () => window.__S().chatId + ':' + window.__lead();\nwindow.__phase = () => (window.__S().agents[window.__k()] || {}).phase;\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__txt = (n) => document.body.innerText.replace(/\\s+/g, ' ').slice(0, n || 600);\nwindow.__bt = re => [...document.querySelectorAll('button')].find(b => re.test(((b.textContent || '').trim()) || b.getAttribute('aria-label') || ''));\nwindow.__bl = re => [...document.querySelectorAll('button')].find(b => re.test(b.getAttribute('aria-label') || ''));\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__new = async () => { window.__S().setView('chat'); window.__S().newChat(); await window.__sleep(700); };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 40000)) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy after ' + (max || 40000) + 'ms'; };\nwindow.__items = () => (window.__S().items[window.__k()] || []).map(i => i.kind + (i.event ? ':' + i.event : '') + (i.queued ? '(queued)' : '')).join(',');\nwindow.__toasts = () => window.__S().toasts.map(t => t.text).join(' | ');\n",
+  "wait": 2000
+ },
+ {
+  "js": "\nfor (let i = 0; i < 10; i++) {\n  if (window.__S().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break; b.click(); await window.__sleep(900);\n}\nreturn 'onboarded=' + window.__S().settings.onboarded + ' accounts=' + window.__S().accounts.map(a => a.name + (a.enabled ? '' : '(off)')).join(',');\n",
+  "wait": 1000
+ },
+ {
+  "js": "await window.__new(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', code: 'KeyU', altKey: true, bubbles: true, cancelable: true })); await window.__sleep(400); window.__t('Design the landing page'); return 'ultra in composer=' + !!document.querySelector('.composer[data-ultra]')",
+  "wait": 400,
+  "shot": "qa-c01-ultra-composer.png"
+ },
+ {
+  "js": "window.__enter(); await window.__sleep(3500); window.__bottom(); const c = window.__chat(); return 'sent: chat.ultra=' + (c && c.ultra) + ' strip=' + !!document.querySelector('[data-network-strip]') + ' busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-c02-ultra-started.png"
+ },
+ {
+  "js": "await window.__sleep(3000); window.__bottom(); return 'ultra mid busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-c03-ultra-mid-light.png"
+ },
+ {
+  "js": "window.__S().setView('flow'); await window.__sleep(900); return 'team tab cards=' + document.querySelectorAll('[data-agent-card]').length",
+  "wait": 300,
+  "shot": "qa-c04-ultra-team-tab.png"
+ },
+ {
+  "js": "window.__S().setView('now'); await window.__sleep(900); return 'mission control'",
+  "wait": 300,
+  "shot": "qa-c05-ultra-mission-control.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__S().setView('now'); return 'mc dark'",
+  "wait": 500,
+  "shot": "qa-c06-ultra-mission-control-dark.png"
+ },
+ {
+  "js": "window.__S().setView('chat'); await window.__sleep(500); window.__bottom(); return 'chat dark mid'",
+  "wait": 300,
+  "shot": "qa-c07-ultra-mid-dark.png"
+ },
+ {
+  "js": "const r = await window.__waitIdle(45000); window.__bottom(); return 'ultra done after ' + r",
+  "wait": 800,
+  "shot": "qa-c08-ultra-done-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__bottom(); return 'ultra done light'",
+  "wait": 600,
+  "shot": "qa-c09-ultra-done-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__bottom(); return 'ultra done 900'",
+  "wait": 800,
+  "shot": "qa-c10-ultra-done-900.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__t('thanks'); window.__enter(); await window.__sleep(1500); window.__bottom(); return 'thanks sent busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-c11-thanks-working.png"
+ },
+ {
+  "js": "const r = await window.__waitIdle(45000); window.__bottom(); const k = window.__k(); const items = window.__S().items[k] || []; const after = items.slice(items.map(i => i.kind === 'user' && /thanks/.test(i.text||'')).lastIndexOf(true)); return 'thanks done after ' + r + ' | items after thanks: ' + after.map(i => i.kind + (i.name ? ':' + i.name : '')).join(',') + ' | last text: ' + ((after.filter(i => i.kind === 'assistant' || i.kind === 'text').pop() || {}).text || '').slice(0, 200)",
+  "wait": 800,
+  "shot": "qa-c12-thanks-done.png"
+ },
+ {
+  "js": "window.__t('/gocrazy design the landing page'); await window.__sleep(300); return 'typed gocrazy'",
+  "wait": 300,
+  "shot": "qa-c13-gocrazy-typed.png"
+ },
+ {
+  "js": "window.__enter(); await window.__sleep(5000); window.__bottom(); return 'gocrazy started busy=' + window.__busy() + ' toasts=' + window.__toasts()",
+  "wait": 300,
+  "shot": "qa-c14-gocrazy-started.png"
+ },
+ {
+  "js": "window.__S().setView('flow'); await window.__sleep(900); return 'team cards=' + document.querySelectorAll('[data-agent-card]').length",
+  "wait": 300,
+  "shot": "qa-c15-gocrazy-team-1400-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "return 'team dark'",
+  "wait": 600,
+  "shot": "qa-c16-gocrazy-team-1400-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "return 'team 900 light'",
+  "wait": 800,
+  "shot": "qa-c17-gocrazy-team-900-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "return 'team 900 dark'",
+  "wait": 800,
+  "shot": "qa-c18-gocrazy-team-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__S().setView('now'); await window.__sleep(800); return 'mc'",
+  "wait": 300,
+  "shot": "qa-c19-gocrazy-mc-1400-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "return 'mc 900 dark'",
+  "wait": 800,
+  "shot": "qa-c20-gocrazy-mc-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__S().setView('chat'); await window.__sleep(600); window.__bottom(); return 'gocrazy chat mid'",
+  "wait": 400,
+  "shot": "qa-c21-gocrazy-chat-mid.png"
+ },
+ {
+  "js": "const r = await window.__waitIdle(60000); window.__bottom(); return 'gocrazy done after ' + r",
+  "wait": 800,
+  "shot": "qa-c22-gocrazy-done-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'done dark'",
+  "wait": 600,
+  "shot": "qa-c23-gocrazy-done-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('flow'); await window.__sleep(900); return 'team after cards=' + document.querySelectorAll('[data-agent-card]').length",
+  "wait": 400,
+  "shot": "qa-c24-team-after.png"
+ },
+ {
+  "js": "window.__S().setView('chat'); await window.__sleep(500); window.__t('/ultra off'); window.__enter(); await window.__sleep(1200); return 'ultra off: chat.ultra=' + window.__chat().ultra + ' toasts=' + window.__toasts()",
+  "wait": 400,
+  "shot": "qa-c25-ultra-off.png"
+ },
+ {
+  "js": "window.__t('/gocrazy build three versions'); window.__enter(); await window.__sleep(1000); return 'gocrazy with ultra off: toasts=' + window.__toasts() + ' busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-c26-gocrazy-locked.png"
+ }
+]

@@ -1,0 +1,241 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "\nwindow.__sleep = ms => new Promise(r => setTimeout(r, ms));\nwindow.__S = () => window.__ensemble.getState();\nwindow.__ta = () => document.querySelector('.composer textarea');\nwindow.__t = v => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); };\nwindow.__enter = el => (el || window.__ta()).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));\nwindow.__open = label => { const b = document.querySelector('.composer button[aria-label^=\"' + label + '\"]'); if (!b) return false; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return true };\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__lead = () => { const s = window.__S(); const c = window.__chat(); return (c && c.leadId) || s.settings.leadId };\nwindow.__k = () => window.__S().chatId + ':' + window.__lead();\nwindow.__phase = () => (window.__S().agents[window.__k()] || {}).phase;\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__txt = (n) => document.body.innerText.replace(/\\s+/g, ' ').slice(0, n || 600);\nwindow.__bt = re => [...document.querySelectorAll('button')].find(b => re.test(((b.textContent || '').trim()) || b.getAttribute('aria-label') || ''));\nwindow.__bl = re => [...document.querySelectorAll('button')].find(b => re.test(b.getAttribute('aria-label') || ''));\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__new = async () => { window.__S().setView('chat'); window.__S().newChat(); await window.__sleep(700); };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 40000)) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy after ' + (max || 40000) + 'ms'; };\nwindow.__items = () => (window.__S().items[window.__k()] || []).map(i => i.kind + (i.event ? ':' + i.event : '') + (i.queued ? '(queued)' : '')).join(',');\nwindow.__toasts = () => window.__S().toasts.map(t => t.text).join(' | ');\nreturn 'first screen: ' + window.__txt(500)",
+  "wait": 2200,
+  "shot": "qa-a01-firstrun-1.png"
+ },
+ {
+  "js": "const b = window.__bt(/^Continue/); const d = b && b.disabled; b && b.click(); await window.__sleep(900); return 'continue(disabled=' + d + ') -> ' + window.__txt(500)",
+  "wait": 400,
+  "shot": "qa-a02-firstrun-2.png"
+ },
+ {
+  "js": "const b = window.__bt(/^Continue/); b && b.click(); await window.__sleep(900); return 'continue -> ' + window.__txt(500)",
+  "wait": 400,
+  "shot": "qa-a03-firstrun-3.png"
+ },
+ {
+  "js": "const b = window.__bt(/^Start using Ensemble/); const t = b && b.textContent.trim(); b && b.click(); await window.__sleep(1400); return 'clicked [' + t + '] onboarded=' + window.__S().settings.onboarded + ' | ' + window.__txt(500)",
+  "wait": 400,
+  "shot": "qa-a04-empty-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "return 'empty dark'",
+  "wait": 700,
+  "shot": "qa-a05-empty-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__t('Add a pricing page with a checkout flow, and a hero image for it.'); await window.__sleep(200); window.__enter(); await window.__sleep(2300); return 'sent, phase=' + window.__phase() + ' busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-a06-working.png"
+ },
+ {
+  "js": "await window.__sleep(5000); window.__bottom(); return 'mid, busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-a07-working-mid.png"
+ },
+ {
+  "js": "const r = await window.__waitIdle(45000); window.__bottom(); return 'idle after ' + r + ' items=' + window.__items()",
+  "wait": 800,
+  "shot": "qa-a08-done-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'done dark'",
+  "wait": 700,
+  "shot": "qa-a09-done-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__bottom(); return 'done 900'",
+  "wait": 900,
+  "shot": "qa-a10-done-900-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "window.__bottom(); return 'done 900 dark'",
+  "wait": 900,
+  "shot": "qa-a11-done-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = 0; await window.__sleep(300); const cp = window.__bl(/^Copy$/); cp && cp.focus(); await window.__sleep(300); return 'copy buttons=' + [...document.querySelectorAll('button')].filter(b => /^(Copy|Copied)$/.test(b.getAttribute('aria-label')||'')).length + ' edit=' + !!window.__bl(/^Edit in the message box/)",
+  "wait": 300,
+  "shot": "qa-a12-user-actions-focus.png"
+ },
+ {
+  "js": "const cp = window.__bl(/^Copy$/); cp && cp.click(); await window.__sleep(250); let clip = '?'; try { clip = await navigator.clipboard.readText(); } catch (e) { clip = 'read failed: ' + e.message; } return 'after copy label=' + (cp && cp.getAttribute('aria-label')) + ' clipboard=[' + clip.slice(0, 80) + ']'",
+  "wait": 200,
+  "shot": "qa-a13-copied.png"
+ },
+ {
+  "js": "const e = window.__bl(/^Edit in the message box/); e && e.click(); await window.__sleep(500); return 'edit -> composer [' + window.__ta().value.slice(0, 80) + '] focused=' + (document.activeElement === window.__ta())",
+  "wait": 300,
+  "shot": "qa-a14-edit-in-box.png"
+ },
+ {
+  "js": "const all = [...document.querySelectorAll('button')].filter(b => /^Copy$/.test(b.getAttribute('aria-label')||'')); const last = all[all.length - 1]; last && last.scrollIntoView({block:'center'}); last && last.focus(); await window.__sleep(300); return 'reply copy buttons=' + all.length",
+  "wait": 300,
+  "shot": "qa-a15-reply-copy.png"
+ },
+ {
+  "js": "window.__t(''); await window.__S().send('Now also add a FAQ section'); await window.__sleep(900); await window.__S().send('And make every FAQ answer collapsible'); await window.__sleep(900); window.__bottom(); return 'queued items=' + window.__items() + ' take back buttons=' + [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Take back').length",
+  "wait": 300,
+  "shot": "qa-a16-queued.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'queued dark'",
+  "wait": 500,
+  "shot": "qa-a17-queued-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Edit'); b && b.click(); await window.__sleep(900); window.__bottom(); return 'queued Edit clicked=' + !!b + ' composer=[' + window.__ta().value + '] items=' + window.__items() + ' toasts=' + window.__toasts()",
+  "wait": 300,
+  "shot": "qa-a18-queued-edit.png"
+ },
+ {
+  "js": "window.__t(''); await window.__S().send('Also add a testimonials strip'); await window.__sleep(700); const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Take back'); b && b.click(); await window.__sleep(900); window.__bottom(); return 'take back clicked=' + !!b + ' composer=[' + window.__ta().value + '] items=' + window.__items() + ' toasts=' + window.__toasts()",
+  "wait": 300,
+  "shot": "qa-a19-took-back.png"
+ },
+ {
+  "js": "window.__t(''); const s = document.querySelector('.composer button[aria-label^=\"Stop\"]'); const lbl = s && s.getAttribute('aria-label'); return 'stop button label=' + lbl + ' busy=' + window.__busy()",
+  "wait": 300,
+  "shot": "qa-a20-stop-visible.png"
+ },
+ {
+  "js": "const before = window.__busy(); const s = document.querySelector('.composer button[aria-label^=\"Stop\"]'); s && s.click(); await window.__sleep(1200); window.__bottom(); return 'stop clicked=' + !!s + ' busy ' + before + ' -> ' + window.__busy() + ' phase=' + window.__phase() + ' toasts=' + window.__toasts()",
+  "wait": 400,
+  "shot": "qa-a21-stopped.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'stopped dark'",
+  "wait": 500,
+  "shot": "qa-a22-stopped-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "await window.__S().send('Make the pricing table responsive'); await window.__sleep(2000); document.activeElement && document.activeElement.blur(); const before = window.__busy(); const ev = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }); document.body.dispatchEvent(ev); await window.__sleep(1200); window.__bottom(); return 'esc handled=' + ev.defaultPrevented + ' busy ' + before + ' -> ' + window.__busy()",
+  "wait": 400,
+  "shot": "qa-a23-esc.png"
+ },
+ {
+  "js": "await window.__waitIdle(20000); await window.__S().send('Check the hero image size'); await window.__sleep(1800); window.__ta().focus(); const before = window.__busy(); const ev = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }); window.__ta().dispatchEvent(ev); await window.__sleep(1200); return 'esc from composer handled=' + ev.defaultPrevented + ' busy ' + before + ' -> ' + window.__busy()",
+  "wait": 300
+ },
+ {
+  "js": "await window.__waitIdle(20000); const k = window.__k(); window.__ensemble.setState(s => ({ items: { ...s.items, [k]: [...(s.items[k] || []), { id: 'qa-err-1', kind: 'notice', level: 'error', text: 'Claude stopped: the connection dropped before the reply finished.', ts: Date.now() }] }, agents: { ...s.agents, [k]: { ...(s.agents[k] || {}), phase: 'error' } } })); await window.__sleep(600); window.__bottom(); return 'try again button=' + !!window.__bt(/^Try again/)",
+  "wait": 400,
+  "shot": "qa-a24-retry-offer.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__bottom(); return 'retry dark'",
+  "wait": 500,
+  "shot": "qa-a25-retry-offer-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const b = window.__bt(/^Try again/); b && b.click(); await window.__sleep(1500); window.__bottom(); return 'retry clicked=' + !!b + ' busy=' + window.__busy() + ' items tail=' + window.__items().split(',').slice(-4).join(',')",
+  "wait": 400,
+  "shot": "qa-a26-retried.png"
+ },
+ {
+  "js": "await window.__waitIdle(30000); await window.__new(); await window.__S().send('Write release notes for 3.5.1'); await window.__sleep(1500); await window.__new(); await window.__S().send('Plan the FAQ page'); await window.__waitIdle(30000); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, bubbles: true, cancelable: true })); await window.__sleep(700); return 'palette items: ' + [...document.querySelectorAll('[cmdk-item]')].slice(0, 10).map(i => i.textContent.trim().slice(0, 50)).join(' || ')",
+  "wait": 300,
+  "shot": "qa-a27-palette.png"
+ },
+ {
+  "js": "const inp = document.querySelector('[cmdk-input]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(inp, 'pricing'); inp.dispatchEvent(new Event('input', { bubbles: true })); await window.__sleep(900); return 'pricing -> ' + [...document.querySelectorAll('[cmdk-item]')].slice(0, 8).map(i => i.textContent.trim().slice(0, 60)).join(' || ')",
+  "wait": 300,
+  "shot": "qa-a28-palette-pricing.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const inp = document.querySelector('[cmdk-input]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(inp, 'set'); inp.dispatchEvent(new Event('input', { bubbles: true })); await window.__sleep(900); return 'set -> ' + [...document.querySelectorAll('[cmdk-item]')].slice(0, 8).map(i => i.textContent.trim().slice(0, 60)).join(' || ')",
+  "wait": 300,
+  "shot": "qa-a29-palette-set-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "const inp = document.querySelector('[cmdk-input]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(inp, 'faq'); inp.dispatchEvent(new Event('input', { bubbles: true })); await window.__sleep(900); return 'faq -> ' + [...document.querySelectorAll('[cmdk-item]')].slice(0, 8).map(i => i.textContent.trim().slice(0, 60)).join(' || ')",
+  "wait": 300,
+  "shot": "qa-a30-palette-faq-900.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await window.__sleep(300); window.__S().setModal(null); await window.__sleep(300); window.__S().setModal({ kind: 'settings' }); await window.__sleep(700); return 'settings'",
+  "wait": 300,
+  "shot": "qa-a31-settings-1400-light.png"
+ },
+ {
+  "js": "const sc = [...document.querySelectorAll('[role=dialog] .overflow-y-auto')][0]; if (sc) sc.scrollTop = sc.scrollHeight / 2; await window.__sleep(300); return 'scrolled mid'",
+  "wait": 300,
+  "shot": "qa-a32-settings-mid.png"
+ },
+ {
+  "js": "const sc = [...document.querySelectorAll('[role=dialog] .overflow-y-auto')][0]; if (sc) sc.scrollTop = sc.scrollHeight; await window.__sleep(300); return 'scrolled end text: ' + (document.querySelector('[role=dialog]')||document.body).innerText.replace(/\\s+/g,' ').slice(0, 1500)",
+  "wait": 300,
+  "shot": "qa-a33-settings-end.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "dark",
+  "js": "const sc = [...document.querySelectorAll('[role=dialog] .overflow-y-auto')][0]; if (sc) sc.scrollTop = 0; return 'dark'",
+  "wait": 500,
+  "shot": "qa-a34-settings-1400-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "return '900 light'",
+  "wait": 600,
+  "shot": "qa-a35-settings-900-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "const sc = [...document.querySelectorAll('[role=dialog] .overflow-y-auto')][0]; if (sc) sc.scrollTop = sc.scrollHeight; return '900 dark end'",
+  "wait": 600,
+  "shot": "qa-a36-settings-900-dark.png"
+ }
+]

@@ -8,7 +8,7 @@ const shared = resolve('src/shared')
 // The built page may only load its own files and local images. The dev server
 // needs inline scripts for hot reload, so the policy is added to builds only.
 const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: media:; media-src 'self' media:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'"
+  "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: media:; media-src 'self' media:; font-src 'self' data:; connect-src 'self'; frame-src ensemble-app:; object-src 'none'; base-uri 'none'"
 const csp = {
   name: 'ensemble-csp',
   apply: 'build' as const,

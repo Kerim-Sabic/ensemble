@@ -13,6 +13,8 @@ import { useElapsed, waitingLabel } from './chat/Cards'
 import { MediaTile } from './Media'
 import { mediaKind } from '@shared/tools'
 import { tierOfModel } from '@shared/budget'
+import { groupAgents } from './ultra/groups'
+import { GroupRow, usePhases } from './ultra/Team'
 
 const EMPTY: Item[] = []
 const NO_TASKS: Task[] = []
@@ -92,7 +94,7 @@ function PlanSection({ chatId, account, isLead }: { chatId: string; account: Acc
 
 // ───────────── who is doing what ─────────────
 
-const TeamRow = memo(function TeamRow({ chatId, account, lead, focused }: { chatId: string; account: Account; lead: boolean; focused: boolean }) {
+const TeamRow = memo(function TeamRow({ chatId, account, lead, focused, nested }: { chatId: string; account: Account; lead: boolean; focused: boolean; nested?: boolean }) {
   const st = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, account.id)])
   const out = useStore((s) => s.statuses[account.id]?.state === 'signed-out')
   const task = useStore((s) => (st?.taskId ? s.tasks[chatId]?.find((t) => t.id === st.taskId) : undefined))
@@ -111,7 +113,7 @@ const TeamRow = memo(function TeamRow({ chatId, account, lead, focused }: { chat
       className={cn('flex w-full items-center gap-2.5 rounded-[10px] px-2 py-1.5 text-left transition-colors', focused ? 'bg-active' : 'hover:bg-hover')}
     >
       {/* A sub-agent is set in a little, under whoever started it. */}
-      {account.spawned && <span className={cn('shrink-0 border-b border-l border-line-2', account.spawned.depth > 1 ? 'ml-3.5 h-3 w-2.5' : 'ml-0.5 h-3 w-1.5', '-mt-2 rounded-bl-[5px]')} />}
+      {account.spawned && !nested && <span className={cn('shrink-0 border-b border-l border-line-2', account.spawned.depth > 1 ? 'ml-3.5 h-3 w-2.5' : 'ml-0.5 h-3 w-1.5', '-mt-2 rounded-bl-[5px]')} />}
       <Orb account={account} size={account.spawned ? 17 : 20} phase={st?.phase} off={out} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-1.5">
@@ -443,7 +445,7 @@ const TaskLine = memo(function TaskLine({ task }: { task: Task }) {
         <TaskStatusIcon status={task.status} />
       </span>
       <span className={cn('min-w-0 flex-1 truncate text-[12.5px]', task.status === 'done' || task.status === 'cancelled' ? 'text-ink-2' : 'text-ink')}>{task.title}</span>
-      <span className="tabular shrink-0 text-[11px] text-ink-4">{live ? duration(elapsed) : took > 1500 ? duration(took) : task.status === 'queued' && task.waitingOn?.length ? `after ${task.waitingOn.join(', ')}` : ''}</span>
+      <span className="tabular shrink-0 text-[11px] text-ink-4">{live ? (elapsed >= 1000 ? duration(elapsed) : '') : took > 1500 ? duration(took) : task.status === 'queued' && task.waitingOn?.length ? `after ${task.waitingFor || (task.waitingOn.length === 1 ? 'another task' : `${task.waitingOn.length} tasks`)}` : ''}</span>
       <Tip label={[to?.name || 'Teammate', runLabel(task)].filter(Boolean).join(' · ')} side="left">
         <span className="flex">
           <Orb account={to} size={14} live={live} />
@@ -623,6 +625,35 @@ export function ContextMeter({ context, className }: { context: { used: number; 
 }
 
 /** The panel beside the chat: the plan, who is doing what, and what changed. */
+/**
+ * Everyone in the chat. Agents that belong together (Scout, Scout 2, ...) share one line that
+ * opens to them, those at work first, so twenty agents still read as a short list.
+ */
+function TeamSection({ chatId, team, leadId, focusId }: { chatId: string; team: Account[]; leadId?: string; focusId?: string }) {
+  const phases = usePhases(chatId, team)
+  const { groups } = useMemo(() => groupAgents(team, new Set(leadId ? [leadId] : [])), [team, leadId])
+  const firstOf = useMemo(() => new Map(groups.map((g) => [g.members[0].id, g])), [groups])
+  const inGroup = useMemo(() => new Set(groups.flatMap((g) => g.members.map((a) => a.id))), [groups])
+  const busy = team.filter((a) => isBusy({ phase: phases.get(a.id) || 'idle' } as AgentState)).length
+  return (
+    <Section title="In this chat" right={team.length > 4 ? <span className="tabular text-[11.5px] text-ink-3">{busy ? `${busy} of ${team.length} working` : `${team.length} agents`}</span> : undefined}>
+      <div className="-mx-2 space-y-px">
+        {team.map((a) => {
+          const g = firstOf.get(a.id)
+          if (g)
+            return (
+              <GroupRow key={g.key} group={g} phases={phases} focusId={focusId}>
+                {(members) => members.map((m) => <TeamRow key={m.id} chatId={chatId} account={m} lead={false} focused={m.id === focusId} nested />)}
+              </GroupRow>
+            )
+          if (inGroup.has(a.id)) return null
+          return <TeamRow key={a.id} chatId={chatId} account={a} lead={a.id === leadId} focused={a.id === focusId} />
+        })}
+      </div>
+    </Section>
+  )
+}
+
 export function Inspector({ chatId }: { chatId: string }) {
   const team = useTeam()
   const focusId = useStore(focusOf)
@@ -633,13 +664,7 @@ export function Inspector({ chatId }: { chatId: string }) {
     <aside className="flex h-full w-[296px] shrink-0 flex-col border-l border-line bg-surface-2/60">
       <div className="min-h-0 flex-1 overflow-y-auto">
         {focused && <PlanSection chatId={chatId} account={focused} isLead={focused.id === leadId} />}
-        <Section title="In this chat">
-          <div className="-mx-2 space-y-px">
-            {team.map((a) => (
-              <TeamRow key={a.id} chatId={chatId} account={a} lead={a.id === leadId} focused={a.id === focusId} />
-            ))}
-          </div>
-        </Section>
+        <TeamSection chatId={chatId} team={team} leadId={leadId} focusId={focusId} />
         <ScreensSection chatId={chatId} />
         <MadeSection chatId={chatId} />
         <SpendSection chatId={chatId} />
@@ -710,8 +735,8 @@ export function TaskDialog() {
         {!!task.after?.length && (
           <p className="mt-2 text-[12px] text-ink-3">
             {task.waitingOn?.length
-              ? `Lined up behind ${task.after.join(' and ')}. It starts by itself when ${task.waitingOn.join(' and ')} ${task.waitingOn.length === 1 ? 'is' : 'are'} done, and gets their reports with the brief.`
-              : `Started by itself once ${task.after.join(' and ')} ${task.after.length === 1 ? 'was' : 'were'} done, with ${task.after.length === 1 ? 'its report' : 'their reports'} attached to the brief.`}
+              ? `Lined up behind ${task.afterFor || (task.after.length === 1 ? 'another task' : `${task.after.length} other tasks`)}. It starts by itself when ${task.waitingFor || 'they'} ${task.waitingOn.length === 1 ? 'is' : 'are'} done, and gets their reports with the brief.`
+              : `Started by itself once ${task.afterFor || (task.after.length === 1 ? 'another task' : `${task.after.length} other tasks`)} ${task.after.length === 1 ? 'was' : 'were'} done, with ${task.after.length === 1 ? 'its report' : 'their reports'} attached to the brief.`}
           </p>
         )}
         <div className="mt-5">
@@ -723,7 +748,7 @@ export function TaskDialog() {
         {task.result && (
           <div className="mt-5">
             <div className="mb-1.5 text-[11.5px] font-medium text-ink-3">{task.status === 'done' ? 'Report' : 'What happened'}</div>
-            <Markdown text={task.result} compact />
+            <Markdown text={task.result} compact replyTo={task.to} />
           </div>
         )}
         <div className="mt-6 flex gap-2">

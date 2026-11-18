@@ -1,0 +1,112 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "dark",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy'; };\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); const ag = c.agents || []; const depth = Math.max(0, ...ag.map(a => a.spawned?.depth || 0)); const t = s.tasks[c.id] || []; return 'agents ' + ag.length + ' (gone ' + ag.filter(a => a.spawned?.gone).length + ') depth ' + depth + ' tasks ' + t.length + ' done ' + t.filter(x => x.status === 'done').length + ' busy ' + window.__busy() + ' view ' + s.view + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nwindow.__hover = (name) => { const g = [...document.querySelectorAll('.nn-node')].find(x => (x.getAttribute('aria-label') || '').startsWith(name)) || [...document.querySelectorAll('.nn-node')][3]; if (g) g.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body })); return g ? g.getAttribute('aria-label') : 'none'; };\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "localStorage.setItem('ensemble.flow.feed', '0'); await window.__S().send('What does the project do?', undefined, undefined, { mode: 'quick' }); await window.__sleep(1500); await window.__waitIdle(20000); await window.ensemble.setUltra(window.__S().chatId, true); await window.__sleep(400); window.__S().setView('flow'); await window.__sleep(800); window.__t0 = performance.now(); window.__S().send('/gocrazy design the landing page'); return 'sent';",
+  "wait": 150
+ },
+ {
+  "js": "return 'frame 01 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f01.png"
+ },
+ {
+  "js": "return 'frame 02 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f02.png"
+ },
+ {
+  "js": "return 'frame 03 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f03.png"
+ },
+ {
+  "js": "return 'frame 04 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f04.png"
+ },
+ {
+  "js": "return 'frame 05 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f05.png"
+ },
+ {
+  "js": "return 'frame 06 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f06.png"
+ },
+ {
+  "js": "return 'frame 07 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f07.png"
+ },
+ {
+  "js": "return 'frame 08 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f08.png"
+ },
+ {
+  "js": "return 'frame 09 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f09.png"
+ },
+ {
+  "js": "return 'frame 10 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f10.png"
+ },
+ {
+  "js": "return 'frame 11 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f11.png"
+ },
+ {
+  "js": "return 'frame 12 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f12.png"
+ },
+ {
+  "js": "return 'frame 13 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f13.png"
+ },
+ {
+  "js": "return 'frame 14 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f14.png"
+ },
+ {
+  "js": "return 'frame 15 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f15.png"
+ },
+ {
+  "js": "return 'frame 16 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f16.png"
+ },
+ {
+  "js": "return 'frame 17 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f17.png"
+ },
+ {
+  "js": "return 'frame 18 at ' + Math.round(performance.now() - window.__t0) + ' ms | ' + window.__info();",
+  "wait": 150,
+  "shot": "auto-surfaces-f18.png"
+ }
+]

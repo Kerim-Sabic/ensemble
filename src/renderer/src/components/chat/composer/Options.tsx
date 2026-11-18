@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { CalendarClock, Flame, Hourglass, Repeat, Rocket, Target, Timer, UserCheck, X } from 'lucide-react'
+import { CalendarClock, Flame, Hourglass, Repeat, Target, Timer, UserCheck, X } from 'lucide-react'
+import { UltraGlyph } from '../../ultra/Ultra'
 import { WORK_MODES, type Account, type WorkMode } from '@shared/types'
 import { EVERY_PRESETS, MODE_INFO, ROUND_PRESETS, everyLabel, parseEvery } from '@shared/auto'
 import { useStore } from '@/store'
@@ -46,7 +47,7 @@ export function ModePill({ mode, onChange, ultra, onUltra }: { mode: WorkMode; o
       <MenuSeparator />
       <MenuLabel>Full power · uses allowance very fast</MenuLabel>
       <MenuItem
-        icon={<Rocket className={cn('size-[15px]', ultra && 'cu-icon')} strokeWidth={1.75} />}
+        icon={<UltraGlyph size={15} className={cn(!ultra && 'opacity-70 grayscale')} />}
         checked={ultra}
         hint={ultra ? 'On for this chat. Choose again to turn it off' : 'Many agents on the strongest models at full effort. Stays on for this chat'}
         onSelect={() => onUltra(!ultra)}

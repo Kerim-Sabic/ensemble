@@ -1,0 +1,13 @@
+body:
+  - type: textarea
+    id: job
+    attributes:
+      label: What you were trying to get done
+      description: The job, in your own words. Where did Ensemble get in the way or fall short?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you picture it working. Rough is fine.

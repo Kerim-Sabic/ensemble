@@ -1,0 +1,25 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "\nwindow.__sleep = ms => new Promise(r => setTimeout(r, ms));\nwindow.__S = () => window.__ensemble.getState();\nwindow.__ta = () => document.querySelector('.composer textarea');\nwindow.__t = v => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, v); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); };\nwindow.__enter = el => (el || window.__ta()).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));\nwindow.__open = label => { const b = document.querySelector('.composer button[aria-label^=\"' + label + '\"]'); if (!b) return false; b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); return true };\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__lead = () => { const s = window.__S(); const c = window.__chat(); return (c && c.leadId) || s.settings.leadId };\nwindow.__k = () => window.__S().chatId + ':' + window.__lead();\nwindow.__phase = () => (window.__S().agents[window.__k()] || {}).phase;\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__txt = (n) => document.body.innerText.replace(/\\s+/g, ' ').slice(0, n || 600);\nwindow.__bt = re => [...document.querySelectorAll('button')].find(b => re.test(((b.textContent || '').trim()) || b.getAttribute('aria-label') || ''));\nwindow.__bl = re => [...document.querySelectorAll('button')].find(b => re.test(b.getAttribute('aria-label') || ''));\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__new = async () => { window.__S().setView('chat'); window.__S().newChat(); await window.__sleep(700); };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 40000)) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy after ' + (max || 40000) + 'ms'; };\nwindow.__items = () => (window.__S().items[window.__k()] || []).map(i => i.kind + (i.event ? ':' + i.event : '') + (i.queued ? '(queued)' : '')).join(',');\nwindow.__toasts = () => window.__S().toasts.map(t => t.text).join(' | ');\n",
+  "wait": 2000
+ },
+ {
+  "js": "\nfor (let i = 0; i < 10; i++) {\n  if (window.__S().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break; b.click(); await window.__sleep(900);\n}\nreturn 'onboarded=' + window.__S().settings.onboarded + ' accounts=' + window.__S().accounts.map(a => a.name + (a.enabled ? '' : '(off)')).join(',');\n",
+  "wait": 800
+ },
+ {
+  "js": "\nconst out = [];\nfor (const d of [800, 1500, 2000, 2500, 3200, 4500]) {\n  await window.__new();\n  await window.__S().send('Add a pricing page with a checkout flow');\n  await window.__sleep(d);\n  const s = window.__S(); const lead = window.__lead(); const k = s.chatId + ':' + lead;\n  const before = (s.agents[k]||{}).phase + '/' + window.__busy();\n  await window.ensemble.stop(s.chatId, lead);\n  await window.__sleep(1500);\n  const mid = (window.__S().agents[k]||{}).phase + '/' + window.__busy();\n  await window.__sleep(3000);\n  const after = (window.__S().agents[k]||{}).phase + '/' + window.__busy();\n  out.push('stop(lead) at ' + d + 'ms: ' + before + ' -> +1.5s ' + mid + ' -> +4.5s ' + after);\n  await window.ensemble.stop(s.chatId); await window.__sleep(800);\n}\nreturn out.join(' || ');\n",
+  "wait": 300,
+  "shot": "qa-e01-stop-probe.png"
+ },
+ {
+  "js": "\nconst out = [];\nfor (const d of [1500, 2000, 2500, 3200]) {\n  await window.__new();\n  await window.__S().send('Add a pricing page with a checkout flow');\n  await window.__sleep(d);\n  const before = window.__busy();\n  document.activeElement && document.activeElement.blur();\n  const ev = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }); document.body.dispatchEvent(ev);\n  await window.__sleep(1500);\n  const mid = window.__busy() + ' ' + (window.__S().agents[window.__k()]||{}).phase;\n  await window.__sleep(3000);\n  out.push('Esc at ' + d + 'ms: busy ' + before + ' handled=' + ev.defaultPrevented + ' -> +1.5s ' + mid + ' -> +4.5s ' + window.__busy());\n  await window.ensemble.stop(window.__S().chatId); await window.__sleep(800);\n}\nreturn out.join(' || ');\n",
+  "wait": 300,
+  "shot": "qa-e02-esc-probe.png"
+ }
+]

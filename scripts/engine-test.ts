@@ -6,11 +6,14 @@ import fs from 'node:fs'
 import { Hub } from '../src/main/hub'
 import { findHands, WindowsDesktop } from '../src/main/hands/desktop'
 import type { HubEvent } from '../src/shared/types'
-import { adviseModel, budgetLine, budgetOf, spendScore } from '../src/shared/budget'
+import { adviseModel, budgetLine, budgetOf, modelForTier, spendScore } from '../src/shared/budget'
+import { parseBlock } from '../src/shared/iui'
 import { scanClaudeCode } from '../src/main/importer'
 
 const scenario = process.argv[2] || 'status'
-const dataDir = path.join(os.tmpdir(), 'ensemble-engine-test')
+// ENSEMBLE_TEST_ONLY=chatgpt (or claude) makes a team of that provider alone, in a data folder of its own.
+const only = process.env.ENSEMBLE_TEST_ONLY === 'chatgpt' || process.env.ENSEMBLE_TEST_ONLY === 'claude' ? process.env.ENSEMBLE_TEST_ONLY : null
+const dataDir = path.join(os.tmpdir(), only ? `ensemble-engine-test-${only}` : 'ensemble-engine-test')
 if (process.argv.includes('--fresh')) fs.rmSync(dataDir, { recursive: true, force: true })
 const work = path.join(os.tmpdir(), 'ensemble-engine-work')
 fs.mkdirSync(work, { recursive: true })
@@ -78,7 +81,7 @@ async function ensureAccounts(): Promise<void> {
   if (hub.accounts.accounts.length) return
   const found = await hub.accounts.discover()
   log('discovered', found.map((c) => `${c.provider}:${c.suggestedName}:${c.signedIn ? 'in' : 'out'}`).join(', '))
-  for (const c of found) if (c.signedIn) hub.accounts.add({ name: c.suggestedName, provider: c.provider, configDir: c.configDir })
+  for (const c of found) if (c.signedIn && (!only || c.provider === only)) hub.accounts.add({ name: c.suggestedName, provider: c.provider, configDir: c.configDir })
 }
 
 await hub.start()
@@ -549,6 +552,171 @@ try {
   } else if (scenario === 'enhance') {
     const out = await hub.enhance(process.argv[3] || 'make the app better and smarter, add goal options and loop options, it should be really amazing', null)
     log('ENHANCED:', JSON.stringify(out))
+  } else if (scenario === 'ultra' || scenario === 'gocrazy') {
+    // A real Ultra (or Go crazy) run on whatever team this data folder has, kept small on purpose.
+    //   pnpm engine ultra [leadId]      ENSEMBLE_TEST_ONLY=chatgpt pnpm engine ultra
+    const lead = (process.argv[3] && hub.accounts.get(process.argv[3])) || hub.lead()
+    if (!lead) throw new Error('no lead')
+    hub.updateSettings({ leadId: lead.id, smartTitles: false, recall: false, chatNotes: false })
+    const chat = hub.createChat({ cwd: work })
+    hub.setUltra(chat.id, true)
+    const ask =
+      'Write the best possible tagline (one line, at most 8 words) for a note-taking app for medical students. This is a small trial of the pipeline, so keep it small: exactly 2 scouts, 2 builders and 1 judge, no refine round, and send everyone home at the end.'
+    hub.send({ chatId: chat.id, to: lead.id, text: scenario === 'gocrazy' ? `/gocrazy ${ask}` : ask })
+    const t1 = Date.now()
+    let quiet = 0
+    // "stop" as the last word presses Stop for the whole chat once the swarm is at work, and watches that it stays stopped.
+    const pressStop = process.argv.includes('stop')
+    let firstAgent = 0
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 4000))
+      const open = hub.tasksOf(chat.id).filter((t) => t.status === 'running' || t.status === 'queued').length
+      const busy = hub.openChat(chat.id).states.filter((s) => s.phase !== 'idle' && s.phase !== 'error').length
+      if (pressStop) {
+        // Work is out with at least two others, whether they are agents started here or teammates.
+        if (!firstAgent && hub.tasksOf(chat.id).length >= 2) firstAgent = Date.now()
+        if (firstAgent && Date.now() - firstAgent > 35_000) {
+          log('>>> STOP with', busy, 'busy,', open, 'tasks open,', (chat.agents || []).length, 'agents started')
+          const t = Date.now()
+          await hub.stop(chat.id)
+          const count = (): string => `${hub.openChat(chat.id).states.filter((s) => s.phase !== 'idle' && s.phase !== 'error').length} busy, ${hub.tasksOf(chat.id).filter((x) => x.status === 'running' || x.status === 'queued').length} tasks open`
+          log('>>> stop returned after', Date.now() - t, 'ms:', count())
+          await new Promise((r) => setTimeout(r, 8000))
+          log('>>> 8 s later:', count())
+          await new Promise((r) => setTimeout(r, 45_000))
+          log('>>> 53 s later:', count(), '| tasks:', hub.tasksOf(chat.id).map((x) => `${x.id} ${x.status}`).join(', '))
+          break
+        }
+      }
+      quiet = !open && !busy ? quiet + 1 : 0
+      if (quiet >= 3) break
+      if (Date.now() - t1 > 25 * 60e3) {
+        log('TIMED OUT with', open, 'tasks open and', busy, 'busy')
+        break
+      }
+    }
+    const snap = hub.openChat(chat.id)
+    const name = (id: string): string => hub.accounts.get(id)?.name || id
+    log('ULTRA took', Math.round((Date.now() - t1) / 1000), 's | lead', lead.name, 'ran on', snap.states.find((s) => s.accountId === lead.id)?.model, '| agents started:', (chat.agents || []).length, '| still here:', (chat.agents || []).filter((a) => !a.spawned?.gone).length)
+    for (const a of chat.agents || []) log('  agent', a.name, '| on', name(a.spawned?.base || ''), '| for:', a.role, a.spawned?.gone ? '| sent home' : '')
+    for (const t of hub.tasksOf(chat.id)) log('  task', t.id, t.status, '|', name(t.to), '|', t.title, '| asked:', t.modelLabel || '-', t.effort || '', '| ran on:', t.ranOn || '?', t.after?.length ? `| after ${t.after.join(',')}` : '', '|', (t.result || '').replace(/\s+/g, ' ').slice(0, 140))
+    const mine = snap.items[lead.id] || []
+    log('  lead tools:', mine.flatMap((i) => (i.kind === 'tool' ? [i.name.replace('mcp__team__', '')] : [])).join(', '))
+    log('  lead turns:', mine.filter((i) => i.kind === 'turn').map((i) => (i.kind === 'turn' ? `${i.status} ${Math.round(i.durationMs / 1000)}s` : '')).join(' | '))
+    const last = [...mine].reverse().find((i) => i.kind === 'assistant')
+    log('ANSWER:', JSON.stringify(last && last.kind === 'assistant' ? last.text.slice(0, 900) : ''))
+  } else if (scenario === 'live') {
+    // Do real models write Live answer blocks on their own, and does the window's reader accept
+    // them? Three questions, each in a fresh chat, to the lead on the model named (default: the
+    // lightest). `pnpm engine live hello [model]`, or `ENSEMBLE_TEST_ONLY=chatgpt pnpm engine live [model]`.
+    const lead = only ? hub.lead() : hub.accounts.get(process.argv[3] || 'hello')
+    if (!lead) throw new Error('no lead to ask')
+    const want = (only ? process.argv[3] : process.argv[4]) || ''
+    hub.updateSettings({ leadId: lead.id, smartTitles: false, recall: false })
+    const models = hub.accounts.statuses.get(lead.id)?.models || []
+    const named = want ? models.find((m) => new RegExp(want, 'i').test(`${m.value} ${m.label}`))?.value || want : null
+    const model = named || (lead.provider === 'claude' ? 'haiku' : modelForTier(models, 'light')?.value || null)
+    hub.updateAccount(lead.id, { model })
+    const PROMPTS: [string, string][] = [
+      ['compare', 'I am a student. Compare Notion, Obsidian and OneNote for taking class notes: price, platforms and offline use. Which should I pick?'],
+      ['over time', 'Our sign-ups per month this year were: Jan 120, Feb 135, Mar 160, Apr 158, May 190, Jun 240, Jul 260, Aug 255, Sep 300. How are we doing?'],
+      ['ask me', 'Help me choose a plan for a project management tool for my team. Ask me what you need.'],
+    ]
+    const summary: string[] = []
+    for (const [name, text] of PROMPTS) {
+      const chat = hub.createChat({ cwd: work })
+      hub.send({ chatId: chat.id, to: lead.id, text })
+      // The reply's closing row comes just before the agent goes idle, in the same breath: wait for
+      // the row alone. A Claude model may ask with its own question tool, which the window shows as
+      // a card of clickable options: that counts, and is then skipped so the turn can end.
+      let asked = ''
+      await until((ev) => {
+        if (ev.type === 'item' && ev.item.kind === 'question' && ev.chatId === chat.id) {
+          asked = `question card (${ev.item.questions.length} question${ev.item.questions.length === 1 ? '' : 's'})`
+          const id = ev.item.requestId
+          setTimeout(() => hub.respondQuestion(id, null), 500)
+        }
+        return ev.type === 'item' && ev.item.kind === 'turn' && ev.accountId === lead.id && ev.chatId === chat.id
+      }, 300000)
+      await new Promise((r) => setTimeout(r, 1500))
+      const snap = hub.openChat(chat.id)
+      const reply = (snap.items[lead.id] || []).flatMap((i) => (i.kind === 'assistant' ? [i.text] : [])).join('\n\n')
+      const ranOn = snap.states.find((x) => x.accountId === lead.id)?.model
+      const fences = [...reply.matchAll(/```[ \t]*(ui|app)\b([^\n]*)\n([\s\S]*?)\n[ \t]*```/g)]
+      const found: string[] = asked ? [asked] : []
+      for (const f of fences) {
+        if (f[1] === 'app') {
+          found.push(`app (${f[3].length} chars)`)
+          continue
+        }
+        const r = parseBlock(f[3])
+        found.push(r.ok ? `${r.block.type} ok${r.notes.length ? ` (${r.notes.join('; ')})` : ''}` : `REJECTED: ${r.reason}`)
+        if (!r.ok) log(`LIVE | ${name} | rejected block:`, JSON.stringify(f[3].slice(0, 600)))
+      }
+      // A fenced block in some other language that looks like one of ours, e.g. ```json {"type":"chart"...}.
+      const near = [...reply.matchAll(/```[ \t]*(\w*)[^\n]*\n\s*\{\s*"type"\s*:\s*"(\w+)"/g)].filter((m) => m[1] !== 'ui').map((m) => `${m[1] || 'plain'} fence holding a ${m[2]}`)
+      const tables = (reply.match(/^\s*\|.*\|\s*\n\s*\|[\s:|-]+\|\s*$/gm) || []).length
+      const line = `${name} | model asked: ${model} | ran on: ${ranOn} | blocks: ${found.join(', ') || 'none'}${near.length ? ` | near misses: ${near.join(', ')}` : ''} | markdown tables: ${tables} | words: ${reply.split(/\s+/).filter(Boolean).length}`
+      summary.push(line)
+      log('LIVE |', line)
+      log('LIVE | reply:', JSON.stringify(reply.slice(0, 2500)))
+    }
+    log('LIVE SUMMARY (' + lead.provider + ')\n  ' + summary.join('\n  '))
+  } else if (scenario === 'gptonly') {
+    // A team with no Claude account at all. Run with ENSEMBLE_TEST_ONLY=chatgpt.
+    const lead = hub.lead()
+    if (!lead || lead.provider !== 'chatgpt' || hub.accounts.accounts.some((a) => a.provider === 'claude')) throw new Error('run this with ENSEMBLE_TEST_ONLY=chatgpt')
+    hub.updateSettings({ smartTitles: true, recall: false, chatNotes: false })
+    log('lead:', lead.id, '| role:', lead.role, '| models:', (hub.accounts.statuses.get(lead.id)?.models || []).map((m) => m.value || '(default)').join(', '))
+    const step = process.argv[3] || 'all'
+    if (step === 'all' || step === 'team') {
+      // A first message: the chat gets a title, the lead uses the team tools, and starts an agent of its own on the lightest model.
+      const chat = hub.createChat({ cwd: work })
+      hub.send({ chatId: chat.id, to: lead.id, text: 'Quick check of the team tools. First call roster. Then call spawn_agent with name "Scout", role "answers one question", model "luna", and a brief asking it to reply with exactly the word PONG and nothing else. When its report arrives, tell me in one sentence what it said.' })
+      await until((ev) => ev.type === 'task' && (ev.task.status === 'done' || ev.task.status === 'failed'), 420000)
+      await idle(lead.id)
+      await new Promise((r) => setTimeout(r, 2500))
+      const t = hub.tasksOf(chat.id)[0]
+      log('TEAM | title:', JSON.stringify(hub.chats.get(chat.id)?.title), '| task:', t?.status, '| asked for:', t?.modelLabel, '| ran on:', t?.ranOn, '| report:', JSON.stringify((t?.result || '').slice(0, 80)), '| lead ran on:', hub.openChat(chat.id).states.find((x) => x.accountId === lead.id)?.model)
+    }
+    if (step === 'all' || step === 'enhance') log('ENHANCED:', JSON.stringify(await hub.enhance('make the readme better so new people get it faster and dont get lost', null)))
+    if (step === 'all' || step === 'goal') {
+      const chat = hub.createChat({ cwd: work })
+      const file = path.join(work, 'gpt-goal-proof.txt')
+      fs.rmSync(file, { force: true })
+      hub.send({
+        chatId: chat.id,
+        to: lead.id,
+        text: 'In the working folder, create gpt-goal-proof.txt containing exactly the line "ensemble". Do it yourself and hand nothing off. In this first reply only create the file and say you created it; do not read it back yet.',
+        goal: { doneWhen: 'the file exists and its contents have been read back and shown in the report', maxRounds: 4 },
+      })
+      await until((ev) => ev.type === 'chat' && ev.chat.id === chat.id && !!ev.chat.goal && ev.chat.goal.status !== 'active', 480000)
+      const g = hub.chats.get(chat.id)?.goal
+      log('GOAL', g?.status, '| rounds used:', (g?.round ?? 0) + 1, '| checks:', JSON.stringify(g?.log.map((l) => `${l.met ? 'met' : 'not met'}: ${l.note}`)))
+      log('file:', fs.existsSync(file) ? JSON.stringify(fs.readFileSync(file, 'utf8')) : 'MISSING', '| used goal_report:', (hub.openChat(chat.id).items[lead.id] || []).some((i) => i.kind === 'tool' && i.name === 'mcp__team__goal_report'))
+    }
+    if (step === 'par') {
+      // Several agents on one ChatGPT account at the same moment: do they run side by side, or one after another?
+      const n = Number(process.argv[4] || '3')
+      const t1 = Date.now()
+      const chats = Array.from({ length: n }, () => hub.createChat({ cwd: work }))
+      hub.updateSettings({ smartTitles: false })
+      const done: string[] = []
+      await Promise.all(
+        chats.map((c, i) => {
+          hub.send({ chatId: c.id, to: lead.id, text: `Reply with exactly the word OK${i} and nothing else. Use no tools.` })
+          return until((ev) => ev.type === 'item' && ev.chatId === c.id && ev.item.kind === 'turn', 300000).then(() => done.push(`chat ${i}: ${((Date.now() - t1) / 1000).toFixed(1)} s`))
+        }),
+      )
+      log('PAR', n, 'at once |', done.join(' | '))
+    }
+    if (step === 'web') {
+      const chat = hub.createChat({ cwd: work })
+      hub.send({ chatId: chat.id, to: lead.id, text: 'Search the web for the current stable version of Node.js and tell me the version number and the address of the page you read it on, in one sentence. Do it yourself.' })
+      await idle(lead.id)
+      const items = hub.openChat(chat.id).items[lead.id] || []
+      log('WEB | searched:', items.some((i) => i.kind === 'tool' && /WebSearch/.test(i.name)), '| tools:', items.flatMap((i) => (i.kind === 'tool' ? [i.name] : [])).join(', '))
+    }
   } else if (scenario === 'gpt') {
     const id = hub.accounts.accounts.find((a) => a.provider === 'chatgpt')?.id
     if (!id) throw new Error('no chatgpt account')

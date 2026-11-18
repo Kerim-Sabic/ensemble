@@ -1,0 +1,225 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1200
+ },
+ {
+  "js": "await window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.'); return 'sent';",
+  "wait": 400
+ },
+ {
+  "js": "\nconst st = window.__ensemble;\nwindow.__u = { chatId: st.getState().chatId, agents: null, tasks: null };\nconst U = window.__u;\nconst apply = () => st.setState(s => {\n  const out = {};\n  out.chats = s.chats.map(c => {\n    if (c.id !== U.chatId) return c;\n    let n = c;\n    if (!c.ultra) n = { ...n, ultra: true };\n    if (U.agents && !U.agents.every(a => (c.agents || []).some(x => x.id === a.id))) n = { ...n, agents: [...(c.agents || []).filter(x => !U.agents.some(a => a.id === x.id)), ...U.agents] };\n    return n;\n  });\n  if (U.agents && U.agents.some(a => !s.members[a.id])) out.members = { ...s.members, ...Object.fromEntries(U.agents.map(a => [a.id, a])) };\n  if (U.tasks) {\n    const cur = s.tasks[U.chatId] || [];\n    if (!U.tasks.every(t => cur.some(x => x.id === t.id))) out.tasks = { ...s.tasks, [U.chatId]: [...cur.filter(x => !U.tasks.some(t => t.id === x.id)), ...U.tasks] };\n  }\n  return out;\n});\nU.apply = apply;\nst.subscribe(s => { const c = s.chats.find(c => c.id === U.chatId); if (!c) return; const miss = !c.ultra || (U.agents && U.agents.some(a => !s.members[a.id])) || (U.agents && !U.agents.every(a => (c.agents || []).some(x => x.id === a.id))) || (U.tasks && !U.tasks.every(t => (s.tasks[U.chatId] || []).some(x => x.id === t.id))); if (miss) setTimeout(apply, 0); });\napply();\nreturn 'ultra on for ' + U.chatId;\n",
+  "wait": 6500
+ },
+ {
+  "js": "\nconst st = window.__ensemble; const U = window.__u; const s = st.getState(); const now = Date.now();\nconst lead = s.chats.find(c => c.id === U.chatId).leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id;\nU.lead = lead;\nconst ALL = [\n  ['scout-2', 'Scout 2', lead, 1, 'teal', 'Pricing of five rivals'],\n  ['scout-3', 'Scout 3', lead, 1, 'blue', 'Checkout patterns'],\n  ['scout-4', 'Scout 4', lead, 1, 'violet', 'Payment provider docs'],\n  ['builder-a', 'Builder A', lead, 1, 'clay', 'Version A of the page'],\n  ['judge', 'Judge', lead, 1, 'slate', 'Scores every version'],\n  ['scout-5', 'Scout 5', lead, 1, 'green', 'Accessibility rules'],\n  ['scout-6', 'Scout 6', lead, 1, 'amber', 'Tax and VAT'],\n  ['scout-7', 'Scout 7', lead, 1, 'rose', 'Annual discounts'],\n  ['scout-8', 'Scout 8', lead, 1, 'slate', 'Conversion studies'],\n  ['scout-9', 'Scout 9', lead, 1, 'teal', 'Refund policies'],\n  ['scout-10', 'Scout 10', lead, 1, 'blue', 'Trial lengths'],\n  ['scout-11', 'Scout 11', lead, 1, 'violet', 'Plan naming'],\n  ['scout-12', 'Scout 12', lead, 1, 'green', 'Enterprise tiers'],\n  ['builder-b', 'Builder B', lead, 1, 'blue', 'Version B of the page'],\n  ['builder-c', 'Builder C', lead, 1, 'violet', 'Version C of the page'],\n  ['judge-2', 'Judge 2', lead, 1, 'slate', 'Second scoring pass'],\n  ['tester', 'Tester', 'builder-a', 2, 'green', 'Runs the checkout tests'],\n  ['reviewer', 'Reviewer', 'builder-a', 2, 'rose', 'Reads the diff cold'],\n  ['renderer', 'Renderer', 'builder-b', 2, 'amber', 'Renders each direction'],\n  ['critic', 'Critic', 'builder-c', 2, 'clay', 'Checks it against the brief'],\n];\nwindow.__grow = (n) => {\n  const list = ALL.slice(0, n).map(([id, name, by, depth, accent, role]) => ({ id, name, provider: 'claude', accent, enabled: true, role, spawned: { chatId: U.chatId, base: lead, by, depth, at: now } }));\n  const tasks = list.map((a, i) => ({ id: 'ft-' + a.id, chatId: U.chatId, title: a.role, brief: a.role, from: a.spawned.by, to: a.id, status: i % 4 === 0 ? 'done' : i % 4 === 3 ? 'queued' : 'running', createdAt: now - 60000, startedAt: now - 40000 }));\n  U.agents = list; U.tasks = tasks; U.apply();\n  const busy = list.filter((a, i) => i % 4 === 1 || i % 4 === 2);\n  const acts = ['Reading the WCAG checklist', 'Searching the web', 'Writing src/pages/Pricing.tsx', 'Comparing three layouts', 'Reading stripe.com/docs', 'Running the checkout tests'];\n  st.setState(x => ({ agents: { ...x.agents, ...Object.fromEntries(busy.map((a, i) => [U.chatId + ':' + a.id, { chatId: U.chatId, accountId: a.id, phase: i === 2 ? 'waiting' : 'thinking', activity: i === 2 ? 'Wants to run npm install' : acts[i % acts.length], queued: 0, turnStartedAt: now - 30000 }])) } }));\n  // What the lead's transcript shows: the agents joining, then the work handed out, in one go.\n  const k = U.chatId + ':' + lead;\n  const mine = list.filter(a => a.spawned.by === lead);\n  const fresh = mine.filter(a => !(st.getState().items[k] || []).some(i => i.id === 'fs-' + a.id));\n  const items = [\n    ...fresh.map((a, i) => ({ id: 'fs-' + a.id, ts: now + i, kind: 'spawn', agentId: a.id, name: a.name, role: a.role, base: lead })),\n    ...fresh.map((a, i) => ({ id: 'fd-' + a.id, ts: now + 100 + i, kind: 'delegate', taskId: 'ft-' + a.id, to: a.id, title: a.role, brief: a.role })),\n  ];\n  st.setState(x => ({ items: { ...x.items, [k]: [...(x.items[k] || []), ...items] } }));\n  return 'members now ' + (5 + list.length) + ', busy fake ' + busy.length;\n};\nreturn 'grow ready';\n",
+  "wait": 100
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('chat'); const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c03-chat-1400-light.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "dark",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c03-chat-1200-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c03-chat-900-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 800,
+  "shot": "auto-surfaces-c03-chat-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('now'); return 'now';",
+  "wait": 1200,
+  "shot": "auto-surfaces-c03-mission-1400-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "wait": 1000,
+  "shot": "auto-surfaces-c03-mission-900-dark.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('chat'); return window.__grow(5);",
+  "wait": 1200
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('chat'); const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c10-chat-1400-light.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "dark",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c10-chat-1200-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c10-chat-900-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 800,
+  "shot": "auto-surfaces-c10-chat-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('now'); return 'now';",
+  "wait": 1200,
+  "shot": "auto-surfaces-c10-mission-1400-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "wait": 1000,
+  "shot": "auto-surfaces-c10-mission-900-dark.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('chat'); return window.__grow(20);",
+  "wait": 1200
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('chat'); const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c25-chat-1400-light.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "dark",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c25-chat-1200-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 1000,
+  "shot": "auto-surfaces-c25-chat-900-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === window.__u.chatId); const tabs = document.querySelectorAll('[data-network-strip]').length; const chip = document.querySelector('button[aria-label$=\"more agents\"]'); return 'agents=' + ((c.agents || []).length) + ' chip=' + (chip ? chip.getAttribute('aria-label') : 'none');",
+  "wait": 800,
+  "shot": "auto-surfaces-c25-chat-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('now'); return 'now';",
+  "wait": 1200,
+  "shot": "auto-surfaces-c25-mission-1400-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "wait": 1000,
+  "shot": "auto-surfaces-c25-mission-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 600)); const b = document.querySelector('[data-network-strip] > button'); b && b.click(); return 'strip open ' + !!b;",
+  "wait": 900,
+  "shot": "auto-surfaces-c25-strip-open-1400-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 700,
+  "shot": "auto-surfaces-c25-strip-open-1400-dark.png"
+ },
+ {
+  "js": "const b = document.querySelector('[data-network-strip] > button'); b && b.click(); const c = document.querySelector('button[aria-label$=\"more agents\"]'); if (c) c.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); await new Promise(r => setTimeout(r, 500)); const g = [...document.querySelectorAll('[role=menuitem]')].find(e => /Scouts/.test(e.textContent)); if (g) { g.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse' })); g.focus(); g.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); } return 'menu ' + !!c + ' group ' + !!g;",
+  "wait": 900,
+  "shot": "auto-surfaces-c25-more-menu-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 200)); document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const g = [...document.querySelectorAll('aside button')].find(b => /^Scouts/.test(b.textContent.trim())); g && g.click(); const d = [...document.querySelectorAll('[data-view-scope] button')].filter(b => /^Handed out/.test(b.textContent.trim())).pop(); d && d.click(); await new Promise(r => setTimeout(r, 300)); d && d.scrollIntoView({ block: 'start' }); return 'panel group ' + !!g + ', handoff ' + !!d;",
+  "wait": 900,
+  "shot": "auto-surfaces-c25-open-groups-1400-light.png"
+ }
+]

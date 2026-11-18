@@ -16,7 +16,7 @@ import {
 } from '@shared/types'
 import { exists, readJson, slugify, writeJson } from './util'
 import { claudeEnv, probeClaude } from './providers/claude'
-import { codexEnv, codexLoginStatus } from './providers/codex'
+import { codexEnv, codexLoginStatus, codexOwnModel } from './providers/codex'
 import { probeCodex } from './providers/codex-probe'
 import { findClaude, findCodex } from './locate'
 import { NEW_USER } from './setup'
@@ -214,7 +214,8 @@ export class AccountManager {
 
   /** True while an account has run out of its current window. */
   limitedUntil(id: string): number | null {
-    const u = this.usage.get(id)
+    // Agents started inside a chat use their account's allowance, which is kept under the account.
+    const u = this.usage.get(this.baseId(id))
     if (!u) return null
     const now = Date.now()
     for (const w of [u.session, u.weekly]) {
@@ -478,6 +479,9 @@ export class AccountManager {
         })
         try {
           const probe = await probeCodex(exe, a.configDir)
+          // The account's own settings file wins over the provider's default, as it does when the agent runs.
+          const own = codexOwnModel(a.configDir)
+          if (own && probe.models.some((m) => m.value === own)) for (const m of probe.models) m.isDefault = m.value === own
           this.setStatus({
             accountId: a.id,
             state: 'ready',

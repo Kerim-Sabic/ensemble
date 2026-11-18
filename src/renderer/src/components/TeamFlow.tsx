@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowRight, ArrowUpRight, Check, ChevronDown, CircleAlert, Hourglass, ListChecks, MessageCircleQuestion, PanelRightClose, PanelRightOpen, Play, Reply, Square, StickyNote, UserPlus, Waypoints } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Check, ChevronDown, CircleAlert, Hourglass, LayoutGrid, ListChecks, MessageCircleQuestion, PanelRightClose, PanelRightOpen, Play, Reply, Square, StickyNote, UserPlus, Waypoints, Workflow, Network } from 'lucide-react'
 import type { Account, AgentState, Item, Task } from '@shared/types'
 import { agentKey, leadOf, useStore, useTeam } from '@/store'
 import { accentVars, cn, duration, runLabel } from '@/lib/util'
@@ -7,9 +7,14 @@ import { YOU, gapLabel, layoutTimeline, teamBeats, turnSpans, type Beat, type Be
 import { Button, Segmented, Tip } from './ui'
 import { Orb } from './Orb'
 import { TeamMap, type Packet } from './TeamMap'
+import { TeamBoard } from './team/TeamBoard'
+import { useMeasured } from './ultra/fit'
 import { Markdown } from './Markdown'
+import { NetworkView, takeNetworkWish } from './ultra/neural/NetworkView'
 
 const EMPTY: Item[] = []
+
+type FlowMode = 'groups' | 'map' | 'network'
 const NO_TASKS: Task[] = []
 
 const WORD: Record<BeatKind, string> = {
@@ -66,9 +71,10 @@ function useFlow(chatId: string) {
 
 // ───────────── who worked when ─────────────
 
-function Lanes({ team, spans, now }: { team: Account[]; spans: Span[]; now: number }) {
+function Lanes({ team, spans, now, folded }: { team: Account[]; spans: Span[]; now: number; folded?: boolean }) {
   const scroller = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useRemembered('ensemble.flow.lanes', true)
+  // Next to the board, which already shows each agent's time, it starts folded.
+  const [open, setOpen] = useRemembered(folded ? 'ensemble.flow.lanes.groups' : 'ensemble.flow.lanes', !folded)
   const [room, setRoom] = useState(600)
   useLayoutEffect(() => {
     const el = scroller.current
@@ -98,7 +104,7 @@ function Lanes({ team, spans, now }: { team: Account[]; spans: Span[]; now: numb
           {duration(worked)} of work in all{tl.peak > 1 ? ` · up to ${tl.peak} at the same time` : ''}
         </span>
       </button>
-      <div className={cn('flex pb-3', !open && 'hidden')}>
+      <div className={cn('flex max-h-[min(22vh,168px)] overflow-y-auto pb-3 [scrollbar-width:thin]', !open && 'hidden')}>
         <div className="w-[132px] shrink-0 space-y-1 pl-4">
           {rows.map((a) => (
             <div key={a.id} className="flex h-6 items-center gap-2 text-[12px]">
@@ -184,7 +190,7 @@ const BeatRow = memo(function BeatRow({ beat, accounts, task, lit, onOpen }: { b
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-[24px] text-[12.5px]">
           {beat.title && <span className="font-medium">{beat.title}</span>}
           {beat.kind === 'task' && task && runLabel(task) && <span className="text-[11px] text-ink-3">{runLabel(task)}</span>}
-          {beat.kind === 'task' && task?.after?.length ? <span className="text-[11px] text-ink-3">{task.waitingOn?.length ? `waiting for ${task.waitingOn.join(', ')}` : `after ${task.after.join(', ')}`}</span> : null}
+          {beat.kind === 'task' && task?.after?.length ? <span className="text-[11px] text-ink-3">{task.waitingOn?.length ? (task.waitingFor ? `waiting for ${task.waitingFor}` : 'waiting') : task.afterFor ? `after ${task.afterFor}` : 'lined up'}</span> : null}
         </div>
       )}
       <button onClick={() => long && setOpen((o) => !o)} className={cn('mt-0.5 block w-full pl-[24px] text-left', long ? 'cursor-pointer' : 'cursor-default')}>
@@ -228,7 +234,7 @@ function useRemembered(key: string, start: boolean): [boolean, (v: boolean) => v
 /** Work changing hands, as opposed to talk: a task, its report, or a new agent being started. */
 const isWork = (b: Beat): boolean => b.kind === 'task' || b.kind === 'report' || b.kind === 'joined'
 
-function Feed({ beats, tasks, accounts, lit, replaying, onReplay, onHide }: { beats: Beat[]; tasks: Task[]; accounts: Account[]; lit: string | null; replaying: boolean; onReplay(): void; onHide(): void }) {
+function Feed({ beats, tasks, accounts, lit, replaying, onReplay, onHide, over }: { beats: Beat[]; tasks: Task[]; accounts: Account[]; lit: string | null; replaying: boolean; onReplay(): void; onHide(): void; over?: boolean }) {
   const [filter, setFilter] = useState<Filter>('all')
   const setFocus = useStore((s) => s.setFocus)
   const setView = useStore((s) => s.setView)
@@ -255,7 +261,7 @@ function Feed({ beats, tasks, accounts, lit, replaying, onReplay, onHide }: { be
   const work = beats.filter(isWork).length
 
   return (
-    <aside className="flex w-[336px] shrink-0 flex-col border-l border-line bg-surface xl:w-[404px]">
+    <aside className={cn('flex shrink-0 flex-col bg-surface', over ? 'absolute top-0 right-0 bottom-0 z-40 w-[min(380px,92%)] animate-fade-in shadow-pop' : 'w-[336px] border-l border-line xl:w-[404px]')}>
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line pr-2.5 pl-4">
         <Tip label="Hide, to give the map more room" side="bottom">
           <button aria-label="Hide the conversation" onClick={onHide} className="-ml-1.5 flex size-7 shrink-0 items-center justify-center rounded-[8px] text-ink-3 hover:bg-hover hover:text-ink">
@@ -308,6 +314,23 @@ export function TeamFlow() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   const [now, setNow] = useState(() => Date.now())
   const [feed, setFeed] = useRemembered('ensemble.flow.feed', true)
+  const [mapMode, setMapMode] = useRemembered('ensemble.flow.map', false)
+  const ultra = useStore((s) => !!s.chats.find((c) => c.id === chatId)?.ultra)
+  // A chat in Ultra opens on the network; so does one sent here from the Ultra strip or mission
+  // control. Picking another view sticks for that chat until you leave it.
+  const [picked, setPicked] = useState<{ chat: string; mode: FlowMode } | null>(() => (takeNetworkWish(chatId) ? { chat: chatId, mode: 'network' } : null))
+  useEffect(() => {
+    if (takeNetworkWish(chatId)) setPicked({ chat: chatId, mode: 'network' })
+  }, [chatId])
+  const mode: FlowMode = picked?.chat === chatId ? picked.mode : ultra ? 'network' : mapMode ? 'map' : 'groups'
+  const setMode = (m: FlowMode): void => {
+    setPicked({ chat: chatId, mode: m })
+    if (m !== 'network') setMapMode(m === 'map')
+  }
+  // With little room the conversation slides over the team instead of squeezing it.
+  const [frame, frameW] = useMeasured<HTMLDivElement>()
+  const narrow = frameW > 0 && frameW < 940
+  const [overlay, setOverlay] = useState(false)
   const setFocus = useStore((s) => s.setFocus)
   const setView = useStore((s) => s.setView)
   const openAgent = useCallback(
@@ -317,6 +340,9 @@ export function TeamFlow() {
     },
     [setFocus, setView],
   )
+
+  // Whoever something was just handed to lights up for a moment on the board.
+  const pinged = useMemo(() => new Set(packets.map((p) => p.to)), [packets])
 
   const launch = useCallback((b: Beat) => {
     const id = `${b.id}:${Math.random().toString(36).slice(2, 7)}`
@@ -401,30 +427,55 @@ export function TeamFlow() {
   if (!chatId) return null
   if (!team.length) return null
 
+  const beside = feed && !narrow
+  const feedOpen = narrow ? overlay : feed
+  const toggleFeed = (): void => (narrow ? setOverlay(!overlay) : setFeed(!feed))
+
   return (
-    <div className="flex h-full min-h-0 bg-surface-2">
+    <div ref={frame} className="relative flex h-full min-h-0 bg-surface-2">
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {beats.length === 0 && (
-          <div className="pointer-events-none absolute top-4 left-0 z-20 flex w-full justify-center px-8">
-            <div className="flex max-w-[460px] items-start gap-2.5 rounded-[14px] bg-surface px-4 py-3 text-[12.5px] leading-relaxed text-ink-2 shadow-card">
-              <Waypoints className="mt-0.5 size-4 shrink-0 text-ink-3" strokeWidth={1.75} />
-              This is the team for this chat. Ask the lead for something, and you will see each task, question and report travel between them here.
-            </div>
+        <div className="flex h-12 shrink-0 items-center gap-2 px-5">
+          <Segmented<FlowMode>
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'groups', label: <><LayoutGrid className="size-3.5" /> Groups</> },
+              { value: 'map', label: <><Workflow className="size-3.5" /> Map</> },
+              { value: 'network', label: <><Network className="size-3.5" /> Network</> },
+            ]}
+          />
+          <span className="min-w-0 flex-1" />
+          {!beside && (
+            <button
+              onClick={toggleFeed}
+              className={cn('flex h-7 items-center gap-1.5 rounded-[8px] px-2.5 text-[12.5px] font-medium transition-colors', feedOpen ? 'bg-active text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink')}
+            >
+              <PanelRightOpen className="size-[15px]" /> Between them
+              {beats.length > 0 && <span className="tabular rounded-full bg-active px-1.5 text-[10.5px] leading-[15px]">{beats.length}</span>}
+            </button>
+          )}
+        </div>
+        {mode === 'network' ? (
+          <NetworkView chatId={chatId} onOpen={openAgent} />
+        ) : mode === 'map' ? (
+          <div className="relative flex min-h-0 flex-1 flex-col border-t border-line">
+            {beats.length === 0 && (
+              <div className="pointer-events-none absolute top-4 left-0 z-20 flex w-full justify-center px-8">
+                <div className="flex max-w-[460px] items-start gap-2.5 rounded-[14px] bg-surface px-4 py-3 text-[12.5px] leading-relaxed text-ink-2 shadow-card">
+                  <Waypoints className="mt-0.5 size-4 shrink-0 text-ink-3" strokeWidth={1.75} />
+                  This is the team for this chat. Ask the lead for something, and you will see each task, question and report travel between them here.
+                </div>
+              </div>
+            )}
+            <TeamMap chatId={chatId} team={team} leadId={leadId} beats={beats} tasks={tasks} packets={packets} onOpen={openAgent} />
           </div>
+        ) : (
+          <TeamBoard chatId={chatId} team={team} leadId={leadId} tasks={tasks} pinged={pinged} onOpen={openAgent} />
         )}
-        <TeamMap chatId={chatId} team={team} leadId={leadId} beats={beats} tasks={tasks} packets={packets} onOpen={openAgent} />
-        {!feed && (
-          <button
-            onClick={() => setFeed(true)}
-            className="absolute top-3 right-3 z-30 flex h-8 items-center gap-1.5 rounded-[10px] bg-surface px-2.5 text-[12.5px] font-medium text-ink-2 shadow-float hover:text-ink"
-          >
-            <PanelRightOpen className="size-[15px]" /> Between them
-            {beats.length > 0 && <span className="tabular rounded-full bg-active px-1.5 text-[10.5px] leading-[15px]">{beats.length}</span>}
-          </button>
-        )}
-        <Lanes team={team} spans={spans} now={now} />
+        {mode !== 'network' && <Lanes key={mode} team={team} spans={spans} now={now} folded={mode === 'groups'} />}
       </div>
-      {feed && <Feed beats={beats} tasks={tasks} accounts={team} lit={lit} replaying={replaying} onReplay={replay} onHide={() => setFeed(false)} />}
+      {beside && <Feed beats={beats} tasks={tasks} accounts={team} lit={lit} replaying={replaying} onReplay={replay} onHide={() => setFeed(false)} />}
+      {narrow && overlay && <Feed over beats={beats} tasks={tasks} accounts={team} lit={lit} replaying={replaying} onReplay={replay} onHide={() => setOverlay(false)} />}
     </div>
   )
 }

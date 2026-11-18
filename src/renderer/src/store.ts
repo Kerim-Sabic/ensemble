@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import type {
   Account,
   AccountStatus,
   AccountUsage,
+  AgentPhase,
   AgentState,
   Attachment,
   Bootstrap,
@@ -144,6 +146,13 @@ interface State {
   run<T>(p: Promise<T>): Promise<T | undefined>
   /** Turns a chat's Ultra on or off. Shows at once, and goes back if the app says no. */
   setUltra(chatId: string, on: boolean): Promise<boolean>
+  /**
+   * Takes back a message that is waiting its turn. Resolves with the message when it was taken
+   * back (it leaves the transcript), or null when it had already started or could not be.
+   */
+  dequeue(chatId: string, accountId: string, itemId: string, quiet?: boolean): Promise<Extract<Item, { kind: 'user' }> | null>
+  /** Takes one event from the hub. Events are applied together, once per drawn frame. */
+  receive(ev: HubEvent): void
 }
 
 /** What can go with a message besides its text: a way of working, or making it a goal or a loop. */
@@ -153,6 +162,8 @@ export interface SendOptions {
   loop?: Partial<LoopInput>
   /** Turn Ultra on for the chat this message starts (Ultra picked before the chat existed). */
   ultra?: boolean
+  /** A Live answers control sent this (a choice, a form, a mini app's offer), not the person typing. */
+  fromControl?: boolean
 }
 
 const key = (chatId: string, accountId: string): string => `${chatId}:${accountId}`
@@ -224,145 +235,176 @@ export const uiBus = new EventTarget()
 const changeTimers = new Map<string, ReturnType<typeof setTimeout>>()
 /** Chats being read right now, so two askers share one read. */
 const loading = new Map<string, Promise<void>>()
+/** Changes to a chat's rows that came while it was being read, to be played over it once it is in. */
+const held = new Map<string, HubEvent[]>()
+
+/** A message taken back before it started: it is no longer part of the conversation. */
+const withdrawn = (i: Item): boolean => i.kind === 'user' && !!i.withdrawn
 
 export const useStore = create<State>((set, get) => {
-  const handle = (ev: HubEvent): void => {
+  /**
+   * What one event from the hub changes, worked out against `s` (the state as it stands after the
+   * events before it in the same batch). Anything that is not a change to the state, such as a
+   * toast or opening a chat, goes into `later` and happens once the batch is in.
+   */
+  const reduce = (ev: HubEvent, s: State, later: (() => void)[]): Partial<State> | null => {
     switch (ev.type) {
       case 'settings':
-        set({ settings: ev.settings })
-        return
+        return { settings: ev.settings }
       case 'accounts':
-        set((s) => ({ accounts: ev.accounts, members: membersOf(ev.accounts, s.chats) }))
-        return
+        return { accounts: ev.accounts, members: membersOf(ev.accounts, s.chats) }
       case 'account-status':
-        set((s) => ({ statuses: withAgents({ ...s.statuses, [ev.status.accountId]: ev.status }, s.chats) }))
-        return
+        return { statuses: withAgents({ ...s.statuses, [ev.status.accountId]: ev.status }, s.chats) }
       case 'account-usage':
-        set((s) => ({ usage: withAgents({ ...s.usage, [ev.usage.accountId]: ev.usage }, s.chats) }))
-        return
+        return { usage: withAgents({ ...s.usage, [ev.usage.accountId]: ev.usage }, s.chats) }
       case 'login':
-        set((s) => ({ logins: { ...s.logins, [ev.progress.accountId]: ev.progress } }))
-        return
-      case 'chat':
-        set((s) => {
-          const chats = sortChats([...s.chats.filter((c) => c.id !== ev.chat.id), ev.chat])
-          // Only a chat with agents of its own changes who can be looked up.
-          if (!ev.chat.agents?.length) return { chats }
-          return { chats, members: membersOf(s.accounts, chats), statuses: withAgents(s.statuses, chats), usage: withAgents(s.usage, chats) }
-        })
-        return
+        return { logins: { ...s.logins, [ev.progress.accountId]: ev.progress } }
+      case 'chat': {
+        const chats = sortChats([...s.chats.filter((c) => c.id !== ev.chat.id), ev.chat])
+        // Only a chat with agents of its own changes who can be looked up.
+        if (!ev.chat.agents?.length) return { chats }
+        return { chats, members: membersOf(s.accounts, chats), statuses: withAgents(s.statuses, chats), usage: withAgents(s.usage, chats) }
+      }
       case 'chat-removed':
-        set((s) => ({ chats: s.chats.filter((c) => c.id !== ev.chatId), chatId: s.chatId === ev.chatId ? null : s.chatId }))
-        return
+        return { chats: s.chats.filter((c) => c.id !== ev.chatId), chatId: s.chatId === ev.chatId ? null : s.chatId }
       case 'folders':
-        set({ folders: ev.folders })
-        return
+        return { folders: ev.folders }
       case 'agent': {
         const k = key(ev.state.chatId, ev.state.accountId)
-        set((s) => {
-          const patch: Partial<State> = { agents: { ...s.agents, [k]: ev.state } }
-          // Keep the last few things it did, so its work can be followed without opening its chat.
-          const st = ev.state
-          const turn = st.turnStartedAt || 0
-          const fresh = !!turn && trailTurn.get(k) !== turn
-          if (fresh) trailTurn.set(k, turn)
-          const was = fresh ? [] : s.trail[k] || []
-          const text = st.activity?.trim()
-          if (text && !DULL.has(text) && st.phase !== 'idle' && st.phase !== 'error' && was[was.length - 1]?.text !== text) {
-            patch.trail = { ...s.trail, [k]: [...was.slice(-5), { text, ts: Date.now() }] }
-          } else if (fresh) patch.trail = { ...s.trail, [k]: was }
-          return patch
-        })
-        return
+        const patch: Partial<State> = { agents: { ...s.agents, [k]: ev.state } }
+        // Keep the last few things it did, so its work can be followed without opening its chat.
+        const st = ev.state
+        const turn = st.turnStartedAt || 0
+        const fresh = !!turn && trailTurn.get(k) !== turn
+        if (fresh) trailTurn.set(k, turn)
+        const was = fresh ? [] : s.trail[k] || []
+        const text = st.activity?.trim()
+        if (text && !DULL.has(text) && st.phase !== 'idle' && st.phase !== 'error' && was[was.length - 1]?.text !== text) {
+          patch.trail = { ...s.trail, [k]: [...was.slice(-5), { text, ts: Date.now() }] }
+        } else if (fresh) patch.trail = { ...s.trail, [k]: was }
+        return patch
       }
-      case 'item': {
-        const k = key(ev.chatId, ev.accountId)
-        set((s) => {
-          const patch: Partial<State> = {}
-          if (s.loaded[ev.chatId]) {
-            const list = s.items[k] || []
-            if (!list.some((i) => i.id === ev.item.id)) patch.items = { ...s.items, [k]: [...list, ev.item] }
-          }
-          // A finished turn somewhere you are not looking is worth a dot.
-          const watching = s.chatId === ev.chatId && s.view === 'chat' && focusOf(s) === ev.accountId
-          if (ev.item.kind === 'turn' && !watching) patch.unread = { ...s.unread, [k]: (s.unread[k] || 0) + 1 }
-          return patch
-        })
-        // A reply just ended: the files on disk may have changed.
-        if (ev.item.kind === 'turn' && get().chatId === ev.chatId) get().refreshChanges(ev.chatId)
-        return
-      }
-      case 'item-patch': {
-        const k = key(ev.chatId, ev.accountId)
-        // Whatever was still arriving for this row is settled by the change, or folded into it.
-        const more = takeStream(ev.id)
-        set((s) => {
-          const list = s.items[k]
-          if (!list) return {}
-          // Changes are nearly always to something recent: look from the end.
-          let i = list.length - 1
-          while (i >= 0 && list[i].id !== ev.id) i--
-          if (i < 0) return {}
-          const was = list[i]
-          const next = list.slice()
-          next[i] = { ...was, ...(more && 'text' in was && !('text' in ev.patch) ? { text: was.text + more } : null), ...ev.patch } as Item
-          return { items: { ...s.items, [k]: next } }
-        })
-        return
-      }
+      case 'item':
+      case 'item-patch':
       case 'item-delta':
-        // Text being written goes straight to the row that shows it, not through the store:
-        // putting it here would redraw the whole chat a dozen times a second per agent.
-        if (get().loaded[ev.chatId]) appendStream(ev.id, ev.text)
-        return
-      case 'task':
-        set((s) => {
-          const list = s.tasks[ev.task.chatId] || []
-          const i = list.findIndex((t) => t.id === ev.task.id)
-          const next = i < 0 ? [...list, ev.task] : list.map((t) => (t.id === ev.task.id ? ev.task : t))
-          return { tasks: { ...s.tasks, [ev.task.chatId]: next } }
-        })
-        return
+        // The chat is being read right now: what happens meanwhile is kept and played over it once it is in.
+        if (!s.loaded[ev.chatId] && loading.has(ev.chatId)) {
+          held.set(ev.chatId, [...(held.get(ev.chatId) || []), ev])
+          return null
+        }
+        return reduceItem(ev, s, later)
+      case 'task': {
+        const list = s.tasks[ev.task.chatId] || []
+        const i = list.findIndex((t) => t.id === ev.task.id)
+        const next = i < 0 ? [...list, ev.task] : list.map((t) => (t.id === ev.task.id ? ev.task : t))
+        return { tasks: { ...s.tasks, [ev.task.chatId]: next } }
+      }
       case 'memory':
-        set({ memory: ev.notes })
-        return
+        return { memory: ev.notes }
       case 'screen':
-        set((s) => ({ screens: { ...s.screens, [screenKey(ev.screen.chatId, ev.screen.accountId, ev.screen.kind)]: ev.screen } }))
-        return
+        return { screens: { ...s.screens, [screenKey(ev.screen.chatId, ev.screen.accountId, ev.screen.kind)]: ev.screen } }
       case 'screen-closed': {
         const k = screenKey(ev.chatId, ev.accountId, ev.kind)
         forgetFrames(k)
-        set((s) => {
-          const screens = { ...s.screens }
-          delete screens[k]
-          return { screens }
-        })
-        return
+        const screens = { ...s.screens }
+        delete screens[k]
+        return { screens }
       }
       case 'vault':
-        set({ vault: ev.vault })
-        return
+        return { vault: ev.vault }
       case 'update':
-        set({ update: { state: ev.state, version: ev.version } })
-        return
+        return { update: { state: ev.state, version: ev.version } }
       case 'setup':
-        set({ setup: { stage: ev.stage, pct: ev.pct, message: ev.message } })
-        return
+        return { setup: { stage: ev.stage, pct: ev.pct, message: ev.message } }
       case 'connectors':
-        set((s) => ({ connectorsTick: s.connectorsTick + 1 }))
-        return
+        return { connectorsTick: s.connectorsTick + 1 }
       case 'toast':
-        get().toast(ev.text, ev.level)
-        return
+        later.push(() => get().toast(ev.text, ev.level))
+        return null
       case 'focus-chat':
-        void get().openChat(ev.chatId, ev.accountId)
-        return
+        later.push(() => void get().openChat(ev.chatId, ev.accountId))
+        return null
       case 'summon':
-        if (ev.fresh) get().newChat()
-        else if (get().view !== 'chat') get().setView('chat')
-        uiBus.dispatchEvent(new Event('focus-composer'))
-        return
+        later.push(() => {
+          if (ev.fresh) get().newChat()
+          else if (get().view !== 'chat') get().setView('chat')
+          uiBus.dispatchEvent(new Event('focus-composer'))
+        })
+        return null
     }
+    return null
+  }
+
+  const reduceItem = (ev: Extract<HubEvent, { type: 'item' | 'item-patch' | 'item-delta' }>, s: State, later: (() => void)[]): Partial<State> | null => {
+    const k = key(ev.chatId, ev.accountId)
+    if (ev.type === 'item-delta') {
+      // Text being written goes straight to the row that shows it, not through the store:
+      // putting it here would redraw the whole chat a dozen times a second per agent.
+      if (s.loaded[ev.chatId]) appendStream(ev.id, ev.text)
+      return null
+    }
+    if (ev.type === 'item') {
+      const patch: Partial<State> = {}
+      if (s.loaded[ev.chatId] && !withdrawn(ev.item)) {
+        const list = s.items[k] || []
+        if (!list.some((i) => i.id === ev.item.id)) patch.items = { ...s.items, [k]: [...list, ev.item] }
+      }
+      // A finished turn somewhere you are not looking is worth a dot.
+      const watching = s.chatId === ev.chatId && s.view === 'chat' && focusOf(s) === ev.accountId
+      if (ev.item.kind === 'turn' && !watching) patch.unread = { ...s.unread, [k]: (s.unread[k] || 0) + 1 }
+      // A reply just ended: the files on disk may have changed.
+      if (ev.item.kind === 'turn') later.push(() => get().chatId === ev.chatId && get().refreshChanges(ev.chatId))
+      return patch
+    }
+    // Whatever was still arriving for this row is settled by the change, or folded into it.
+    const more = takeStream(ev.id)
+    const list = s.items[k]
+    if (!list) return null
+    // Changes are nearly always to something recent: look from the end.
+    let i = list.length - 1
+    while (i >= 0 && list[i].id !== ev.id) i--
+    if (i < 0) return null
+    // A message taken back before it started leaves the transcript.
+    if ('withdrawn' in ev.patch && ev.patch.withdrawn) return { items: { ...s.items, [k]: list.filter((x) => x.id !== ev.id) } }
+    const was = list[i]
+    const next = list.slice()
+    next[i] = { ...was, ...(more && 'text' in was && !('text' in ev.patch) ? { text: was.text + more } : null), ...ev.patch } as Item
+    return { items: { ...s.items, [k]: next } }
+  }
+
+  // Events wait here for the next drawn frame and then go in together, with one change to the
+  // store: with a whole team at work there are hundreds a second, and each change would otherwise
+  // make every part of the window that looks at the store check itself again.
+  let queue: HubEvent[] = []
+  let frame = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const flush = (): void => {
+    if (frame) cancelAnimationFrame(frame)
+    if (timer) clearTimeout(timer)
+    frame = 0
+    timer = null
+    if (!queue.length) return
+    const batch = queue
+    queue = []
+    const later: (() => void)[] = []
+    let s = get()
+    let out: Partial<State> | null = null
+    for (const ev of batch) {
+      const p = reduce(ev, s, later)
+      if (!p) continue
+      s = { ...s, ...p }
+      out = out ? Object.assign(out, p) : { ...p }
+    }
+    if (out) set(out)
+    for (const f of later) f()
+  }
+  const receive = (ev: HubEvent): void => {
+    queue.push(ev)
+    // Only for measuring what the batching saves: every event on its own, as before.
+    if ((window as { __ensembleNoBatch?: boolean }).__ensembleNoBatch) return flush()
+    if (!frame) frame = requestAnimationFrame(flush)
+    // A window nobody can see draws no frames; the timer keeps the store up to date all the same.
+    if (!timer) timer = setTimeout(flush, 100)
   }
 
   return {
@@ -431,8 +473,10 @@ export const useStore = create<State>((set, get) => {
     toasts: [],
     dark: window.matchMedia('(prefers-color-scheme: dark)').matches,
 
+    receive,
+
     async init() {
-      api.onEvent(handle)
+      api.onEvent(receive)
       startFrames()
       const b = await api.bootstrap()
       const mq = window.matchMedia('(prefers-color-scheme: dark)')
@@ -475,15 +519,33 @@ export const useStore = create<State>((set, get) => {
       const job = api
         .openChat(id)
         .then((snap) => {
+          // Whatever arrived before the transcript goes in first, in the order it came.
+          flush()
+          const seen = new Set<string>()
           set((st) => {
             const items = { ...st.items }
-            for (const [aid, list] of Object.entries(snap.items)) items[key(id, aid)] = list
+            for (const [aid, list] of Object.entries(snap.items)) {
+              items[key(id, aid)] = list.filter((i) => !withdrawn(i))
+              for (const i of list) seen.add(i.id)
+            }
             const agents = { ...st.agents }
             for (const a of snap.states) agents[key(a.chatId, a.accountId)] = a
             return { items, agents, tasks: { ...st.tasks, [id]: snap.tasks }, loaded: { ...st.loaded, [id]: true } }
           })
+          // Then what happened while it was being read. New rows and changes are safe to apply
+          // again; text for a row the transcript already has may be in it already, and the row's
+          // final change brings the whole text anyway, so only rows it did not have get theirs.
+          const missed = (held.get(id) || []).filter((ev) => ev.type !== 'item-delta' || !seen.has(ev.id))
+          held.delete(id)
+          if (missed.length) {
+            queue.unshift(...missed)
+            flush()
+          }
         })
-        .finally(() => loading.delete(id))
+        .finally(() => {
+          loading.delete(id)
+          held.delete(id)
+        })
       loading.set(id, job)
       return job
     },
@@ -590,6 +652,7 @@ export const useStore = create<State>((set, get) => {
         if (opts?.mode && opts.mode !== 'chat') req.mode = opts.mode
         if (opts?.goal) req.goal = opts.goal
         else if (opts?.loop) req.loop = opts.loop
+        if (opts?.fromControl) req.fromControl = true
         await api.send(req)
         return true
       } catch (e) {
@@ -626,6 +689,27 @@ export const useStore = create<State>((set, get) => {
 
     dismissToast(id) {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+    },
+
+    async dequeue(chatId, accountId, itemId, quiet = false) {
+      const item = (get().items[key(chatId, accountId)] || []).find((i) => i.id === itemId)
+      if (!item || item.kind !== 'user' || !item.queued) return null
+      try {
+        if (!(await api.dequeue(chatId, accountId, itemId))) {
+          if (!quiet) get().toast('It has already started, so it can no longer be taken back.')
+          return null
+        }
+      } catch (e) {
+        if (!quiet) get().toast(errorText(e), 'error')
+        return null
+      }
+      // The app also says so with a change to the row; taking it out here makes it go at once.
+      set((st) => {
+        const k = key(chatId, accountId)
+        const list = st.items[k]
+        return list ? { items: { ...st.items, [k]: list.filter((i) => i.id !== itemId) } } : {}
+      })
+      return item
     },
 
     async setUltra(chatId, on) {
@@ -730,6 +814,109 @@ export function useAccounts(): Account[] {
 }
 
 export const isBusy = (st: AgentState | undefined): boolean => !!st && st.phase !== 'idle' && st.phase !== 'error'
+
+// ───────────── narrow looks at the agents ─────────────
+// `s.agents` is replaced on every move any agent makes, dozens of times a second with a big team.
+// A part of the window that selects the whole map redraws each time; these select only what it
+// shows, so it redraws only when that changes.
+
+const SEP = '\u0001'
+const ROW = '\u0002'
+
+/** Who is at work in each chat, as text that changes only when that does. Exported for measuring. */
+export function liveSignature(s: Pick<State, 'agents'>): string {
+  const out: string[] = []
+  for (const st of Object.values(s.agents)) if (isBusy(st)) out.push(`${st.chatId}${SEP}${st.accountId}${SEP}${st.phase === 'waiting' ? 1 : 0}`)
+  return out.join(ROW)
+}
+
+/** For each chat with work going on: the agents at work in it, and whether one of them waits for you. */
+export function useLiveByChat(): Map<string, { live: Account[]; waiting: boolean }> {
+  const sig = useStore(liveSignature)
+  const members = useStore((s) => s.members)
+  return useMemo(() => {
+    const map = new Map<string, { live: Account[]; waiting: boolean }>()
+    if (!sig) return map
+    for (const row of sig.split(ROW)) {
+      const [chatId, accountId, waiting] = row.split(SEP)
+      const a = members[accountId]
+      if (!a) continue
+      const e = map.get(chatId) || { live: [], waiting: false }
+      if (waiting === '1') e.waiting = true
+      else e.live.push(a)
+      map.set(chatId, e)
+    }
+    return map
+  }, [sig, members])
+}
+
+/** How much is going on across every chat. Exported for measuring. */
+export function workSummary(s: Pick<State, 'agents'>): { working: number; chats: number; waiting: boolean } {
+  let working = 0
+  let waiting = false
+  const chats = new Set<string>()
+  for (const st of Object.values(s.agents)) {
+    if (!isBusy(st)) continue
+    working++
+    chats.add(st.chatId)
+    if (st.phase === 'waiting') waiting = true
+  }
+  return { working, chats: chats.size, waiting }
+}
+
+/** How much is going on across every chat: agents at work, in how many chats, and whether one waits for you. */
+export const useWorkSummary = (): { working: number; chats: number; waiting: boolean } => useStore(useShallow(workSummary))
+
+/** What each sign-in is doing, as text. Exported for measuring. */
+export function accountWorkSignature(s: Pick<State, 'agents' | 'members'>): string {
+  const out: string[] = []
+  for (const st of Object.values(s.agents)) {
+    if (!isBusy(st)) continue
+    const base = s.members[st.accountId]?.spawned?.base || st.accountId
+    out.push([base, st.accountId === base ? 1 : 0, st.phase, st.activity || ''].join(SEP))
+  }
+  return out.join(ROW)
+}
+
+/**
+ * What each account's sign-in is doing right now: how many agents work on it (its own, and those
+ * started on it), and what the first of them is doing, its own first.
+ */
+export function useWorkByAccount(): Record<string, { count: number; phase: AgentPhase; activity?: string }> {
+  const sig = useStore(accountWorkSignature)
+  return useMemo(() => {
+    const out: Record<string, { count: number; phase: AgentPhase; activity?: string; own: boolean }> = {}
+    if (!sig) return out
+    for (const row of sig.split(ROW)) {
+      const [base, own, phase, activity] = row.split(SEP)
+      const e = out[base]
+      if (!e) out[base] = { count: 1, phase: phase as AgentPhase, activity: activity || undefined, own: own === '1' }
+      else {
+        e.count++
+        if (own === '1' && !e.own) Object.assign(e, { phase: phase as AgentPhase, activity: activity || undefined, own: true })
+      }
+    }
+    return out
+  }, [sig])
+}
+
+/** The agents of one chat, by account id. A new object only when one of them changes. */
+export function chatAgents(s: Pick<State, 'agents'>, chatId: string | null | undefined): Record<string, AgentState> {
+  const out: Record<string, AgentState> = {}
+  if (!chatId) return out
+  for (const st of Object.values(s.agents)) if (st.chatId === chatId) out[st.accountId] = st
+  return out
+}
+
+export const useChatAgents = (chatId: string | null | undefined): Record<string, AgentState> => useStore(useShallow((s: State) => chatAgents(s, chatId)))
+
+/** How many agents are at work in a chat. */
+export const workingIn = (s: Pick<State, 'agents'>, chatId: string | null | undefined): number => {
+  if (!chatId) return 0
+  let n = 0
+  for (const st of Object.values(s.agents)) if (st.chatId === chatId && isBusy(st)) n++
+  return n
+}
 
 /** An account, or an agent that was started inside a chat, by id. */
 export function useAccount(id: string | undefined): Account | undefined {

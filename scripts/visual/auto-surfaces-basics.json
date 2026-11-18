@@ -1,0 +1,83 @@
+[
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__lead = () => { const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === s.chatId); return (c && c.leadId) || s.settings.leadId || s.accounts.find(a => a.enabled).id; };\n// Shows the hover actions of the latest message of each kind, as a pointer resting on it would.\nwindow.__hover = () => {\n  const u = [...document.querySelectorAll('.group\\\\/u')].pop();\n  const a = [...document.querySelectorAll('.group\\\\/a')].pop();\n  for (const g of [u, a]) { const d = g && g.querySelector(':scope > .pointer-events-none'); if (d) d.style.opacity = '1'; }\n  return !!u + '/' + !!a;\n};\nwindow.__palette = async (q) => {\n  window.__ensemble.getState().setModal({ kind: 'palette' });\n  await window.__sleep(300);\n  const el = document.querySelector('[cmdk-input]');\n  if (el) { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, q); el.dispatchEvent(new Event('input', { bubbles: true })); }\n  await window.__sleep(500);\n  return [...document.querySelectorAll('[cmdk-group-heading]')].map(h => h.textContent).join(' > ') + ' | first: ' + (document.querySelector('[cmdk-item]')?.textContent || '').slice(0, 40);\n};\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); await s.send('Add a pricing page with a checkout flow, and a hero image for it.'); window.__A = window.__ensemble.getState().chatId; await window.__sleep(1200); window.__ensemble.getState().newChat(); await window.__sleep(600); await window.__ensemble.getState().send('What does the pricing page do?', undefined, undefined, { mode: 'quick' }); window.__B = window.__ensemble.getState().chatId; return 'A ' + window.__A + ' B ' + window.__B;",
+  "wait": 26000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const lead = window.__lead(); return 'unread A=' + JSON.stringify(Object.entries(s.unread).filter(([k, v]) => k.startsWith(window.__A) && v)) + ' dots=' + document.querySelectorAll('[aria-label=\"New reply\"]').length;",
+  "wait": 300,
+  "shot": "auto-surfaces-b01-unread-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 700,
+  "shot": "auto-surfaces-b02-unread-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const st = window.__ensemble; const s = st.getState(); const k = s.chatId + ':' + window.__lead(); st.setState(x => ({ items: { ...x.items, [k]: [...(x.items[k] || []), { id: 'err1', kind: 'notice', ts: Date.now(), level: 'error', text: 'Claude stopped: the request failed (overloaded_error). Nothing was lost; the work so far is kept above.' }] } })); await window.__sleep(500); const h = window.__hover(); return 'hover ' + h + ' | try again: ' + !![...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Try again');",
+  "wait": 500,
+  "shot": "auto-surfaces-b03-actions-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__hover(); const c = [...document.querySelectorAll('.group\\\\/u button[aria-label=\"Copy\"]')].pop(); c && c.click(); return 'copied ' + !!c;",
+  "wait": 500,
+  "shot": "auto-surfaces-b04-actions-copied-dark.png"
+ },
+ {
+  "js": "const n = () => (window.__ensemble.getState().items[window.__ensemble.getState().chatId + ':' + window.__lead()] || []).filter(i => i.kind === 'user').length; const before = n(); const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Try again'); b && b.click(); await window.__sleep(1500); return 'try again clicked ' + !!b + ', user messages ' + before + ' -> ' + n();",
+  "wait": 6000,
+  "shot": "auto-surfaces-b05-after-retry-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const e = [...document.querySelectorAll('.group\\\\/u button[aria-label=\"Edit in the message box\"]')].pop(); e && e.click(); await window.__sleep(400); return 'edit -> box: ' + JSON.stringify(document.querySelector('.composer textarea')?.value);",
+  "wait": 400,
+  "shot": "auto-surfaces-b06-edit-light.png"
+ },
+ {
+  "js": "return await window.__palette('');",
+  "wait": 300,
+  "shot": "auto-surfaces-b07-palette-empty-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "return await window.__palette('pricing');",
+  "wait": 300,
+  "shot": "auto-surfaces-b08-palette-pricing-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "return await window.__palette('ultra');",
+  "wait": 300,
+  "shot": "auto-surfaces-b09-palette-ultra-light.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setModal({ kind: 'settings' }); return 'settings';",
+  "wait": 700,
+  "shot": "auto-surfaces-b10-settings-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setModal({ kind: 'shortcuts' }); return 'shortcuts';",
+  "wait": 700,
+  "shot": "auto-surfaces-b11-shortcuts-dark.png"
+ }
+]

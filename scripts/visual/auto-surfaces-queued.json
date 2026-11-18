@@ -1,0 +1,29 @@
+[
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); await s.send('Add a pricing page with a checkout flow, and a hero image for it.'); await new Promise(r => setTimeout(r, 900)); await window.__ensemble.getState().send('And also add a FAQ section under the pricing table'); await new Promise(r => setTimeout(r, 900)); const q = [...document.querySelectorAll('button')].filter(b => b.textContent.trim() === 'Take back').length; const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; return 'queued rows with Take back: ' + q;",
+  "wait": 600,
+  "shot": "auto-surfaces-b12-queued-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 600,
+  "shot": "auto-surfaces-b13-queued-dark.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Take back'); b && b.click(); await new Promise(r => setTimeout(r, 900)); const s = window.__ensemble.getState(); const k = s.chatId + ':' + (s.chats.find(c => c.id === s.chatId).leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id); const queued = (s.items[k] || []).filter(i => i.kind === 'user' && i.queued).length; return 'clicked ' + !!b + ', still queued: ' + queued + ', toasts: ' + s.toasts.map(t => t.text).join(' | ');",
+  "wait": 300,
+  "shot": "auto-surfaces-b14-take-back-dark.png"
+ }
+]

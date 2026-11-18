@@ -1,0 +1,65 @@
+name: Something is wrong
+description: A bug, a crash, or something that does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please leave out anything private: chat contents, file paths you would not share, sign-in details or keys.
+        A security problem? Please do not file it here; see SECURITY.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        1. Turned Ultra on and sent "..."
+        2. Expected ...
+        3. Instead ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Ensemble version
+      description: Shown at the bottom of Settings.
+      placeholder: "3.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: accounts
+    attributes:
+      label: Accounts on your team
+      options:
+        - Claude only
+        - ChatGPT only
+        - Claude and ChatGPT
+        - Demo mode
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Way of working
+      description: What the message was sent as, if it matters.
+      options:
+        - Not sure or not relevant
+        - Auto (an ordinary message)
+        - Quick
+        - Plan first
+        - Thorough
+        - Council
+        - Deep research
+        - Ultra
+        - Go crazy
+        - A goal or a loop
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
+      description: A screenshot of the window helps most. Crop out anything private.

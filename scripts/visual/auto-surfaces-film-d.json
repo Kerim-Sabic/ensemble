@@ -1,0 +1,377 @@
+[
+{
+"size": [
+3840,
+2160
+],
+"theme": "dark",
+"wait": 1800
+},
+{
+"js": "document.documentElement.style.zoom = '2'; \nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'onboarded=' + window.__ensemble.getState().settings.onboarded + ' size=' + innerWidth + 'x' + innerHeight + ' dpr=' + devicePixelRatio;\n",
+"wait": 1000
+},
+{
+"js": "\nconst s = window.__ensemble.getState();\nconst ren = { 'Claude 3': 'Nova', 'Hello': 'Juno', 'ChatGPT': 'Atlas' };\nfor (const a of s.accounts) if (ren[a.name]) await window.ensemble.updateAccount(a.id, { name: ren[a.name] });\nawait window.ensemble.updateSettings({ sidebarCollapsed: true, inspector: false });\nawait new Promise(r => setTimeout(r, 300));\nreturn window.__ensemble.getState().accounts.map(a => a.name).join(', ');\n",
+"wait": 300
+},
+{
+"js": "\nwindow.__R = 0.03;\nconst keep = () => { if (document.documentElement.dataset.away !== 'false') document.documentElement.dataset.away = 'false'; };\nnew MutationObserver(keep).observe(document.documentElement, { attributes: true, attributeFilter: ['data-away'] }); keep();\nsetInterval(() => { for (const a of document.getAnimations()) if (a.playbackRate !== window.__R) a.playbackRate = window.__R; }, 10);\nreturn 'slowed to ' + window.__R;\n",
+"wait": 50
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__scroller = () => document.querySelector('[data-view-scope]')?.parentElement;\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); if (!c) return 'no chat'; const ag = c.agents || []; const t = s.tasks[c.id] || []; const busy = Object.values(s.agents).filter(a => a.chatId === c.id && a.phase !== 'idle' && a.phase !== 'error').length; return 'ag ' + ag.length + ' gone ' + ag.filter(a => a.spawned?.gone).length + ' tasks ' + t.filter(x => x.status === 'done').length + '/' + t.length + ' busy ' + busy + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__scroller = () => document.querySelector('[data-view-scope]')?.parentElement;\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); if (!c) return 'no chat'; const ag = c.agents || []; const t = s.tasks[c.id] || []; const busy = Object.values(s.agents).filter(a => a.chatId === c.id && a.phase !== 'idle' && a.phase !== 'error').length; return 'ag ' + ag.length + ' gone ' + ag.filter(a => a.spawned?.gone).length + ' tasks ' + t.filter(x => x.status === 'done').length + '/' + t.length + ' busy ' + busy + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "\nwindow.__ta = () => document.querySelector('.composer textarea');\nwindow.__type = (el, v) => { const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };\nwindow.__open = (el) => { el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); };\nwindow.__alt = (code) => window.dispatchEvent(new KeyboardEvent('keydown', { key: code.slice(3).toLowerCase(), code, altKey: true, bubbles: true }));\nwindow.__blur = () => { document.activeElement && document.activeElement.blur && document.activeElement.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); };\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__until = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (fn()) return Math.round((Date.now() - t0) / 1000) + 's'; } catch (e) {} await window.__sleep(100); } return 'TIMEOUT'; };\nreturn 'tools';\n",
+"wait": 50
+},
+{
+"js": "window.__S().newChat(); await window.__sleep(600); window.__alt('KeyU'); await window.__sleep(500); window.__type(window.__ta(), '/gocrazy design the landing page'); await window.__sleep(700); window.__ta().blur(); return 'C1 ready: ' + JSON.stringify(window.__ta().value) + ' ultra-ring ' + !!document.querySelector('.cu-ring');",
+"wait": 800,
+"shot": "film-C1-box.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0001.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0002.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0003.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0004.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0005.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0006.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0007.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0008.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0009.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0010.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0011.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0012.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0013.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0014.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0015.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0016.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0017.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0018.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0019.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0020.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0021.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0022.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0023.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0024.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0025.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0026.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0027.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0028.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0029.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0030.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0031.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0032.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0033.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0034.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0035.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0036.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0037.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0038.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0039.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0040.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0041.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0042.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0043.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0044.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0045.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0046.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0047.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0048.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0049.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0050.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0051.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0052.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0053.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0054.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0055.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0056.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0057.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0058.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0059.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C1-0060.png"
+},
+{
+"js": "window.__R = 1; window.__type(window.__ta(), ''); window.__alt('KeyU'); await window.__sleep(400); return 'ultra off';",
+"wait": 300
+},
+{
+"js": "const b = document.querySelector('[aria-label^=\"Way of working\"]'); if (b) window.__open(b); await window.__sleep(700); return 'menu ' + !!b + ' items ' + document.querySelectorAll('[role=menuitem]').length;",
+"wait": 300,
+"shot": "film-C10-menu.png"
+},
+{
+"js": "window.__blur(); await window.__sleep(300); return 'closed';",
+"wait": 200
+},
+{
+"js": "window.__S().newChat(); await window.__sleep(600); window.__alt('KeyG'); await window.__sleep(500); window.__type(window.__ta(), 'Add a pricing page'); const f = [...document.querySelectorAll('.composer input')].find(i => /^optional, e\\.g\\. all tests/.test(i.placeholder)); if (f) window.__type(f, 'the tests pass and the page was opened'); await window.__sleep(400); window.__ta().focus(); window.__ta().setSelectionRange(99, 99); return 'C8 row, done-when field ' + !!f;",
+"wait": 600,
+"shot": "film-C8-row.png"
+},
+{
+"js": "window.__ta().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); const w = await window.__until(() => { const g = window.__chat()?.goal; return g && g.round >= 1 && g.checking; }, 240000); window.__ta().blur(); return 'checking round 2 after ' + w + ' | ' + JSON.stringify(window.__chat()?.goal && { r: window.__chat().goal.round, c: window.__chat().goal.checking });",
+"wait": 150,
+"shot": "film-C8-checking.png"
+},
+{
+"js": "const w = await window.__until(() => window.__chat()?.goal?.status === 'met', 240000); await window.__sleep(2500); return 'met after ' + w;",
+"wait": 300,
+"shot": "film-C8-done.png"
+},
+{
+"js": "window.__S().newChat(); await window.__sleep(600); window.__alt('KeyL'); await window.__sleep(500); window.__type(window.__ta(), 'Check whether the deploy is live'); const p = document.querySelector('[aria-label=\"How often\"]'); window.__open(p); await window.__sleep(500); const other = [...document.querySelectorAll('[role=menuitem]')].find(m => /Another pace/.test(m.textContent)); other && other.click(); await window.__sleep(400); const c = document.querySelector('[aria-label=\"Custom pace\"]'); if (c) { window.__type(c, '10m'); c.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); } await window.__sleep(400); const u = [...document.querySelectorAll('.composer input')].find(i => /^optional, e\\.g\\. the deploy/.test(i.placeholder)); if (u) window.__type(u, 'the deploy is live'); await window.__sleep(300); window.__ta().focus(); window.__ta().setSelectionRange(99, 99); return 'C9 row, custom ' + !!c + ' until ' + !!u + ' pace ' + (document.querySelector('[aria-label=\"How often\"]')?.textContent || '');",
+"wait": 600,
+"shot": "film-C9-row.png"
+},
+{
+"js": "window.__ta().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); const w = await window.__until(() => { const l = (window.__chat()?.loops || [])[0]; return l && l.runs >= 1 && !l.running && l.nextAt; }, 240000); window.__ta().blur(); await window.__sleep(1500); const l = (window.__chat()?.loops || [])[0]; return 'loop bar after ' + w + ' | every ' + (l && l.every);",
+"wait": 300,
+"shot": "film-C9-bar.png"
+}
+]

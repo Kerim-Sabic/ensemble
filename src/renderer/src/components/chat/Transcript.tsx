@@ -10,9 +10,11 @@ import { Orb } from '../Orb'
 import { Markdown } from '../Markdown'
 import { ActivityGroup, type ActivityItem } from './ToolRows'
 import { ScreenCard } from '../screen/ScreenCard'
-import { AutoRow, AskCard, DelegateCard, ImageCard, NoticeRow, OutgoingRow, PeerCard, PermissionCard, QuestionCard, SignInCard, SpawnCard, TurnFooter, UserBubble, WorkingLine } from './Cards'
+import { CopyButton } from './MessageActions'
+import { AutoRow, AskCard, DelegateCard, DelegateGroup, SpawnGroup, ImageCard, NoticeRow, OutgoingRow, PeerCard, PermissionCard, QuestionCard, SignInCard, SpawnCard, TurnFooter, UserBubble, WorkingLine } from './Cards'
 
 type Delegate = Extract<Item, { kind: 'delegate' }>
+type Spawn = Extract<Item, { kind: 'spawn' }>
 type ScreenStep = Extract<Item, { kind: 'screen' }>
 type ScreenBlock = { type: 'screen'; key: string; surface: ScreenKind; items: ScreenStep[]; latest?: boolean }
 
@@ -21,6 +23,7 @@ type Block =
   | ScreenBlock
   | { type: 'activity'; key: string; items: ActivityItem[] }
   | { type: 'delegates'; key: string; items: Delegate[] }
+  | { type: 'spawns'; key: string; items: Spawn[] }
   | { type: 'item'; key: string; item: Item }
 
 const EMPTY: Item[] = []
@@ -86,6 +89,11 @@ function build(items: Item[]): { blocks: Block[]; children: Map<string, number> 
         if (last?.type === 'delegates') last.items.push(it)
         else blocks.push({ type: 'delegates', key: it.id, items: [it] })
         break
+      case 'spawn':
+        label(it.id)
+        if (last?.type === 'spawns') last.items.push(it)
+        else blocks.push({ type: 'spawns', key: it.id, items: [it] })
+        break
       case 'assistant':
         if (!it.text.trim() && !it.streaming) break
         label(it.id)
@@ -113,15 +121,26 @@ function build(items: Item[]): { blocks: Block[]; children: Map<string, number> 
   return { blocks, children }
 }
 
-const AssistantText = memo(function AssistantText({ item, compact, shown }: { item: Extract<Item, { kind: 'assistant' }>; compact?: boolean; shown: Set<string> }) {
+const AssistantText = memo(function AssistantText({ item, compact, shown, replyTo }: { item: Extract<Item, { kind: 'assistant' }>; compact?: boolean; shown: Set<string>; replyTo?: string }) {
   // While it is being written the words arrive here directly, without the rest of the chat hearing of it.
   const text = useStreamed(item.id, item.text, item.streaming)
   // Files it mentions are shown with it, once it has finished writing, unless they are already on show.
   const media = useMemo(() => (item.streaming ? [] : mediaPathsIn(item.text).filter((p) => !shown.has(p.toLowerCase()))), [item.streaming, item.text, shown])
   return (
-    <div className="py-1">
-      <Markdown text={text} compact={compact} streaming={item.streaming} />
+    <div className="group/a relative py-1">
+      <Markdown text={text} compact={compact} streaming={item.streaming} replyTo={replyTo} />
       <MediaStrip paths={media} />
+      {/* At the end of the reply, in the margin, on hover: nothing moves. */}
+      {!item.streaming && item.text.trim() && (
+        <div
+          className={cn(
+            'pointer-events-none absolute bottom-1 opacity-0 transition-opacity duration-150 group-hover/a:pointer-events-auto group-hover/a:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+            compact ? 'right-0 rounded-[8px] bg-surface shadow-card' : '-right-7',
+          )}
+        >
+          <CopyButton text={item.text} side="left" />
+        </div>
+      )}
     </div>
   )
 })
@@ -278,7 +297,14 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
             if (b.type === 'label') return compact ? null : <SenderLabel key={b.key} account={account} lead={isLead} />
             if (b.type === 'screen') return <ScreenCard key={b.key} chatId={chatId} accountId={accountId} surface={b.surface} items={b.items} latest={!!b.latest} compact={compact} />
             if (b.type === 'activity') return <ActivityGroup key={b.key} items={b.items} children={children} active={busy && i === blocks.length - 1} chatId={chatId} accountId={accountId} />
+            if (b.type === 'spawns') {
+              // Agents joining one after another read as one line once there are a few of them.
+              if (b.items.length >= 3) return <SpawnGroup key={b.key} items={b.items} onOpen={open} />
+              return b.items.map((it) => <SpawnCard key={it.id} item={it} onOpen={open} />)
+            }
             if (b.type === 'delegates') {
+              // A whole batch handed out at once is one card, not a wall of them.
+              if (b.items.length >= 5) return <DelegateGroup key={b.key} items={b.items} chatId={chatId} onOpen={open} />
               return (
                 <div key={b.key} className={cn('my-3 grid gap-2.5', b.items.length > 1 && !compact ? 'grid-cols-[repeat(auto-fit,minmax(210px,1fr))]' : 'grid-cols-1')}>
                   {b.items.map((d) => (
@@ -290,11 +316,11 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
             const it = b.item
             switch (it.kind) {
               case 'user':
-                return <UserBubble key={b.key} item={it} />
+                return <UserBubble key={b.key} item={it} chatId={chatId} accountId={accountId} />
               case 'peer':
                 return <PeerCard key={b.key} item={it} onOpen={open} />
               case 'assistant':
-                return <AssistantText key={b.key} item={it} compact={compact} shown={onShow} />
+                return <AssistantText key={b.key} item={it} compact={compact} shown={onShow} replyTo={accountId} />
               case 'outgoing':
                 return <OutgoingRow key={b.key} item={it} onOpen={open} />
               case 'spawn':
@@ -308,7 +334,7 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
               case 'question':
                 return <QuestionCard key={b.key} item={it} accountId={accountId} />
               case 'notice':
-                return <NoticeRow key={b.key} item={it} chatId={chatId} />
+                return <NoticeRow key={b.key} item={it} chatId={chatId} accountId={accountId} />
               case 'image':
                 return <ImageCard key={b.key} item={it} />
               case 'auto':

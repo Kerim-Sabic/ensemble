@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { Command } from 'cmdk'
 import { Dialog } from 'radix-ui'
-import { Activity, Plug, BookOpen, Check, CircleAlert, Download, FolderInput, Images, Info, Keyboard, LayoutGrid, MessageSquare, Moon, MousePointerClick, PanelRight, Search, Settings2, SquarePen, Sun, UserPlus, Waypoints, X } from 'lucide-react'
+import { Activity, Plug, BookOpen, Check, CircleAlert, Download, FolderInput, Images, Info, Keyboard, LayoutGrid, MessageSquare, Moon, MousePointerClick, PanelRight, Pin, PinOff, Repeat, Search, Settings2, Square, SquarePen, Sun, Target, UserPlus, Users, Waypoints, X } from 'lucide-react'
 import type { GoalCheck, ModelRecord, PermissionLevel, SearchHit, Settings, VaultInfo } from '@shared/types'
 import { ROUND_PRESETS } from '@shared/auto'
 import { leadOf, useStore } from '@/store'
 import { api, baseName, cn, PERMISSIONS, relative, tildify } from '@/lib/util'
-import { Button, Kbd, Modal, Row, Segmented, Toggle, inputClass } from './ui'
+import { Button, Kbd, Modal, Row, Segmented, Tip, Toggle, inputClass } from './ui'
 import { Orb } from './Orb'
 import { Logo } from './Sidebar'
 import { Picker } from './Accounts'
+import { seedComposer } from './chat/Composer'
+import { plain } from './auto/plain'
+import { UltraGlyph } from './ultra/Ultra'
 
 /** Which folder of notes the team treats as its library. */
 function VaultPicker() {
@@ -159,6 +162,7 @@ export function SettingsDialog() {
   return (
     <Modal open={open} onClose={() => setModal(null)} title="Settings" width={540}>
       <div className="overflow-y-auto px-6 pt-2 pb-6">
+        <div className="mb-1 text-[12px] font-medium text-ink-3">General</div>
         <div className="divide-y divide-line">
           <Row label="Appearance">
             <Segmented<Settings['theme']>
@@ -170,12 +174,6 @@ export function SettingsDialog() {
                 { value: 'dark', label: 'Dark' },
               ]}
             />
-          </Row>
-          <Row label="Team lead" hint="Who you talk to by default. The lead plans and hands work to the others.">
-            <Picker value={lead?.id || null} options={accounts.filter((a) => a.enabled).map((a) => ({ value: a.id, label: a.name }))} onChange={(leadId) => set({ leadId })} placeholder="Nobody yet" />
-          </Row>
-          <Row label="New chats start with" hint="How much the team may do without checking with you.">
-            <Picker<PermissionLevel> value={settings.defaultPermission} width={300} options={PERMISSIONS.map((p) => ({ value: p.value, label: p.label, hint: p.hint }))} onChange={(defaultPermission) => set({ defaultPermission })} />
           </Row>
           <Row label="Default folder" hint={settings.defaultCwd ? tildify(settings.defaultCwd, env.home) : 'New chats start in the folder you used last.'}>
             {settings.defaultCwd && (
@@ -196,12 +194,55 @@ export function SettingsDialog() {
           <Row label="Name chats automatically" hint="A quick, tiny request to the lead account writes a short title.">
             <Toggle checked={settings.smartTitles} onChange={(smartTitles) => set({ smartTitles })} label="Name chats automatically" />
           </Row>
-          <Row label="Shared memory" hint="Let the team keep notes between chats.">
-            <Toggle checked={settings.memoryEnabled} onChange={(memoryEnabled) => set({ memoryEnabled })} label="Shared memory" />
+          <Row label="Suggest my next message" hint="After a reply, the lead offers a likely follow-up. Press Tab to take it.">
+            <Toggle checked={settings.suggestions} onChange={(suggestions) => set({ suggestions })} label="Suggest my next message" />
+          </Row>
+          <Row label="Notifications" hint="Tell me when work finishes or needs my OK while I am in another window.">
+            <Toggle checked={settings.notifications} onChange={(notifications) => set({ notifications })} label="Notifications" />
+          </Row>
+        </div>
+
+        <div className="mt-5 mb-1 text-[12px] font-medium text-ink-3">Team</div>
+        <div className="divide-y divide-line">
+          <Row label="Team lead" hint="Who you talk to by default. The lead plans and hands work to the others.">
+            <Picker value={lead?.id || null} options={accounts.filter((a) => a.enabled).map((a) => ({ value: a.id, label: a.name }))} onChange={(leadId) => set({ leadId })} placeholder="Nobody yet" />
+          </Row>
+          <Row label="New chats start with" hint="How much the team may do without checking with you.">
+            <Picker<PermissionLevel> value={settings.defaultPermission} width={300} options={PERMISSIONS.map((p) => ({ value: p.value, label: p.label, hint: p.hint }))} onChange={(defaultPermission) => set({ defaultPermission })} />
+          </Row>
+          <Row label="Extra agents per chat" hint="The lead can start more agents inside a chat, and those can start sub-agents for parts of their work. They share the accounts' allowance.">
+            <Picker<string>
+              value={String(settings.maxAgents)}
+              width={230}
+              options={[
+                { value: '-1', label: 'Ensemble decides', hint: 'More when accounts have allowance to spare, fewer when they are short' },
+                { value: '0', label: 'None', hint: 'Only the accounts work' },
+                { value: '4', label: 'Up to 4' },
+                { value: '8', label: 'Up to 8' },
+                { value: '12', label: 'Up to 12' },
+                { value: '16', label: 'Up to 16', hint: 'Uses allowance quickly' },
+              ]}
+              onChange={(v) => set({ maxAgents: Number(v) })}
+            />
+          </Row>
+          <Row label="Agents one agent may start" hint="Keeps any single agent from fanning out too far. Sub-agents never start agents of their own.">
+            <Picker<string>
+              value={String(settings.maxPerAgent)}
+              width={170}
+              options={['1', '2', '3', '4', '6', '8'].map((v) => ({ value: v, label: v === '1' ? '1 agent' : `${v} agents` }))}
+              onChange={(v) => set({ maxPerAgent: Number(v) })}
+            />
           </Row>
           <Row label="Keep team talk light" hint="Quick questions between teammates are answered on each one's lightest model, and notes and finished reports wait to be read together instead of waking someone each time. Saves allowance; the work itself is not affected.">
             <Toggle checked={settings.lightTalk} onChange={(lightTalk) => set({ lightTalk })} label="Keep team talk light" />
           </Row>
+          <Row label="Shared memory" hint="Let the team keep notes between chats.">
+            <Toggle checked={settings.memoryEnabled} onChange={(memoryEnabled) => set({ memoryEnabled })} label="Shared memory" />
+          </Row>
+        </div>
+
+        <div className="mt-5 mb-1 text-[12px] font-medium text-ink-3">Models and allowance</div>
+        <div className="divide-y divide-line">
           <Row
             label="Choose models by allowance"
             hint="Each account runs the strongest model it can afford: the top model while there is allowance to spare before it refills, a step down when it is running short or the top model's own allowance is used up. An account with a model picked by hand keeps it."
@@ -228,36 +269,7 @@ export function SettingsDialog() {
               ]}
             />
           </Row>
-          <Row label="Extra agents per chat" hint="The lead can start more agents inside a chat, and those can start sub-agents for parts of their work. They share the accounts' allowance.">
-            <Picker<string>
-              value={String(settings.maxAgents)}
-              width={230}
-              options={[
-                { value: '-1', label: 'Ensemble decides', hint: 'More when accounts have allowance to spare, fewer when they are short' },
-                { value: '0', label: 'None', hint: 'Only the accounts work' },
-                { value: '4', label: 'Up to 4' },
-                { value: '8', label: 'Up to 8' },
-                { value: '12', label: 'Up to 12' },
-                { value: '16', label: 'Up to 16', hint: 'Uses allowance quickly' },
-              ]}
-              onChange={(v) => set({ maxAgents: Number(v) })}
-            />
-          </Row>
-          <Row label="Agents one agent may start" hint="Keeps any single agent from fanning out too far. Sub-agents never start agents of their own.">
-            <Picker<string>
-              value={String(settings.maxPerAgent)}
-              width={170}
-              options={['1', '2', '3', '4', '6', '8'].map((v) => ({ value: v, label: v === '1' ? '1 agent' : `${v} agents` }))}
-              onChange={(v) => set({ maxPerAgent: Number(v) })}
-            />
-          </Row>
           <LearnedRow />
-          <Row label="Suggest my next message" hint="After a reply, the lead offers a likely follow-up. Press Tab to take it.">
-            <Toggle checked={settings.suggestions} onChange={(suggestions) => set({ suggestions })} label="Suggest my next message" />
-          </Row>
-          <Row label="Notifications" hint="Tell me when work finishes or needs my OK while I am in another window.">
-            <Toggle checked={settings.notifications} onChange={(notifications) => set({ notifications })} label="Notifications" />
-          </Row>
         </div>
 
         <div className="mt-5 mb-1 text-[12px] font-medium text-ink-3">Goals</div>
@@ -340,6 +352,13 @@ export function SettingsDialog() {
           Ensemble {env.version}
           {env.demo && <span className="rounded-full bg-warn-soft px-2 py-px text-warn">Demo mode</span>}
           <span className="flex-1" />
+          {!env.trial && (
+            <Tip label="A scripted team to show someone: restarts the app; your chats stay as they are" side="top">
+              <button onClick={() => void api.switchDemo(true)} className="flex items-center gap-1.5 font-medium hover:text-ink">
+                <Users className="size-3.5" /> Try the demo team
+              </button>
+            </Tip>
+          )}
           <button onClick={() => setModal({ kind: 'shortcuts' })} className="flex items-center gap-1.5 font-medium hover:text-ink">
             <Keyboard className="size-3.5" /> Keyboard shortcuts
           </button>
@@ -365,6 +384,10 @@ const SHORTCUTS: { keys: string[]; what: string }[] = [
   { keys: ['Shift', 'Enter'], what: 'New line' },
   { keys: ['Tab'], what: 'Take the suggested message' },
   { keys: ['Esc'], what: 'Stop the current reply' },
+  { keys: ['Alt', 'G'], what: 'Make the message a goal' },
+  { keys: ['Alt', 'L'], what: 'Make the message a loop' },
+  { keys: ['Alt', 'U'], what: 'Turn Ultra on or off for this chat' },
+  { keys: ['Ctrl', 'Shift', 'E'], what: 'Rewrite my message more clearly' },
   { keys: ['@'], what: 'Message one teammate directly' },
   { keys: ['/'], what: 'Run a command the teammate knows' },
   { keys: ['Alt', 'Shift', 'Space'], what: 'Bring Ensemble up from anywhere' },
@@ -424,6 +447,35 @@ const itemClass =
   'flex h-10 cursor-default items-center gap-3 rounded-[10px] px-3 text-[13.5px] text-ink outline-none data-[selected=true]:bg-hover [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-ink-3'
 
 /** Ctrl+K: jump to any chat, search what was said, or run a command. */
+/**
+ * How well a row matches what was typed, 0 to 1. Each word typed must start a word of the row
+ * (or, from three letters, appear inside it). Chats always rank above commands, and text found
+ * inside chats sits between the two.
+ */
+function rank(value: string, search: string): number {
+  const q = search.trim().toLowerCase()
+  if (!q) return 1
+  const v = value.toLowerCase().replace(/\s::.*$/, '')
+  if (v.startsWith('hit ')) return 0.55
+  const words = v.split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+  const terms = q.split(/\s+/)
+  let total = 0
+  for (const t of terms) {
+    if (words.some((w) => w === t)) total += 1
+    else if (words.some((w) => w.startsWith(t))) total += 0.85
+    else if (t.length >= 3 && v.includes(t)) total += 0.5
+    else return 0
+  }
+  const score = total / terms.length
+  return v.startsWith('chat ') ? 0.6 + score * 0.4 : score * 0.5
+}
+
+/** The best passage from each chat, so one chat saying the same thing many times does not crowd out the rest. */
+function oneEach(hits: SearchHit[]): SearchHit[] {
+  const seen = new Set<string>()
+  return hits.filter((h) => (seen.has(h.chatId) ? false : (seen.add(h.chatId), true)))
+}
+
 export function Palette() {
   const open = useStore((s) => s.modal?.kind === 'palette')
   const setModal = useStore((s) => s.setModal)
@@ -438,6 +490,10 @@ export function Palette() {
   const chatId = useStore((s) => s.chatId)
   const toggleInspector = useStore((s) => s.toggleInspector)
   const toast = useStore((s) => s.toast)
+  const run = useStore((s) => s.run)
+  const env = useStore((s) => s.env)
+  const chat = useStore((s) => s.chats.find((c) => c.id === s.chatId))
+  const busyHere = useStore((s) => !!s.chatId && Object.values(s.agents).some((a) => a.chatId === s.chatId && a.phase !== 'idle' && a.phase !== 'error'))
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const seq = useRef(0)
@@ -479,6 +535,7 @@ export function Palette() {
       open={open}
       onOpenChange={(o) => !o && setModal(null)}
       label="Search and commands"
+      filter={rank}
       overlayClassName="fixed inset-0 z-50 animate-fade-in bg-black/22 backdrop-blur-[3px] dark:bg-black/50"
       contentClassName="no-drag fixed top-[14vh] left-1/2 z-[60] w-[600px] max-w-[92vw] -translate-x-1/2 animate-pop overflow-hidden rounded-[18px] bg-raised shadow-pop outline-none"
     >
@@ -495,6 +552,20 @@ export function Palette() {
       </div>
       <Command.List className="max-h-[52vh] overflow-y-auto p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-ink-3">
         <Command.Empty className="px-3 py-8 text-center text-[13px] text-ink-3">Nothing matches that.</Command.Empty>
+
+        {chats.length > 0 && (
+          <Command.Group heading={query.trim() ? 'Chats' : 'Recent chats'}>
+            {chats.slice(0, query ? 50 : 6).map((c) => (
+              <Command.Item key={c.id} className={itemClass} value={`chat ${c.title} ${baseName(c.cwd)} ::${c.id}`} onSelect={go(() => void openChat(c.id))}>
+                <MessageSquare />
+                <span className="min-w-0 flex-1 truncate">{c.title}</span>
+                <span className="shrink-0 text-[12px] text-ink-3">
+                  {tildify(c.cwd, home).split(/[\\/]/).slice(-1)[0]} · {relative(c.updatedAt)}
+                </span>
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
 
         <Command.Group heading="Go to">
           <Command.Item className={itemClass} value="new chat" onSelect={go(() => newChat())}>
@@ -526,6 +597,27 @@ export function Palette() {
               <Command.Item className={itemClass} value="save export chat document markdown" onSelect={go(() => void api.exportChat(chatId).then((p) => p && toast('Saved the chat as a document.')))}>
                 <Download /> Save this chat as a document
               </Command.Item>
+              <Command.Item className={itemClass} value="goal keep working until done set a goal" onSelect={go(() => seedComposer('/goal '))}>
+                <Target /> Set a goal for this chat
+              </Command.Item>
+              <Command.Item className={itemClass} value="loop repeat again timer schedule every start a loop" onSelect={go(() => seedComposer('/loop 15m '))}>
+                <Repeat /> Start a loop
+              </Command.Item>
+              <Command.Item
+                className={itemClass}
+                value="ultra mode many agents strongest models full effort"
+                onSelect={go(() => void run(api.setUltra(chatId, !chat?.ultra)))}
+              >
+                <UltraGlyph size={16} /> {chat?.ultra ? 'Turn Ultra off for this chat' : 'Turn Ultra on for this chat'}
+              </Command.Item>
+              <Command.Item className={itemClass} value="pin unpin chat top" onSelect={go(() => void run(api.updateChat(chatId, { pinned: !chat?.pinned })))}>
+                {chat?.pinned ? <PinOff /> : <Pin />} {chat?.pinned ? 'Unpin this chat' : 'Pin this chat to the top'}
+              </Command.Item>
+              {busyHere && (
+                <Command.Item className={itemClass} value="stop all everyone cancel halt" onSelect={go(() => void api.stop(chatId))}>
+                  <Square /> Stop everyone in this chat
+                </Command.Item>
+              )}
             </>
           )}
           <Command.Item className={itemClass} value="library pictures images gallery" onSelect={go(() => setView('library'))}>
@@ -543,6 +635,15 @@ export function Palette() {
           <Command.Item className={itemClass} value="theme dark light appearance" onSelect={go(() => void api.updateSettings({ theme: dark ? 'light' : 'dark' }))}>
             {dark ? <Sun /> : <Moon />} Switch to {dark ? 'light' : 'dark'} appearance
           </Command.Item>
+          {!env.trial && (
+            <Command.Item className={itemClass} value="try the demo team scripted show someone" onSelect={go(() => void api.switchDemo(true))}>
+              <Users />
+              <span className="min-w-0 flex-1">
+                <span className="block">Try the demo team</span>
+                <span className="block truncate text-[12px] text-ink-3">A scripted team to show someone: restarts the app; your chats stay as they are</span>
+              </span>
+            </Command.Item>
+          )}
           <Command.Item className={itemClass} value="keyboard shortcuts keys help" onSelect={() => setModal({ kind: 'shortcuts' })}>
             <Keyboard /> Keyboard shortcuts
           </Command.Item>
@@ -558,23 +659,10 @@ export function Palette() {
           </Command.Group>
         )}
 
-        {chats.length > 0 && (
-          <Command.Group heading="Chats">
-            {chats.slice(0, query ? 50 : 8).map((c) => (
-              <Command.Item key={c.id} className={itemClass} value={`chat ${c.title} ${baseName(c.cwd)} ${c.id}`} onSelect={go(() => void openChat(c.id))}>
-                <MessageSquare />
-                <span className="min-w-0 flex-1 truncate">{c.title}</span>
-                <span className="shrink-0 text-[12px] text-ink-3">
-                  {tildify(c.cwd, home).split(/[\\/]/).slice(-1)[0]} · {relative(c.updatedAt)}
-                </span>
-              </Command.Item>
-            ))}
-          </Command.Group>
-        )}
 
         {hits.length > 0 && (
           <Command.Group heading="Mentioned in chats" forceMount>
-            {hits.slice(0, 12).map((h, i) => {
+            {oneEach(hits).slice(0, 10).map((h, i) => {
               const a = h.accountId ? members[h.accountId] : undefined
               return (
                 <Command.Item
@@ -589,7 +677,7 @@ export function Palette() {
                     <span className="block truncate text-[12px] text-ink-3">
                       {h.title} · {relative(h.ts)}
                     </span>
-                    <span className="line-clamp-2 block text-[13px] leading-snug">{h.snippet}</span>
+                    <span className="line-clamp-2 block text-[13px] leading-snug">{plain(h.snippet)}</span>
                   </span>
                 </Command.Item>
               )

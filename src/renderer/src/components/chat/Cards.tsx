@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ArrowUpRight, Ban, Check, ChevronDown, CircleCheck, Hand, Repeat, Square, Target, CircleAlert, Clock, CornerDownRight, FileText, FolderOpen, Gauge, Hourglass, Info, MessageCircleQuestion, MousePointerClick, Pause, Play, RotateCcw, Globe, KeyRound, ShieldCheck, ShieldQuestion, Undo2, UserPlus, X } from 'lucide-react'
 import { compactNumber } from '@/lib/derive'
 import type { Account, AgentState, Item, Task } from '@shared/types'
@@ -7,8 +7,12 @@ import { MediaStrip, MediaView } from '../Media'
 import { viewFrom } from '../Viewer'
 import { agentKey, useStore } from '@/store'
 import { accentVars, api, baseName, cn, duration, runLabel } from '@/lib/util'
-import { Button, Spinner, inputClass } from '../ui'
-import { Orb } from '../Orb'
+import { Button, Spinner, Tip, inputClass } from '../ui'
+import { Orb, OrbStack } from '../Orb'
+import { CopyButton, EditButton } from './MessageActions'
+import { seedComposer } from './Composer'
+import { describe } from '../ultra/groups'
+import { FanMark, StateDot } from '../ultra/neural/Marks'
 import { Markdown } from '../Markdown'
 
 type Of<K extends Item['kind']> = Extract<Item, { kind: K }>
@@ -26,13 +30,13 @@ export function useElapsed(since?: number): number {
   return since ? Date.now() - since : 0
 }
 
-function Clamp({ text, lines = 5, compact }: { text: string; lines?: number; compact?: boolean }) {
+function Clamp({ text, lines = 5, compact, replyTo }: { text: string; lines?: number; compact?: boolean; replyTo?: string }) {
   const [open, setOpen] = useState(false)
   const long = text.length > lines * 90 || text.split('\n').length > lines
   return (
     <div>
       <div className={cn(!open && long && 'relative overflow-hidden')} style={!open && long ? { maxHeight: `${lines * 1.6}em` } : undefined}>
-        <Markdown text={text} compact={compact} />
+        <Markdown text={text} compact={compact} replyTo={replyTo} />
         {!open && long && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-[var(--clamp-bg,var(--surface))] to-transparent" />}
       </div>
       {long && (
@@ -46,7 +50,16 @@ function Clamp({ text, lines = 5, compact }: { text: string; lines?: number; com
 
 // ───────────── you ─────────────
 
-export const UserBubble = memo(function UserBubble({ item }: { item: Of<'user'> }) {
+export const UserBubble = memo(function UserBubble({ item, chatId, accountId }: { item: Of<'user'>; chatId?: string; accountId?: string }) {
+  const [taking, setTaking] = useState(false)
+  // A message still waiting its turn can be taken back, or taken back into the box to change.
+  const takeBack = async (edit: boolean): Promise<void> => {
+    if (!chatId || !accountId) return
+    setTaking(true)
+    const got = await useStore.getState().dequeue(chatId, accountId, item.id)
+    setTaking(false)
+    if (got && edit) seedComposer(got.text)
+  }
   return (
     <div className="flex animate-rise flex-col items-end py-2">
       {item.attachments && item.attachments.length > 0 && (
@@ -64,13 +77,33 @@ export const UserBubble = memo(function UserBubble({ item }: { item: Of<'user'> 
         </div>
       )}
       {item.text && (
-        <div className="selectable max-w-[82%] rounded-[18px] rounded-br-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere] shadow-[inset_0_0_0_1px_var(--line)]">
-          {item.text}
+        <div className="group/u relative max-w-[82%]">
+          {/* Beside the bubble, on hover: they take no room, so nothing moves. */}
+          <div className="pointer-events-none absolute right-full bottom-0.5 flex gap-0.5 pr-1 opacity-0 transition-opacity duration-150 group-hover/u:pointer-events-auto group-hover/u:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+            <CopyButton text={item.text} />
+            {/* A queued message is changed with "Edit" under it, which also takes it out of the queue. */}
+            {!item.queued && <EditButton text={item.text} />}
+          </div>
+          <div className="selectable rounded-[18px] rounded-br-[6px] bg-surface-2 px-4 py-2.5 text-[14.5px] leading-[1.55] whitespace-pre-wrap [overflow-wrap:anywhere] shadow-[inset_0_0_0_1px_var(--line)]">
+            {item.text}
+          </div>
         </div>
       )}
       {item.queued && (
         <div className="mt-1 flex items-center gap-1 text-[11.5px] text-ink-3">
           <Clock className="size-3" /> Waiting for the current reply to finish
+          {chatId && accountId && (
+            <>
+              <span className="text-ink-4">·</span>
+              <button disabled={taking} onClick={() => void takeBack(true)} className="font-medium text-ink-2 hover:text-ink disabled:opacity-40">
+                Edit
+              </button>
+              <span className="text-ink-4">·</span>
+              <button disabled={taking} onClick={() => void takeBack(false)} className="font-medium text-ink-2 hover:text-ink disabled:opacity-40">
+                Take back
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -191,9 +224,13 @@ export const PeerCard = memo(function PeerCard({ item, onOpen }: { item: Of<'pee
           </span>
           {item.tag === 'result' && item.status === 'done' && <Check className="size-3.5 shrink-0 text-ok" strokeWidth={2.5} />}
           {item.tag === 'result' && item.status === 'failed' && <CircleAlert className="size-3.5 shrink-0 text-bad" />}
-          {item.queued && <span className="shrink-0 text-[11.5px] text-ink-3">queued</span>}
+          {item.queued && (
+            <Tip label="It is read as soon as the current step ends" side="top">
+              <span className="shrink-0 text-[11.5px] text-ink-3">{item.tag === 'result' ? 'not read yet' : 'read next'}</span>
+            </Tip>
+          )}
         </div>
-        <Clamp text={item.text} lines={item.tag === 'result' ? 7 : 4} compact />
+        <Clamp text={item.text} lines={item.tag === 'result' ? 7 : 4} compact replyTo={item.from} />
       </div>
     </div>
   )
@@ -204,9 +241,10 @@ export const PeerCard = memo(function PeerCard({ item, onOpen }: { item: Of<'pee
 const STATUS: Record<Task['status'], string> = { queued: 'Queued', running: 'Working', done: 'Done', failed: 'Failed', cancelled: 'Stopped', interrupted: 'Cut short' }
 
 /** "Waits for t1 and t2" while a task is lined up behind others. */
-export const waitingLabel = (t: { waitingOn?: string[]; holding?: boolean; status?: string; parkedUntil?: number } | undefined): string =>
+export const waitingLabel = (t: { waitingOn?: string[]; waitingFor?: string; holding?: boolean; status?: string; parkedUntil?: number } | undefined): string =>
   t?.waitingOn?.length
-    ? `Waits for ${t.waitingOn.join(' and ')}`
+    ? // Who it waits for, by name; never the task ids the engine keeps.
+      `Waits for ${t.waitingFor || (t.waitingOn.length === 1 ? 'another task' : `${t.waitingOn.length} other tasks`)}`
     : t?.parkedUntil && t.status === 'queued'
       ? `Waits for allowance · ${new Date(t.parkedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       : t?.holding && t.status === 'running'
@@ -250,7 +288,7 @@ export const DelegateCard = memo(function DelegateCard({
           {status === 'cancelled' && <Ban className="size-3" />}
           {status === 'interrupted' && <Pause className="size-3" />}
           {waitingLabel(task) || STATUS[status]}
-          {working && <span className="text-ink-3">{duration(elapsed)}</span>}
+          {working && elapsed >= 1000 && <span className="text-ink-3">{duration(elapsed)}</span>}
           {status === 'done' && took > 0 && <span className="font-normal text-ink-3">{duration(took)}</span>}
         </span>
       </div>
@@ -271,6 +309,152 @@ export const DelegateCard = memo(function DelegateCard({
         )}
       </div>
     </button>
+  )
+})
+
+const NO_TASKS: Task[] = []
+const NO_PEOPLE: Account[] = []
+const ORDER: Record<Task['status'], number> = { running: 0, queued: 1, interrupted: 2, failed: 3, done: 4, cancelled: 5 }
+
+/** Many tasks handed out at once: one card that says to whom, with how far they have got. Opens to one line per task. */
+export const DelegateGroup = memo(function DelegateGroup({ items, chatId, onOpen }: { items: Of<'delegate'>[]; chatId: string; onOpen(accountId: string): void }) {
+  const [open, setOpen] = useState(false)
+  const tasks = useStore((s) => s.tasks[chatId] ?? NO_TASKS)
+  const members = useStore((s) => s.members)
+  const ultra = useStore((s) => !!s.chats.find((c) => c.id === chatId)?.ultra)
+  const from = useStore((s) => (items[0] ? s.members[(s.tasks[chatId] ?? NO_TASKS).find((t) => t.id === items[0].taskId)?.from || ''] : undefined))
+  const rows = useMemo(() => {
+    const byId = new Map(tasks.map((t) => [t.id, t]))
+    return items
+      .map((d) => ({ d, t: byId.get(d.taskId), to: members[d.to] }))
+      .sort((a, b) => ORDER[a.t?.status || 'queued'] - ORDER[b.t?.status || 'queued'])
+  }, [items, tasks, members])
+  const people = useMemo(() => {
+    const seen = new Set<string>()
+    const out: Account[] = []
+    for (const d of items) {
+      const a = members[d.to]
+      if (a && !seen.has(a.id)) {
+        seen.add(a.id)
+        out.push(a)
+      }
+    }
+    return out.length ? out : NO_PEOPLE
+  }, [items, members])
+  const count = (st: Task['status']): number => rows.filter((r) => (r.t?.status || 'queued') === st).length
+  const parts = [
+    { n: count('running'), text: 'working', tone: 'font-medium text-ink-2' },
+    { n: count('queued'), text: 'waiting', tone: '' },
+    { n: count('done'), text: 'done', tone: 'text-ok' },
+    { n: count('failed'), text: 'failed', tone: 'text-bad' },
+  ].filter((x) => x.n > 0)
+  return (
+    <div className={cn('my-3 animate-rise overflow-hidden rounded-[14px]', ultra ? 'ux-ultra-frame' : 'bg-surface shadow-card')}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-hover">
+        {ultra ? (
+          // In Ultra, a stage reads as a piece of the network: one agent fanning work out.
+          <FanMark from={from} to={rows.map((r) => r.to).filter((a): a is Account => !!a)} states={rows.map((r) => r.t?.status)} />
+        ) : (
+          <OrbStack accounts={people.map((a) => ({ ...a, live: false }))} size={20} max={4} />
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-semibold">
+            Handed out {items.length} tasks to {describe(people)}
+          </span>
+          <span className="tabular mt-0.5 block truncate text-[12px] text-ink-3">
+            {parts.map((x, i) => (
+              <span key={x.text} className={x.tone}>
+                {i > 0 && <span className="font-normal text-ink-4"> · </span>}
+                {x.n} {x.text}
+              </span>
+            ))}
+          </span>
+        </span>
+        {/* One mark per task: how far the whole batch has got, at a glance. */}
+        <span className="flex max-w-[28%] shrink-0 flex-wrap items-center justify-end gap-[3px]" aria-hidden>
+          {rows.map(({ d, t, to }) =>
+            ultra ? (
+              <StateDot key={d.id} status={t?.status} account={to} size={9} />
+            ) : (
+              <span
+                key={d.id}
+                className={cn(
+                  'size-[6px] rounded-full',
+                  t?.status === 'done' ? 'bg-ok' : t?.status === 'running' ? 'animate-pulse-soft bg-ink-2' : t?.status === 'failed' ? 'bg-bad' : 'bg-line-2',
+                )}
+              />
+            ),
+          )}
+        </span>
+        <ChevronDown className={cn('size-3.5 shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="animate-fade-in border-t border-line px-1.5 py-1.5">
+          {rows.map(({ d, t, to }) => {
+            const st = t?.status || 'queued'
+            return (
+              <button
+                key={d.id}
+                onClick={() => to && onOpen(to.id)}
+                style={accentVars(to?.accent)}
+                className="flex w-full items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-hover"
+              >
+                {ultra ? <StateDot status={st} account={to} size={14} /> : <Orb account={to} size={15} live={st === 'running'} />}
+                <span className="w-[92px] shrink-0 truncate font-medium">{to?.name || 'Teammate'}</span>
+                <span className="min-w-0 flex-1 truncate text-ink-2">{d.title}</span>
+                <span
+                  className={cn(
+                    'tabular shrink-0 text-[11.5px]',
+                    st === 'done' ? 'text-ok' : st === 'failed' ? 'text-bad' : st === 'running' ? 'font-medium text-ink-2' : 'text-ink-3',
+                  )}
+                >
+                  {waitingLabel(t) || STATUS[st]}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+})
+
+/** Several agents joining at once: one line with their faces, opening to who they are. */
+export const SpawnGroup = memo(function SpawnGroup({ items, onOpen }: { items: Of<'spawn'>[]; onOpen(accountId: string): void }) {
+  const [open, setOpen] = useState(false)
+  const members = useStore((s) => s.members)
+  const people = useMemo(() => items.map((i) => members[i.agentId]).filter((a): a is Account => !!a), [items, members])
+  return (
+    <div className="my-2.5 animate-rise overflow-hidden rounded-[14px] bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-hover">
+        <OrbStack accounts={people.map((a) => ({ ...a, live: false }))} size={20} max={5} />
+        <span className="min-w-0 flex-1 truncate text-[13px]">
+          <span className="font-semibold">{items.length} agents joined the chat</span>
+          <span className="text-ink-3"> · {describe(people)}</span>
+        </span>
+        <UserPlus className="size-3.5 shrink-0 text-ink-3" strokeWidth={1.75} />
+        <ChevronDown className={cn('size-3.5 shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="animate-fade-in border-t border-line px-1.5 py-1.5">
+          {items.map((i) => {
+            const a = members[i.agentId]
+            return (
+              <button
+                key={i.id}
+                onClick={() => a && !a.spawned?.gone && onOpen(a.id)}
+                style={accentVars(a?.accent)}
+                className="flex w-full items-center gap-2.5 rounded-[9px] px-2 py-1.5 text-left text-[12.5px] transition-colors hover:bg-hover"
+              >
+                <Orb account={a} size={15} off={!!a?.spawned?.gone} />
+                <span className="w-[92px] shrink-0 truncate font-medium">{a?.name || i.name}</span>
+                <span className="min-w-0 flex-1 truncate text-ink-2">{i.role}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 })
 
@@ -303,7 +487,7 @@ export const AskCard = memo(function AskCard({ item, onOpen }: { item: Of<'ask'>
           className={cn('mt-1.5 ml-[23px] rounded-[12px] px-3.5 py-2.5', item.status === 'answered' ? 'bg-[var(--a-soft)] shadow-[inset_0_0_0_1px_var(--a-line)]' : 'bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]')}
           style={{ ['--clamp-bg' as string]: item.status === 'answered' ? 'color-mix(in oklab, var(--a2) 9%, var(--surface))' : 'var(--surface-2)' }}
         >
-          {item.status === 'answered' ? <Clamp text={item.answer} lines={6} compact /> : <span className="text-[12.5px] text-ink-3">{item.answer}</span>}
+          {item.status === 'answered' ? <Clamp text={item.answer} lines={6} compact replyTo={item.to} /> : <span className="text-[12.5px] text-ink-3">{item.answer}</span>}
         </div>
       )}
     </div>
@@ -566,9 +750,34 @@ export const QuestionCard = memo(function QuestionCard({ item, accountId }: { it
 
 // ───────────── small rows ─────────────
 
-export const NoticeRow = memo(function NoticeRow({ item, chatId }: { item: Of<'notice'>; chatId: string }) {
+/**
+ * The message a failed reply was answering, when it is still the latest one: what "Try again"
+ * sends once more. Nothing when a newer message has been sent since, or the agent is busy again.
+ */
+function useRetry(item: { id: string }, chatId: string, accountId?: string): Of<'user'> | undefined {
+  return useStore((s) => {
+    if (!accountId) return undefined
+    const k = agentKey(chatId, accountId)
+    const st = s.agents[k]
+    if (st && st.phase !== 'idle' && st.phase !== 'error') return undefined
+    const list = s.items[k]
+    if (!list) return undefined
+    const at = list.findIndex((i) => i.id === item.id)
+    if (at < 0) return undefined
+    for (let i = list.length - 1; i > at; i--) if (list[i].kind === 'user') return undefined
+    for (let i = at - 1; i >= 0; i--) {
+      const it = list[i]
+      if (it.kind === 'user') return it.text.trim() || it.attachments?.length ? it : undefined
+    }
+    return undefined
+  })
+}
+
+export const NoticeRow = memo(function NoticeRow({ item, chatId, accountId }: { item: Of<'notice'>; chatId: string; accountId?: string }) {
   const next = useAccountOf(item.action?.kind === 'switch-lead' ? item.action.to : '')
   const run = useStore((s) => s.run)
+  const send = useStore((s) => s.send)
+  const retry = useRetry(item, chatId, item.level === 'error' ? accountId : undefined)
   const setFocus = useStore((s) => s.setFocus)
   const [busy, setBusy] = useState(false)
   if (item.action?.kind === 'resume') {
@@ -618,6 +827,21 @@ export const NoticeRow = memo(function NoticeRow({ item, chatId }: { item: Of<'n
           <CircleAlert className="mt-px size-4 shrink-0 text-bad" />
           <span className="selectable leading-snug">{item.text}</span>
         </div>
+        {!offer && retry && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-[26px]">
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true)
+                void send(retry.text, retry.attachments, accountId).finally(() => setBusy(false))
+              }}
+            >
+              <RotateCcw className="size-3" /> Try again
+            </Button>
+            <span className="text-[12px] text-ink-2">Sends your last message again.</span>
+          </div>
+        )}
         {offer && (
           <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-[26px]">
             <Button

@@ -1,0 +1,227 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy'; };\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); const ag = c.agents || []; const depth = Math.max(0, ...ag.map(a => a.spawned?.depth || 0)); const t = s.tasks[c.id] || []; return 'agents ' + ag.length + ' (gone ' + ag.filter(a => a.spawned?.gone).length + ') depth ' + depth + ' tasks ' + t.length + ' done ' + t.filter(x => x.status === 'done').length + ' busy ' + window.__busy() + ' view ' + s.view + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nwindow.__hover = (name) => { const g = [...document.querySelectorAll('.nn-node')].find(x => (x.getAttribute('aria-label') || '').startsWith(name)) || [...document.querySelectorAll('.nn-node')][3]; if (g) g.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body })); return g ? g.getAttribute('aria-label') : 'none'; };\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "await window.__S().send('What does the project do?', undefined, undefined, { mode: 'quick' }); await window.__sleep(1500); await window.__waitIdle(20000); await window.ensemble.setUltra(window.__S().chatId, true); await window.__sleep(400); window.__S().setView('flow'); await window.__sleep(500); await window.__S().send('Design the landing page'); await window.__sleep(2600); return 'ultra forming: ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n01-ultra-forming-1400-light.png"
+ },
+ {
+  "js": "await window.__sleep(2200); return 'ultra active: ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n02-ultra-active-1400-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 350,
+  "shot": "auto-surfaces-n03-ultra-active-1400-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "wait": 450,
+  "shot": "auto-surfaces-n04-ultra-active-900-dark.png"
+ },
+ {
+  "theme": "light",
+  "wait": 350,
+  "shot": "auto-surfaces-n05-ultra-active-900-light.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "js": "await window.__sleep(300); return 'hover ' + window.__hover('Builder A');",
+  "wait": 400,
+  "shot": "auto-surfaces-n06-ultra-hover-1400-light.png"
+ },
+ {
+  "js": "const r = await window.__waitIdle(40000); await window.__sleep(1200); return 'ultra done after ' + r + ': ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n07-ultra-done-1400-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400,
+  "shot": "auto-surfaces-n08-ultra-done-1400-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('chat'); await window.__sleep(700); window.__bottom(); return 'chat';",
+  "wait": 300,
+  "shot": "auto-surfaces-n09-ultra-chat-1400-light.png"
+ },
+ {
+  "js": "const b = document.querySelector('[data-network-strip] > div > button'); b && b.click(); await window.__sleep(600); const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; return 'strip open ' + !!b;",
+  "wait": 300,
+  "shot": "auto-surfaces-n10-ultra-strip-open-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400,
+  "shot": "auto-surfaces-n11-ultra-strip-open-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const b = document.querySelector('[data-network-strip] > div > button'); b && b.click(); window.__S().setView('now'); await window.__sleep(900); return 'mc';",
+  "wait": 300,
+  "shot": "auto-surfaces-n12-mc-1400-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 500,
+  "shot": "auto-surfaces-n13-mc-1400-dark.png"
+ },
+ {
+  "size": [
+   1920,
+   1080
+  ],
+  "theme": "light",
+  "js": "localStorage.setItem('ensemble.flow.feed', '0'); window.__S().setView('chat'); window.__S().newChat(); await window.__sleep(600); await window.__S().send('What does the project do?', undefined, undefined, { mode: 'quick' }); await window.__sleep(1500); await window.__waitIdle(20000); await window.ensemble.setUltra(window.__S().chatId, true); await window.__sleep(400); window.__S().setView('flow'); await window.__sleep(500); await window.__S().send('/gocrazy design the landing page'); await window.__sleep(2400); return 'crazy forming: ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n20-crazy-forming-1920-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 300,
+  "shot": "auto-surfaces-n21-crazy-forming-1920-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "await window.__sleep(7000); return 'crazy active: ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n22-crazy-active-1920-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 300,
+  "shot": "auto-surfaces-n23-crazy-active-1920-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "wait": 450,
+  "shot": "auto-surfaces-n24-crazy-active-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "await window.__sleep(7000); return 'crazy mid: ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n25-crazy-mid-1400-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 300,
+  "shot": "auto-surfaces-n25b-crazy-mid-1400-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "wait": 450,
+  "shot": "auto-surfaces-n25c-crazy-mid-900-light.png"
+ },
+ {
+  "size": [
+   1920,
+   1080
+  ],
+  "js": "const r = await window.__waitIdle(60000); await window.__sleep(1500); return 'crazy done after ' + r + ': ' + window.__info();",
+  "wait": 50,
+  "shot": "auto-surfaces-n26-crazy-done-1920-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400,
+  "shot": "auto-surfaces-n27-crazy-done-1920-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__S().setView('chat'); await window.__sleep(800); window.__bottom(); return 'answer';",
+  "wait": 300,
+  "shot": "auto-surfaces-n28-crazy-answer-1920-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400,
+  "shot": "auto-surfaces-n29-crazy-answer-1920-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__S().setView('now'); await window.__sleep(900); return 'mc crazy';",
+  "wait": 300,
+  "shot": "auto-surfaces-n30-mc-crazy-1400-light.png"
+ },
+ {
+  "size": [
+   1920,
+   1080
+  ],
+  "theme": "dark",
+  "js": "\nconst st = window.__ensemble; const s = st.getState(); const chatId = s.chatId; const now = Date.now();\nconst chat = s.chats.find(c => c.id === chatId); const have = (chat.agents || []).filter(a => !a.spawned?.gone);\nconst lead = chat.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id;\nconst byName = n => have.find(a => a.name === n);\nconst accents = ['teal', 'blue', 'violet', 'green', 'amber', 'rose', 'slate', 'clay'];\nconst extra = []; const tasks = []; let k = 0;\nconst mk = (name, by, depth, role) => { const a = { id: 'sx-' + (k++), name, provider: 'claude', accent: accents[k % 8], enabled: true, model: null, effort: null, role, createdAt: now, configDir: null, spawned: { chatId, base: lead, by, depth, at: now } }; extra.push(a); return a; };\nconst task = (from, to, status, title, after) => { const t = { id: 'sxt-' + tasks.length, chatId, title, brief: title, from, to, status, createdAt: now, startedAt: now - 20000, after, modelLabel: 'Sonnet 5.5', effort: 'high' }; tasks.push(t); return t; };\nfor (const b of ['Builder A', 'Builder B', 'Builder C', 'Builder D']) { const B = byName(b); if (!B) continue; const v = mk('Verifier ' + b.slice(-1), B.id, 2, 'checks the claims in version ' + b.slice(-1)); task(B.id, v.id, 'running', 'Verify: version ' + b.slice(-1)); const f = mk('Fact-checker ' + b.slice(-1), v.id, 3, 'checks each source'); task(v.id, f.id, k % 3 ? 'running' : 'queued', 'Check sources ' + b.slice(-1)); if (k % 2) { const r = mk('Reader ' + b.slice(-1), f.id, 4, 'reads one source in full'); task(f.id, r.id, 'running', 'Read source ' + b.slice(-1)); } }\nconst j1 = byName('Judge 1'); if (j1) { const v = mk('Verifier J', j1.id, 2, 'reruns the scores'); task(j1.id, v.id, 'done', 'Re-score'); }\nwhile (extra.length + have.length < 35) { const s2 = mk('Scout ' + (9 + k), lead, 1, 'one more angle'); task(lead, s2.id, k % 3 ? 'running' : 'done', 'Scout: angle ' + k); }\nst.setState(x => ({ chats: x.chats.map(c => c.id === chatId ? { ...c, agents: [...(c.agents || []), ...extra] } : c), members: { ...x.members, ...Object.fromEntries(extra.map(a => [a.id, a])) }, tasks: { ...x.tasks, [chatId]: [...(x.tasks[chatId] || []), ...tasks] }, agents: { ...x.agents, ...Object.fromEntries(tasks.filter(t => t.status === 'running').map(t => [chatId + ':' + t.to, { chatId, accountId: t.to, phase: 'thinking', activity: 'Reading the source', queued: 0, turnStartedAt: now - 20000 }])) } }));\nwindow.__S().setView('flow');\nawait window.__sleep(2400);\nreturn 'stress: present ' + (have.length + extra.length) + ' | ' + window.__info();\n",
+  "wait": 50,
+  "shot": "auto-surfaces-n40-stress35-1920-dark.png"
+ },
+ {
+  "theme": "light",
+  "wait": 400,
+  "shot": "auto-surfaces-n41-stress35-1920-light.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "wait": 600,
+  "shot": "auto-surfaces-n42-stress35-1400-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "wait": 600,
+  "shot": "auto-surfaces-n43-stress35-900-dark.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__S().setView('now'); await window.__sleep(900); return 'mc stress';",
+  "wait": 300,
+  "shot": "auto-surfaces-n44-mc-stress-1400-light.png"
+ }
+]

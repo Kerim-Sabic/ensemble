@@ -1,0 +1,214 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nconst s = window.__ensemble.getState();\nreturn 'accounts ' + s.accounts.filter(a => a.enabled).map(a => a.name).join(', ') + ' browser=' + s.settings.browser + ' canBrowse=' + s.env.canBrowse;\n",
+  "wait": 1200
+ },
+ {
+  "js": "await window.__ensemble.getState().send('Design the pricing page and check it in the browser.'); return 'sent';",
+  "wait": 6500
+ },
+ {
+  "js": "\nconst st = window.__ensemble;\nconst s0 = st.getState();\nwindow.__d = { chatId: s0.chatId, agents: [], tasks: [], states: {}, screens: {} };\nconst D = window.__d;\nconst missing = (s) => {\n  const c = s.chats.find(c => c.id === D.chatId); if (!c) return false;\n  if (D.agents.some(a => !s.members[a.id])) return true;\n  if (!D.agents.every(a => (c.agents || []).some(x => x.id === a.id && !!x.spawned?.gone === !!a.spawned.gone))) return true;\n  const cur = s.tasks[D.chatId] || [];\n  if (!D.tasks.every(t => cur.some(x => x.id === t.id && x.status === t.status))) return true;\n  for (const [k, v] of Object.entries(D.states)) { const x = s.agents[k]; if (!x || x.phase !== v.phase || x.activity !== v.activity) return true; }\n  for (const [k, v] of Object.entries(D.screens)) { const x = s.screens[k]; if (x && x.active !== v.active) return true; }\n  return false;\n};\nD.apply = () => st.setState(s => {\n  const out = {};\n  const ids = new Set(D.agents.map(a => a.id));\n  out.chats = s.chats.map(c => c.id !== D.chatId ? c : { ...c, agents: [...(c.agents || []).filter(x => !ids.has(x.id) && !String(x.id).startsWith('fk-')), ...D.agents] });\n  out.members = { ...s.members, ...Object.fromEntries(D.agents.map(a => [a.id, a])) };\n  const tids = new Set(D.tasks.map(t => t.id));\n  out.tasks = { ...s.tasks, [D.chatId]: [...(s.tasks[D.chatId] || []).filter(x => !tids.has(x.id) && !String(x.id).startsWith('fk-')), ...D.tasks] };\n  const agents = { ...s.agents };\n  for (const k of Object.keys(agents)) if (k.startsWith(D.chatId + ':fk-') && !D.states[k]) delete agents[k];\n  out.agents = { ...agents, ...D.states };\n  const screens = { ...s.screens };\n  for (const [k, v] of Object.entries(D.screens)) if (screens[k]) screens[k] = { ...screens[k], ...v };\n  out.screens = screens;\n  return out;\n});\nst.subscribe(s => { if (missing(s)) setTimeout(D.apply, 0); });\n\nconst now = Date.now();\n// id, name, by ('lead' or another fake id), model id, model label, effort, status, activity, task title\nconst R = [\n  ['scout-1', 'Scout 1', 'lead', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'running', 'Searching the web for rival pricing', 'Scout: pricing of five rivals'],\n  ['scout-2', 'Scout 2', 'lead', 'gpt-5.5-luna', 'Luna', 'low', 'running', 'Reading stripe.com/docs/payments', 'Scout: checkout patterns'],\n  ['builder-a', 'Builder A', 'lead', 'claude-fable-5-2', 'Fable 5.2', 'max', 'queued', '', 'Build: version A'],\n  ['scout-3', 'Scout 3', 'lead', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'done', '', 'Scout: payment provider docs'],\n  ['scout-4', 'Scout 4', 'lead', 'gpt-5.5-luna', 'Luna', 'low', 'running', 'Reading the WCAG 2.2 checklist', 'Scout: accessibility rules'],\n  ['builder-b', 'Builder B', 'lead', 'gpt-6.2-astra', 'Astra', 'xhigh', 'waiting', 'Wants to run npm install', 'Build: version B'],\n  ['judge-1', 'Judge 1', 'lead', 'claude-fable-5-2', 'Fable 5.2', 'max', 'queued', '', 'Judge: round 1'],\n  ['tester', 'Tester', 'builder-a', 'claude-sonnet-5-5', 'Sonnet 5.5', 'high', 'running', 'Running the checkout tests', 'Run the checkout tests'],\n  ['scout-5', 'Scout 5', 'lead', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'done', '', 'Scout: tax and VAT'],\n  ['scout-6', 'Scout 6', 'lead', 'gpt-5.5-luna', 'Luna', 'low', 'done', '', 'Scout: annual discounts'],\n  ['builder-c', 'Builder C', 'lead', 'claude-opus-5-5', 'Opus 5.5', 'max', 'running', 'Writing src/pages/Pricing.tsx', 'Build: version C'],\n  ['builder-d', 'Builder D', 'lead', 'gpt-6.2-astra', 'Astra', 'xhigh', 'running', 'Comparing three hero layouts', 'Build: version D'],\n  ['scout-7', 'Scout 7', 'lead', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'running', 'Searching for conversion studies', 'Scout: conversion studies'],\n  ['scout-8', 'Scout 8', 'lead', 'gpt-5.5-luna', 'Luna', 'low', 'done', '', 'Scout: refund policies'],\n  ['judge-2', 'Judge 2', 'lead', 'gpt-6.2-astra', 'Astra', 'xhigh', 'queued', '', 'Judge: round 1'],\n  ['reviewer', 'Reviewer', 'builder-a', 'claude-sonnet-5-5', 'Sonnet 5.5', 'high', 'running', 'Reading the diff cold', 'Review the diff'],\n  ['renderer', 'Renderer', 'builder-b', 'claude-haiku-4-5', 'Haiku 4.5', 'medium', 'running', 'Taking a screenshot at 1440 px', 'Render each direction'],\n  ['critic', 'Critic', 'builder-c', 'gpt-6.2-astra', 'Astra', 'high', 'queued', '', 'Check it against the brief'],\n  ['scout-9', 'Scout 9', 'lead', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'done', '', 'Scout: trial lengths'],\n  ['scout-10', 'Scout 10', 'lead', 'gpt-5.5-luna', 'Luna', 'low', 'running', 'Reading three case studies', 'Scout: plan naming'],\n  ['judge-3', 'Judge 3', 'lead', 'claude-fable-5-2', 'Fable 5.2', 'max', 'queued', '', 'Judge: round 2'],\n  ['scout-11', 'Scout 11', 'lead', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'failed', '', 'Scout: enterprise tiers'],\n  ['scout-12', 'Scout 12', 'lead', 'gpt-5.5-luna', 'Luna', 'low', 'done', '', 'Scout: seat pricing'],\n  ['editor', 'Editor', 'lead', 'claude-opus-5-5', 'Opus 5.5', 'high', 'queued', '', 'Merge the best ideas'],\n  ['proofreader', 'Proofreader', 'builder-d', 'claude-haiku-4-5', 'Haiku 4.5', 'low', 'done', '', 'Proofread the copy'],\n];\nwindow.__fake = (n, opts = {}) => {\n  const s = st.getState();\n  const lead = (s.chats.find(c => c.id === D.chatId) || {}).leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id;\n  D.lead = lead;\n  const pick = R.slice(0, n);\n  const accents = ['teal', 'blue', 'violet', 'clay', 'green', 'amber', 'rose', 'slate'];\n  const fid = id => 'fk-' + id;\n  const gone = new Set(opts.gone || []);\n  D.agents = pick.map(([id, name, by, model], i) => {\n    const byId = by === 'lead' ? lead : fid(by);\n    return { id: fid(id), name, provider: model.startsWith('gpt') ? 'chatgpt' : 'claude', accent: accents[i % accents.length], enabled: true, model, effort: null, role: name.replace(/ \\S+$/, ''), spawned: { chatId: D.chatId, base: lead, by: byId, depth: by === 'lead' ? 1 : 2, at: now - (60 - i) * 1000, gone: gone.has(id) } };\n  });\n  D.tasks = pick.map(([id, name, by, model, label, effort, status, act, title], i) => ({\n    id: 'fk-t-' + id, chatId: D.chatId, title, brief: title + '. Return what you found with sources.', from: by === 'lead' ? lead : fid(by), to: fid(id),\n    status: status === 'waiting' ? 'running' : status, createdAt: now - 120000, startedAt: status === 'queued' ? undefined : now - (30 + i * 9) * 1000,\n    finishedAt: status === 'done' || status === 'failed' ? now - 4000 * i : undefined, model, modelLabel: label, effort,\n    after: status === 'queued' ? ['t1', 't2'] : undefined, waitingOn: status === 'queued' ? (name.startsWith('Judge') ? ['Builder A', 'Builder B'] : ['Scout 1', 'Scout 2']) : undefined,\n  }));\n  D.states = {};\n  pick.forEach(([id, name, by, model, label, effort, status, act], i) => {\n    const busy = status === 'running' || status === 'waiting';\n    D.states[D.chatId + ':' + fid(id)] = { chatId: D.chatId, accountId: fid(id), phase: status === 'waiting' ? 'waiting' : busy ? (i % 2 ? 'tool' : 'thinking') : status === 'failed' ? 'error' : 'idle', activity: busy ? act : undefined, queued: 0, taskId: busy || status === 'queued' ? 'fk-t-' + id : null, model, turnStartedAt: busy ? now - (25 + i * 11) * 1000 : undefined, error: status === 'failed' ? 'The search tool timed out' : undefined };\n  });\n  // The lead is at work too.\n  D.states[D.chatId + ':' + lead] = { chatId: D.chatId, accountId: lead, phase: 'thinking', activity: 'Waiting on ' + Math.max(1, pick.filter(r => r[6] === 'running').length) + ' agents', queued: 0, model: 'claude-fable-5-2', turnStartedAt: now - 184000 };\n  D.apply();\n  return 'fake agents ' + D.agents.length + ' (lead ' + lead + ')';\n};\n// Opens real browsers in the demo for some of the fake agents (or accounts), on local pages.\nwindow.__screens = async (ids, active = []) => {\n  const s = st.getState();\n  const base = 'file:///C:/Users/kerim/ensemble/.shots/designer/pages/';\n  const res = [];\n  for (let i = 0; i < ids.length; i++) {\n    const id = ids[i];\n    try { await window.ensemble.screenOpen(D.chatId, id, base + 'p' + ((i % 6) + 1) + '.html'); res.push('ok'); } catch (e) { res.push(String(e.message || e).slice(0, 60)); }\n    D.screens[D.chatId + ':' + id + ':browser'] = { active: active.includes(id), pointer: { x: 0.2 + 0.1 * i, y: 0.3 + 0.07 * i, action: 'click', label: 'Clicked', ts: Date.now() } };\n  }\n  D.apply();\n  return res.join(',');\n};\nwindow.__closeScreens = async () => {\n  for (const k of Object.keys(D.screens)) { const [c, a] = k.split(':'); try { await window.ensemble.screenClose(c, a); } catch {} }\n  D.screens = {};\n  return 'closed';\n};\nreturn 'setup ' + D.chatId;\n",
+  "wait": 200
+ },
+ {
+  "js": "window.__ensemble.getState().setView('flow'); return window.__fake(3, { gone: [] });",
+  "wait": 1400
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n3-1400-light.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n3-1400-dark.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n3-1200-light.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n3-1200-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n3-900-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n3-900-dark.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('flow'); return window.__fake(10, { gone: [] });",
+  "wait": 1400
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n10-1400-light.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n10-1400-dark.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n10-1200-light.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n10-1200-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n10-900-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n10-900-dark.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('flow'); return window.__fake(25, { gone: [\"scout-3\",\"scout-5\"] });",
+  "wait": 1400
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n25-1400-light.png"
+ },
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n25-1400-dark.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n25-1200-light.png"
+ },
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n25-1200-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n25-900-light.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "dark",
+  "js": "window.__ensemble.getState().setView('flow'); return document.querySelectorAll('[data-agent-card]').length + ' cards';",
+  "wait": 1100,
+  "shot": "auto-designer-team-n25-900-dark.png"
+ }
+]

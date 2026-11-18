@@ -1,9 +1,9 @@
-import { memo, useMemo, useState, type DragEvent } from 'react'
+import { memo, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { Activity, BookOpen, ChevronRight, Plug, ScrollText, Download, Ellipsis, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, Images, PanelLeft, Pencil, Pin, PinOff, Plus, Repeat, Search, Settings2, SquarePen, Target, Trash2 } from 'lucide-react'
 import { goalLine, goalOpen, liveLoops } from '@shared/auto'
 import type { Account, AgentState, Chat, Folder } from '@shared/types'
 import { adviseModel, budgetOf, hoursLabel, paceWord, type WindowBudget } from '@shared/budget'
-import { leadOf, useAccounts, useStore } from '@/store'
+import { leadOf, useAccounts, useLiveByChat, useStore, useWorkByAccount, useWorkSummary } from '@/store'
 import { accentVars, api, cn, dayBucket, folderLabel, relative, until } from '@/lib/util'
 import { IconButton, Kbd, Menu, MenuItem, MenuLabel, MenuSeparator, Tip } from './ui'
 import { BudgetMeter, Orb, OrbStack } from './Orb'
@@ -88,7 +88,18 @@ function AutoMarks({ chat }: { chat: Chat }) {
   )
 }
 
+/** How many of the lead's replies each chat had when you last had it open. */
+const seenReplies = new Map<string, number>()
+
+const NO_LIVE: Account[] = []
+
 const ChatRow = memo(function ChatRow({ chat, active, live, waiting, folders, onNewFolder }: { chat: Chat; active: boolean; live: Account[]; waiting: boolean; folders: Folder[]; onNewFolder(chat: Chat): void }) {
+  // Replies from the lead that arrived while you were elsewhere: a dot until you open the chat.
+  const replies = useStore((s) => s.unread[`${chat.id}:${leadOf(s, chat.id)?.id}`] || 0)
+  useEffect(() => {
+    if (active) seenReplies.set(chat.id, replies)
+  }, [active, chat.id, replies])
+  const unread = !active && replies > (seenReplies.get(chat.id) ?? 0)
   const openChat = useStore((s) => s.openChat)
   const setModal = useStore((s) => s.setModal)
   const run = useStore((s) => s.run)
@@ -131,12 +142,17 @@ const ChatRow = memo(function ChatRow({ chat, active, live, waiting, folders, on
             className="selectable -mx-1 min-w-0 flex-1 rounded-[5px] bg-surface px-1 text-[13px] shadow-[0_0_0_1.5px_var(--link)] outline-none"
           />
         ) : (
-          <span className={cn('min-w-0 flex-1 truncate text-[13px]', active ? 'font-medium text-ink' : 'text-ink')}>{chat.title}</span>
+          <span className={cn('min-w-0 flex-1 truncate text-[13px]', active || unread ? 'font-medium text-ink' : 'text-ink')}>{chat.title}</span>
         )}
         {!renaming && (
           <span className="flex shrink-0 items-center gap-1.5">
             <AutoMarks chat={chat} />
             {waiting && <span className="size-[7px] animate-pulse-soft rounded-full bg-warn" title="Needs your OK" />}
+            {unread && !waiting && (
+              <Tip label="New reply" side="right">
+                <span className="size-[7px] rounded-full bg-link" aria-label="New reply" />
+              </Tip>
+            )}
             {live.length > 0 ? (
               <span className={cn(menu ? 'hidden' : 'group-hover/chat:hidden')}>
                 <OrbStack accounts={live.map((a) => ({ ...a, live: true }))} size={12} max={3} />
@@ -349,7 +365,7 @@ function FolderSection({
         <div className="space-y-px pb-1 pl-2.5">
           {chats.map((c) => {
             const l = live.get(c.id)
-            return <ChatRow key={c.id} chat={c} active={c.id === chatId} live={l?.live || []} waiting={!!l?.waiting} folders={folders} onNewFolder={onNewFolder} />
+            return <ChatRow key={c.id} chat={c} active={c.id === chatId} live={l?.live || NO_LIVE} waiting={!!l?.waiting} folders={folders} onNewFolder={onNewFolder} />
           })}
           {!chats.length && <div className="px-2.5 py-1.5 text-[11.5px] text-ink-4">Drop a chat here, or start one with +</div>}
         </div>
@@ -361,7 +377,6 @@ function FolderSection({
 function ChatList() {
   const chats = useStore((s) => s.chats)
   const chatId = useStore((s) => s.chatId)
-  const agents = useStore((s) => s.agents)
   const members = useStore((s) => s.members)
   const folders = useStore((s) => s.folders)
   const setModal = useStore((s) => s.setModal)
@@ -370,19 +385,8 @@ function ChatList() {
   const [renaming, setRenaming] = useState<string | null>(null)
   const [overLoose, setOverLoose] = useState(false)
 
-  const live: Live = useMemo(() => {
-    const map: Live = new Map()
-    for (const st of Object.values(agents)) {
-      if (!busy(st)) continue
-      const a = members[st.accountId]
-      if (!a) continue
-      const e = map.get(st.chatId) || { live: [], waiting: false }
-      if (st.phase === 'waiting') e.waiting = true
-      else e.live.push(a)
-      map.set(st.chatId, e)
-    }
-    return map
-  }, [agents, members])
+  // Changes only when who is busy in which chat changes, not on every move an agent makes.
+  const live: Live = useLiveByChat()
 
   const { pinned, filed, days } = useMemo(() => {
     const known = new Set(folders.map((f) => f.id))
@@ -413,7 +417,7 @@ function ChatList() {
 
   const row = (c: Chat) => {
     const l = live.get(c.id)
-    return <ChatRow key={c.id} chat={c} active={c.id === chatId} live={l?.live || []} waiting={!!l?.waiting} folders={folders} onNewFolder={onNewFolder} />
+    return <ChatRow key={c.id} chat={c} active={c.id === chatId} live={l?.live || NO_LIVE} waiting={!!l?.waiting} folders={folders} onNewFolder={onNewFolder} />
   }
 
   return (
@@ -478,7 +482,7 @@ function ChatList() {
 /** A newer version, downloading or ready. It installs by itself when Ensemble next closes; this restarts sooner. */
 function UpdatePill() {
   const update = useStore((s) => s.update)
-  const working = useStore((s) => Object.values(s.agents).filter(busy).length)
+  const { working } = useWorkSummary()
   const setModal = useStore((s) => s.setModal)
   if (!update) return null
   if (update.state === 'downloading') {
@@ -509,13 +513,9 @@ function UpdatePill() {
 
 /** Opens mission control, and says at a glance how much is going on across every chat. */
 function NowButton() {
-  const agents = useStore((s) => s.agents)
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
-  const { working, chats, waiting } = useMemo(() => {
-    const on = Object.values(agents).filter(busy)
-    return { working: on.length, chats: new Set(on.map((a) => a.chatId)).size, waiting: on.some((a) => a.phase === 'waiting') }
-  }, [agents])
+  const { working, chats, waiting } = useWorkSummary()
   const on = view === 'now'
   return (
     <button
@@ -537,8 +537,8 @@ function TeamDock() {
   const leadId = useStore((s) => leadOf(s)?.id)
   const statuses = useStore((s) => s.statuses)
   const usage = useStore((s) => s.usage)
-  const agents = useStore((s) => s.agents)
-  const members = useStore((s) => s.members)
+  // What each sign-in is doing; redraws only when that changes.
+  const work = useWorkByAccount()
   const smart = useStore((s) => s.settings.smartModels)
   const setModal = useStore((s) => s.setModal)
   const accounts = useStore((s) => s.accounts)
@@ -548,8 +548,9 @@ function TeamDock() {
     const st = statuses[a.id]
     const u = usage[a.id]
     // Work done on this account's sign-in: its own, and that of agents started on it.
-    const on = Object.values(agents).filter((x) => busy(x) && (x.accountId === a.id || members[x.accountId]?.spawned?.base === a.id))
-    const working = on.find((x) => x.accountId === a.id) || on[0]
+    const w = work[a.id]
+    const working = w ? { phase: w.phase, activity: w.activity } : undefined
+    const on = { length: w?.count || 0 }
     const out = st?.state === 'signed-out'
     const failed = st?.state === 'error'
     const limited = [u?.session, u?.weekly].find((w) => w && (w.status === 'rejected' || w.utilization >= 1) && w.resetsAt && w.resetsAt > Date.now())

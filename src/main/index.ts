@@ -14,10 +14,14 @@ import { electronBrowsers } from './hands/browser'
 import { findHands, WindowsDesktop } from './hands/desktop'
 import { DemoDesktop } from './hands/demo-desktop'
 import { hudHtml, ScreenHud } from './hands/hud'
+import { guardFrames, IUI_PRIVILEGES, registerIui } from './iui'
 
 // `__dirname` is supplied by the bundler for the ESM build.
 
-const DEMO = process.env.ENSEMBLE_DEMO === '1'
+// "Try the demo team": the installed app restarted with --demo. A scripted team, a clean temp folder,
+// and a bar that says so. ENSEMBLE_DEMO=1 is the same team for development and screenshot runs.
+const TRIAL = process.argv.includes('--demo') || process.env.ENSEMBLE_DEMO_BAR === '1'
+const DEMO = process.env.ENSEMBLE_DEMO === '1' || TRIAL
 const isDev = !app.isPackaged
 
 // Windows 11 22H2 and later can draw the Mica material behind the window.
@@ -33,14 +37,16 @@ app.setName('Ensemble')
 if (process.platform === 'win32') app.setAppUserModelId(TESTING ? 'app.ensemble.test' : 'app.ensemble.desktop')
 
 const dataDir =
-  process.env.ENSEMBLE_DATA || (DEMO ? path.join(os.tmpdir(), 'ensemble-demo') : path.join(app.getPath('userData'), 'data'))
+  process.env.ENSEMBLE_DATA || (process.argv.includes('--demo') ? path.join(os.tmpdir(), 'ensemble-try-demo') : DEMO ? path.join(os.tmpdir(), 'ensemble-demo') : path.join(app.getPath('userData'), 'data'))
+// Every demo started from the app begins clean. Only ever a folder in temp, never the real data.
+if (process.argv.includes('--demo') && !process.env.ENSEMBLE_DATA && dataDir.startsWith(os.tmpdir())) fs.rmSync(dataDir, { recursive: true, force: true })
 fs.mkdirSync(dataDir, { recursive: true })
 // A test or demo run keeps its own browser profile and never answers for the real app.
 if (TESTING) app.setPath('userData', path.join(dataDir, 'profile'))
 // Test runs can stay off the screen entirely: the window is drawn but never shown.
 const HIDDEN = process.env.ENSEMBLE_HIDDEN === '1'
 
-protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }])
+protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }, IUI_PRIVILEGES])
 
 // What went wrong, written where it can be read afterwards. Kept small.
 const logFile = path.join(dataDir, 'ensemble.log')
@@ -146,7 +152,8 @@ function applyDesktop(s: Settings): void {
 
   // Only our own summon key: an agent in control of the computer may be holding Esc.
   globalShortcut.unregister(HOTKEY)
-  if (s.globalHotkey) {
+  // A test or demo run never takes the summon key or the start-up entry from the installed app.
+  if (s.globalHotkey && !TESTING) {
     try {
       globalShortcut.register(HOTKEY, () => {
         if (win && win.isVisible() && win.isFocused()) win.minimize()
@@ -160,7 +167,7 @@ function applyDesktop(s: Settings): void {
     }
   }
 
-  if (app.isPackaged) {
+  if (app.isPackaged && !TESTING) {
     try {
       app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: s.launchAtLogin ? ['--hidden'] : [] })
     } catch {
@@ -215,6 +222,7 @@ function createWindow(): void {
     },
   })
   if (saved.maximized && !HIDDEN) win.maximize()
+  guardFrames(win.webContents)
 
   const remember = debounce(() => {
     if (!win || win.isDestroyed() || win.isMinimized()) return
@@ -351,9 +359,26 @@ async function runScript(w: BrowserWindow, file: string): Promise<void> {
   if (process.env.ENSEMBLE_SCRIPT_EXIT !== '0') app.quit()
 }
 
+/**
+ * Restarts the app into the demo team (on) or back into the real app (off). The demo is the same
+ * program started with --demo: its own temp folder, no update checks, no summon key, no start-up entry,
+ * and it never holds the single-instance lock, so it cannot wake or block the real app.
+ */
+function switchDemo(on: boolean): void {
+  const args = process.argv.slice(1).filter((a) => a !== '--demo' && a !== '--hidden')
+  app.relaunch({ args: on ? [...args, '--demo'] : args })
+  quitting = true
+  // Everything under way is stopped and on disk first; then exit rather than quit, so nothing
+  // (a tray that keeps running, a close that hides, an update waiting to install) delays the restart.
+  const done = (): void => app.exit(0)
+  setTimeout(done, 4000)
+  void (hub ? hub.dispose() : Promise.resolve()).catch(() => undefined).finally(done)
+}
+
 function registerIpc(): void {
   const handlers: Record<string, (...args: never[]) => unknown> = {
     bootstrap: () => hub.bootstrap(),
+    switchDemo: (on: boolean) => switchDemo(!!on),
     updateSettings: (patch: Partial<Settings>) => {
       if (patch.theme) applyTheme(patch.theme)
       const next = hub.updateSettings(patch)
@@ -414,6 +439,7 @@ function registerIpc(): void {
     deleteChat: (id: string) => hub.deleteChat(id),
     searchChats: (q: string) => hub.search(q),
     setChatLead: (id: string, accountId: string, retry?: boolean) => hub.setChatLead(id, accountId, !!retry),
+    dequeue: async (chatId: string, accountId: string, itemId: string) => hub.dequeue(String(chatId), String(accountId), String(itemId)),
     resumeChat: (id: string) => hub.resumeChat(id).then(() => undefined),
     dismissRecovery: (id: string) => hub.dismissRecovery(id),
     folderChanges: (id: string) => hub.folderChanges(id),
@@ -570,6 +596,8 @@ if (!(TESTING || app.requestSingleInstanceLock())) {
     // Local pictures, sound and video (what agents make, attachments) reach the page through
     // this scheme. It serves media files only. Sound and video are sent in pieces when asked,
     // which is what lets a player show its length and jump to any point.
+    // Mini apps in answers: served from memory, locked down (see iui.ts).
+    registerIui()
     protocol.handle('media', async (req) => {
       try {
         const u = new URL(req.url)
@@ -600,6 +628,7 @@ if (!(TESTING || app.requestSingleInstanceLock())) {
       dataDir,
       version: app.getVersion(),
       demo: DEMO,
+      trial: TRIAL,
       mica: MICA,
       emit: send,
       notify,

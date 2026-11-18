@@ -4,11 +4,13 @@
 import './styles'
 import { useEffect, useId, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Maximize2 } from 'lucide-react'
 import { api, cn } from '@/lib/util'
-import { isBusy, useStore } from '@/store'
-import { Menu, MenuItem, MenuLabel, Tip } from '../ui'
-import { AgentNetwork, useNet } from './AgentNetwork'
+import { useStore, workingIn } from '@/store'
+import { IconButton, Menu, MenuItem, MenuLabel, Tip } from '../ui'
+import { useNet } from './AgentNetwork'
+import { NeuralNetwork } from './neural/Neural'
+import { openNetwork } from './neural/NetworkView'
 
 /** Three linked nodes in the Ultra colours: the mark of a chat that runs a whole network. */
 export function UltraGlyph({ size = 14, className }: { size?: number; className?: string }) {
@@ -64,7 +66,7 @@ export function UltraMark({ chatId }: { chatId: string }) {
   )
 }
 
-const FOLD_KEY = 'ensemble.network.folded'
+const OPEN_KEY = 'ensemble.network.open'
 
 /**
  * Whether the network strip is up in this chat: always in Ultra, and otherwise once more than
@@ -74,12 +76,7 @@ const FOLD_KEY = 'ensemble.network.folded'
 export function useStripShown(chatId: string | null | undefined): boolean {
   const ultra = useStore((s) => !!chatId && !!s.chats.find((c) => c.id === chatId)?.ultra)
   const many = useStore((s) => !!chatId && s.accounts.filter((a) => a.enabled).length + (s.chats.find((c) => c.id === chatId)?.agents?.length ?? 0) > 1)
-  const busy = useStore((s) => {
-    if (!chatId) return 0
-    let n = 0
-    for (const a of Object.values(s.agents)) if (a.chatId === chatId && isBusy(a)) n++
-    return n
-  })
+  const busy = useStore((s) => workingIn(s, chatId))
   const [held, setHeld] = useState(false)
   useEffect(() => {
     if (busy > 3) {
@@ -95,23 +92,24 @@ export function useStripShown(chatId: string | null | undefined): boolean {
 }
 
 /**
- * At the top of a chat while Ultra is on, or while more than three agents are at work: the
- * team as a live network, with a line that says how many are working. It folds to that line.
+ * At the top of a chat while Ultra is on, or while more than three agents are at work: one line
+ * with how many are working and a thumbnail of the network. A click opens the full network
+ * (about 120 px in all); another folds it back to the line.
  */
 export function NetworkStrip({ chatId, onOpen }: { chatId: string; onOpen?(id: string): void }) {
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === chatId)?.ultra)
-  const { net, busy, tasks } = useNet(chatId)
-  const [folded, setFolded] = useState(() => localStorage.getItem(FOLD_KEY) === '1')
+  const { net, busy, tasks, finished } = useNet(chatId)
+  const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1')
   const show = useStripShown(chatId) && net.nodes.length > 1
   const done = tasks.filter((t) => t.status === 'done').length
-  const out = tasks.filter((t) => t.status === 'running' || t.status === 'queued').length
-  const fold = (): void => {
-    setFolded((f) => {
-      localStorage.setItem(FOLD_KEY, f ? '0' : '1')
-      return !f
+  const toggle = (): void => {
+    setOpen((o) => {
+      localStorage.setItem(OPEN_KEY, o ? '0' : '1')
+      return !o
     })
   }
   const n = net.nodes.length
+  const bg = ultra ? 'var(--surface)' : 'var(--surface-2)'
   return (
     <AnimatePresence initial={false}>
       {show && (
@@ -122,34 +120,43 @@ export function NetworkStrip({ chatId, onOpen }: { chatId: string; onOpen?(id: s
           transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto w-full max-w-[780px] overflow-hidden px-7"
         >
-          <div className={cn('mt-1 mb-2 rounded-[14px]', ultra ? 'ux-ultra-frame' : 'bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]')} data-network-strip>
-            <button onClick={fold} className="flex h-8 w-full items-center gap-2 px-3 text-left text-[11.5px] text-ink-3">
-              {ultra ? <UltraGlyph size={13} /> : null}
+          <div className={cn('mt-1 mb-2 rounded-[12px]', ultra ? 'ux-ultra-frame' : 'bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]')} data-network-strip>
+            <div className="flex h-9 w-full items-center pr-1.5">
+            <button onClick={toggle} aria-expanded={open} className="flex h-full min-w-0 flex-1 items-center gap-2 pr-1 pl-3 text-left text-[12px] text-ink-3">
+              {ultra && <UltraGlyph size={13} />}
               {ultra && <UltraWord className="text-[12px]" />}
               <span className="tabular min-w-0 flex-1 truncate">
                 {ultra && <span className="text-ink-4">· </span>}
-                <span className="text-ink-2">
-                  {n} agents
-                  {busy.size > 0 && (
-                    <>
-                      , <span className="font-medium text-ink">{busy.size} working</span>
-                    </>
-                  )}
-                </span>
+                <span className="text-ink-2">{n} agents</span>
+                {finished > 0 && (
+                  <Tip label={`${finished} more did their part and were sent home`} side="bottom">
+                    <span> · {finished} finished</span>
+                  </Tip>
+                )}
+                {busy.size > 0 && (
+                  <>
+                    <span className="text-ink-4"> · </span>
+                    <span className="font-medium text-ink">{busy.size} working</span>
+                  </>
+                )}
                 {tasks.length > 0 && (
-                  <span>
-                    {' '}
-                    · {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} handed out{out ? `, ${out} under way` : ''}
-                    {done ? `, ${done} done` : ''}
-                  </span>
+                  <>
+                    <span className="text-ink-4"> · </span>
+                    {done} of {tasks.length} tasks done
+                  </>
                 )}
               </span>
-              <Tip label={folded ? 'Show the network' : 'Fold the network'} side="left">
-                <ChevronDown className={cn('size-3.5 shrink-0 transition-transform duration-200', !folded && 'rotate-180')} />
+              {!open && <NeuralNetwork chatId={chatId} variant="mini" height={26} bg={bg} className="!w-[132px] shrink-0 max-[1000px]:!w-[96px]" />}
+              <Tip label={open ? 'Fold the network' : 'Show the network'} side="left">
+                <ChevronDown className={cn('size-3.5 shrink-0 transition-transform duration-200', open && 'rotate-180')} />
               </Tip>
             </button>
+            <IconButton label="Open the whole network" side="left" onClick={() => openNetwork(chatId)} className="size-6 rounded-[7px] text-ink-3">
+              <Maximize2 className="size-3.5" />
+            </IconButton>
+            </div>
             <AnimatePresence initial={false}>
-              {!folded && (
+              {open && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
@@ -157,7 +164,7 @@ export function NetworkStrip({ chatId, onOpen }: { chatId: string; onOpen?(id: s
                   transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   className="overflow-hidden"
                 >
-                  <AgentNetwork chatId={chatId} variant="strip" onOpen={onOpen} className="-mt-1.5 mb-0.5" />
+                  <NeuralNetwork chatId={chatId} variant="strip" height={84} bg={bg} onOpen={onOpen} className="-mt-1" />
                 </motion.div>
               )}
             </AnimatePresence>

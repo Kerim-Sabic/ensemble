@@ -34,8 +34,8 @@ const CSS = `
   width: 140%;
   aspect-ratio: 1;
   translate: -50% -50%;
-  background: conic-gradient(from 0deg, var(--cu-1), var(--cu-2), var(--cu-3), color-mix(in oklab, var(--cu-1) 30%, transparent) 62%, var(--cu-1) 78%, var(--cu-1));
-  animation: cu-turn 7s linear infinite;
+  background: conic-gradient(from 0deg, var(--cu-1), var(--cu-2) 22%, var(--cu-3) 40%, color-mix(in oklab, var(--cu-2) 35%, transparent) 62%, color-mix(in oklab, var(--cu-1) 70%, transparent) 82%, var(--cu-1));
+  animation: cu-turn 16s linear infinite;
   will-change: transform;
 }
 @keyframes cu-turn { to { transform: rotate(360deg); } }

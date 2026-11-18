@@ -15,7 +15,7 @@ import type { Account, Chat, Goal, GoalAction, GoalInput, Item, Loop, LoopInput,
 import { everyLabel, MIN_EVERY, span } from '@shared/auto'
 import { toolLine } from '@shared/tools'
 import type { AgentSession, Pending, TurnEnd } from './session'
-import { truncate, uid } from './util'
+import { demoTime, truncate, uid } from './util'
 
 export interface AutoHost {
   demo: boolean
@@ -38,8 +38,10 @@ export interface AutoHost {
   tell(title: string, body: string, chat: Chat, accountId?: string): void
   /** Stops everything under way in a chat. */
   stop(chat: Chat): Promise<void>
-  /** One answer from a model that did none of the work, asked from the chat's folder. Rejects when there is nobody to ask. */
-  judge(system: string, prompt: string, cwd: string): Promise<string>
+  /** One answer from a model that did none of the work, asked from the chat's folder. Rejects when there is nobody to ask, or when `signal` aborts. */
+  judge(system: string, prompt: string, cwd: string, signal?: AbortSignal): Promise<string>
+  /** The model a loop's run goes on: the one chosen for the loop, else a mid-sized one rather than the agent's strongest. */
+  loopRun(account: Account, model?: string | null): Pending['run']
 }
 
 type AutoItem = Extract<Item, { kind: 'auto' }>
@@ -120,6 +122,11 @@ export class Autopilot {
 
   constructor(private host: AutoHost) {}
 
+  /** A wait in the engine's own time: stretched or squeezed with the demo team's speed in demo mode. */
+  private wait(ms: number): number {
+    return demoTime(ms, this.host.demo)
+  }
+
   start(): void {
     // Nothing starts by itself just because the app was opened: a goal that was under way waits
     // for a word from the user, and loops pick up at their next time.
@@ -149,7 +156,7 @@ export class Autopilot {
       }
       if (touched) this.host.changed(chat)
     }
-    this.timer = setInterval(() => this.tick(), this.host.demo ? 1000 : 5000)
+    this.timer = setInterval(() => this.tick(), this.host.demo ? Math.max(50, Math.min(1000, this.wait(1000))) : 5000)
   }
 
   dispose(): void {
@@ -408,7 +415,7 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
     const own: Verdict = claim?.state === 'met' ? { met: true, why: claim.note || 'The lead reports it is done.' } : { met: false, why: 'The lead has not reported the goal as met.', next: 'Finish what is left, check it, and report it with goal_report.' }
     if (goal.check === 'self') return own
     if (this.host.demo) {
-      await new Promise((r) => setTimeout(r, 1400))
+      await new Promise((r) => setTimeout(r, this.wait(1400)))
       return goal.log.length === 0
         ? { met: false, why: 'The work is there, but nothing shows it was run and checked end to end.', next: 'Run it, look at the result, and report what you saw.' }
         : { met: true, why: 'The report shows it was run and checked, and everything asked for is there.' }
@@ -427,8 +434,13 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
       .filter(Boolean)
       .join('\n\n')
     try {
+      // Giving up on the check also ends it, so a stalled one does not run on and spend.
+      const abort = new AbortController()
       let timer: NodeJS.Timeout | undefined
-      const raw = await Promise.race([this.host.judge(CHECKER, prompt, chat.cwd), new Promise<string>((_, no) => (timer = setTimeout(() => no(new Error('timed out')), JUDGE_WAIT)))]).finally(() => clearTimeout(timer))
+      const raw = await Promise.race([
+        this.host.judge(CHECKER, prompt, chat.cwd, abort.signal),
+        new Promise<string>((_, no) => (timer = setTimeout(() => (abort.abort(), no(new Error('timed out'))), this.wait(JUDGE_WAIT)))),
+      ]).finally(() => clearTimeout(timer))
       return readVerdict(raw) || { ...own, fallback: true }
     } catch {
       // Nobody to ask (no light model signed in, or it did not answer): the lead's own word decides.
@@ -471,7 +483,7 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
       v.why = `${v.why} (No fresh check could be made, so this goes by the lead's own word.)`
       if (!this.fellBack.has(goal.id)) {
         this.fellBack.add(goal.id)
-        this.host.tell("Goal checked by the lead's own word", "No fresh check could be made (no Claude account free to judge, or it did not answer in time), so the lead's own report decides this goal.", chat, lead.id)
+        this.host.tell("Goal checked by the lead's own word", "No fresh check could be made (no account free to judge, or it did not answer in time), so the lead's own report decides this goal.", chat, lead.id)
       }
     }
     goal.log.push({ round: goal.round, ts: now, met: v.met, note: v.why })
@@ -635,6 +647,7 @@ Look at where things stand (what the user said since, what is already done), car
       maxRuns,
       until: input.until?.trim() || undefined,
       nextAt: startNow ? now : now + (every || OWN_PACE),
+      model: input.model?.trim() || undefined,
       createdAt: now,
     }
     // Kept short so the list on the chat does not grow without end.
@@ -688,7 +701,7 @@ ${lines.join(' ')}
     this.plans.delete(loop.id)
     if (!first) this.row(chat, to, { of: 'loop', event: 'run', ref: loop.id, title: `Run ${loop.runs}${loop.maxRuns ? ` of ${loop.maxRuns}` : ''} · ${everyLabel(loop.every)}`, text: loop.prompt, round: loop.runs, max: loop.maxRuns || undefined })
     this.host.changed(chat)
-    this.send(chat, to, this.loopText(chat, loop, to), { auto: { of: 'loop', ref: loop.id }, onDone: (ev) => this.ran(chat, loop, started, ev) })
+    this.send(chat, to, this.loopText(chat, loop, to), { auto: { of: 'loop', ref: loop.id }, run: this.host.loopRun(to, loop.model), onDone: (ev) => this.ran(chat, loop, started, ev) })
   }
 
   private ran(chat: Chat, loop: Loop, started: number, ev: TurnEnd): void {
@@ -733,7 +746,7 @@ ${lines.join(' ')}
       else if (loop.every) {
         // A run that took longer than the pace is followed by the next one after a short breath.
         const due = started + loop.every
-        next(due > now ? due : now + Math.min(loop.every, 30_000))
+        next(due > now ? due : now + Math.min(loop.every, this.wait(30_000)))
       } else next(now + OWN_PACE)
     }
     this.host.changed(chat)
@@ -882,13 +895,13 @@ ${lines.join(' ')}
         else if (this.due.has(goal.id)) {
           // A check is owed and the lead is free with nothing out: make it (normally the end of the
           // lead's next reply does this; this is the safety net).
-          if (now - (this.adrift.get(goal.id) || now) > DUE_GRACE_MS) {
+          if (now - (this.adrift.get(goal.id) || now) > this.wait(DUE_GRACE_MS)) {
             const due = this.due.get(goal.id)!
             this.adrift.delete(goal.id)
             this.due.delete(goal.id)
             void this.check(chat, goal, lead, due)
           }
-        } else if (now - (this.adrift.get(goal.id) || now) > ADRIFT_MS) {
+        } else if (now - (this.adrift.get(goal.id) || now) > this.wait(ADRIFT_MS)) {
           this.adrift.delete(goal.id)
           this.pauseGoal(chat, goal, lead, 'Paused because nothing was under way on it. Resume to carry on.')
           this.host.tell('Goal paused', 'Nothing was under way on the goal, so it was paused rather than left looking busy. Resume to carry on.', chat, lead.id)

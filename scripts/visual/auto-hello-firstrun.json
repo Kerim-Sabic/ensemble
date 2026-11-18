@@ -1,0 +1,5 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 2200, "shot": "hello-firstrun-light.png" },
+  { "js": "return 'try entry: ' + [...document.querySelectorAll('button')].some(b => /Try the demo team/.test(b.textContent))", "theme": "dark", "wait": 700, "shot": "hello-firstrun-dark.png" },
+  { "size": [960, 760], "theme": "light", "wait": 700, "shot": "hello-firstrun-960.png" }
+]

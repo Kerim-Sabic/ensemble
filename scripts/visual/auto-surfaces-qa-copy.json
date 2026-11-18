@@ -1,0 +1,33 @@
+[
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy'; };\nwindow.__counts = () => {\n  const strip = document.querySelector('[data-network-strip] > button')?.textContent.replace(/\\s+/g, ' ').trim();\n  const insp = [...document.querySelectorAll('aside section')].find(x => /In this chat/.test(x.textContent));\n  const right = insp ? insp.querySelector('.tabular')?.textContent : '';\n  const groups = insp ? [...insp.querySelectorAll('button[aria-expanded]')].map(b => b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 30)) : [];\n  return 'strip [' + strip + '] inspector [' + right + '] groups [' + groups.join(' | ') + ']';\n};\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "await window.__S().send('What does the pricing page do?', undefined, undefined, { mode: 'quick' }); await window.__sleep(2500); await window.__waitIdle(20000); return 'ok';",
+  "wait": 500
+ },
+ {
+  "js": "const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = 0; await window.__sleep(300); const u = document.querySelector('[class*=\"group/u\"]'); const d = u && u.querySelector(':scope > .pointer-events-none'); if (d) d.style.opacity = '1'; const c = u && u.querySelector('button[aria-label=\"Copy\"]'); c && c.click(); await window.__sleep(600); return 'copy label now: ' + (u && u.querySelector('button[aria-label^=\"Co\"]')?.getAttribute('aria-label')) + ' | toasts: ' + window.__S().toasts.map(t => t.text).join(' | ');",
+  "wait": 100,
+  "shot": "auto-surfaces-q11-copy-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.__S().toasts.forEach(t => window.__S().dismissToast(t.id)); await window.__sleep(1800); const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = 0; await window.__sleep(300); const u = document.querySelector('[class*=\"group/u\"]'); const d = u && u.querySelector(':scope > .pointer-events-none'); if (d) d.style.opacity = '1'; const c = u && u.querySelector('button[aria-label=\"Copy\"]'); c && c.click(); await window.__sleep(600); return 'copy label now: ' + (u && u.querySelector('button[aria-label^=\"Co\"]')?.getAttribute('aria-label')) + ' | toasts: ' + window.__S().toasts.map(t => t.text).join(' | ');",
+  "wait": 100,
+  "shot": "auto-surfaces-q12-copy-dark.png"
+ }
+]

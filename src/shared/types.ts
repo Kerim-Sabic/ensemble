@@ -203,7 +203,8 @@ export interface Chat {
    * Provider-side session ids, so every agent can pick the conversation back up. `fork` means
    * the conversation belongs to something else (Claude Code) and is carried on in a copy.
    */
-  sessions: Record<string, { providerSessionId?: string; fork?: boolean }>
+  /** brief: a fingerprint of the briefing the conversation was last given, so a changed one is given again. */
+  sessions: Record<string, { providerSessionId?: string; fork?: boolean; brief?: string }>
   /** The folder it is filed under. Absent or null means none. */
   folderId?: string | null
   /** The chat's own note in the vault, once one has been written, relative to the vault. */
@@ -312,6 +313,8 @@ export interface Loop {
   note?: string
   /** A run is under way right now. */
   running?: boolean
+  /** The model each run uses, when the user chose one. Absent: a mid-sized model (Sonnet on Claude, Sol on ChatGPT). */
+  model?: string | null
   createdAt: number
 }
 
@@ -325,6 +328,8 @@ export interface LoopInput {
   to?: string
   /** Run once right away (the default), or wait one interval first. */
   startNow?: boolean
+  /** The model each run uses. Absent: a mid-sized model, so a loop does not spend the strongest one. */
+  model?: string | null
 }
 
 export type AgentPhase = 'idle' | 'starting' | 'thinking' | 'responding' | 'tool' | 'waiting' | 'error'
@@ -369,7 +374,8 @@ interface ItemBase {
 }
 
 export type Item =
-  | (ItemBase & { kind: 'user'; text: string; attachments?: Attachment[]; queued?: boolean })
+  /** withdrawn: the user took it back before it started; it is not shown and was never sent. */
+  | (ItemBase & { kind: 'user'; text: string; attachments?: Attachment[]; queued?: boolean; withdrawn?: boolean })
   | (ItemBase & {
       kind: 'peer'
       from: string
@@ -516,6 +522,10 @@ export interface Task {
   after?: string[]
   /** Those of them that have not finished yet. Empty or absent once the task may start. */
   waitingOn?: string[]
+  /** `waitingOn` in plain words for the window: who those tasks went to ("Scout 1 and Scout 2", "4 scouts"). Never task ids. */
+  waitingFor?: string
+  /** `after` in plain words for the window, the same way. */
+  afterFor?: string
   /** Started again after the agent's process died under it. This happens once. */
   retried?: boolean
   /** The model the task actually ran on. */
@@ -742,6 +752,8 @@ export interface Bootstrap {
     home: string
     version: string
     demo: boolean
+    /** "Try the demo team": the app was restarted into the scripted team, and shows a bar saying so. */
+    trial?: boolean
     /** Whether this build can drive a browser and the computer at all. */
     canBrowse: boolean
     canControl: boolean
@@ -793,6 +805,11 @@ export interface SendRequest {
   goal?: Partial<GoalInput>
   /** Makes this message a loop: it runs now and then again by itself. `loop.prompt` may be left empty to use `text`. */
   loop?: Partial<LoopInput>
+  /**
+   * Set when a Live answers control sent this (a choice, a form, a mini app's offer) rather than the
+   * person typing it. Such a message is never read as an app command and carries no mode, goal or loop.
+   */
+  fromControl?: boolean
 }
 
 export type PermissionDecision = 'allow' | 'always' | 'deny'
@@ -859,6 +876,8 @@ export interface EnsembleApi {
   searchChats(query: string): Promise<SearchHit[]>
   /** Puts another teammate in charge of a chat and catches them up. `retry` resends your last message to them. */
   setChatLead(id: string, accountId: string, retry?: boolean): Promise<Chat>
+  /** Takes back a message of yours that is waiting and has not started. False when it already started or is gone. */
+  dequeue(chatId: string, accountId: string, itemId: string): Promise<boolean>
   /** Picks up what was cut short when the app closed: interrupted tasks start again and the lead is told. */
   resumeChat(id: string): Promise<void>
   /** Leaves what was cut short as it is. */
@@ -874,6 +893,8 @@ export interface EnsembleApi {
   screenWatch(key: string, on: boolean, full?: boolean): Promise<void>
   /** Says a picture was drawn, so the next one may be sent. Keeps a busy window from being buried in frames. */
   frameSeen(key: string): void
+  /** Live answers: keep a mini app's HTML in the main process and get the address of its locked frame. */
+  appFrame(req: { html: string; theme: Record<string, string>; dark: boolean }): Promise<string>
   /** The person's own mouse and keyboard, passed to an agent's browser. */
   screenInput(chatId: string, accountId: string, input: ScreenInput): Promise<void>
   /** 'back', 'forward', 'reload', or an address to open. */
@@ -909,6 +930,8 @@ export interface EnsembleApi {
    * watch out for) without changing what it asks for. Returns the text unchanged when it cannot.
    */
   enhance(text: string, chatId?: string | null): Promise<string>
+  /** Restarts the app into the scripted demo team (true), or back into the real app (false). */
+  switchDemo(on: boolean): Promise<void>
   /** Turns the chat's Ultra on or off. The chat also arrives through the usual `chat` event. */
   setUltra(chatId: string, on: boolean): Promise<Chat>
   respondPermission(requestId: string, decision: PermissionDecision, note?: string): Promise<void>

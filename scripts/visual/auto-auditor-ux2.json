@@ -1,0 +1,59 @@
+[
+  {
+    "size": [
+      1380,
+      880
+    ],
+    "theme": "light",
+    "wait": 3500
+  },
+  {
+    "wait": 500,
+    "js": "window.__sleep = (ms) => new Promise(r => setTimeout(r, ms)); window.__ta = () => document.querySelector('.composer textarea'); window.__t = (v) => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, v); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus(); }; window.__key = (key, extra) => { const el = document.activeElement || document.body; el.dispatchEvent(new KeyboardEvent('keydown', Object.assign({key, bubbles:true, cancelable:true}, extra||{}))); }; for (let i = 0; i < 4; i++) { const b = [...document.querySelectorAll('button')].find(b => /^(Continue|Start using Ensemble)/.test((b.textContent||'').trim())); if (!b) break; b.click(); await window.__sleep(1000); } const s = window.__ensemble.getState(); return 'ready; accounts=' + s.accounts.length + ' onboarded=' + s.settings.onboarded"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); await s.send('Add a pricing page with a checkout flow.'); await window.__sleep(900); window.__t('And also add a FAQ section under the pricing table'); await window.__sleep(150); window.__key('Enter'); await window.__sleep(1200); const t = document.body.innerText; const queued = /Waiting for the current reply/.test(t); const bubble = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && /Waiting for the current reply/.test(e.textContent || '')); const cancelBtns = bubble ? [...bubble.closest('div').parentElement.querySelectorAll('button')].map(b => b.getAttribute('aria-label') || b.textContent) : []; const st = window.__ensemble.getState(); const lead = st.agents[Object.keys(st.agents).find(k => k.startsWith(st.chatId))]; return 'queued note shown=' + queued + ' | buttons next to queued message: [' + cancelBtns.join(',') + '] | phase=' + (lead && lead.phase)",
+    "wait": 300,
+    "shot": "ux2-01-queued.png"
+  },
+  {
+    "wait": 14000,
+    "js": "return 'after 14s'",
+    "shot": "ux2-02-after-queue.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const k = Object.keys(s.items).find(x => x.startsWith(chatId)); const sep = k.slice(chatId.length, chatId.length + 1); const base = s.items[k] || []; const fake = []; let ts = Date.now() - 4000000; for (let i = 0; i < 1500; i++) { fake.push({ id: 'fu' + i, kind: 'user', ts: ts += 1000, text: 'Question number ' + i + ': how does the checkout handle a failed card?' }); fake.push({ id: 'fa' + i, kind: 'assistant', ts: ts += 1000, text: 'Answer ' + i + '. The handler retries once, then shows the card error.\\n\\n- first point about retries\\n- second point about errors\\n\\n```ts\\nconst r = await pay(plan)\\nif (!r.ok) show(r.error)\\n```\\n' }); fake.push({ id: 'ft' + i, kind: 'turn', ts: ts += 10, status: 'done', durationMs: 2000, tokens: 600 }); } const t0 = performance.now(); window.__ensemble.setState(st => ({ items: { ...st.items, [k]: [...fake, ...base] } })); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const t1 = performance.now(); const sc = document.querySelector('[data-view-scope]').parentElement; const nodes = document.querySelectorAll('*').length; let t2 = performance.now(); for (let i = 0; i < 20; i++) { window.__ensemble.setState(st => { const l = st.items[k].slice(); const last = l[l.length - 1]; l[l.length - 1] = { ...last, ts: last.ts + 1 }; return { items: { ...st.items, [k]: l } }; }); await new Promise(r => requestAnimationFrame(r)); } const t3 = performance.now(); return 'items=' + (fake.length + base.length) + ' | setState + 2 frames: ' + Math.round(t1 - t0) + ' ms | DOM nodes=' + nodes + ' | 20 sequential item patches (each one frame): ' + Math.round(t3 - t2) + ' ms total (' + Math.round((t3 - t2) / 20) + ' ms each; 16 ms = one frame) | scrollH=' + sc.scrollHeight",
+    "wait": 600,
+    "shot": "ux2-03-long.png"
+  },
+  {
+    "js": "const sc = document.querySelector('[data-view-scope]').parentElement; sc.scrollTop = 0; await window.__sleep(500); const more = [...document.querySelectorAll('button')].find(b => /Show earlier/.test(b.textContent)); const t0 = performance.now(); if (more) more.click(); await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); const t1 = performance.now(); return 'Show earlier button present=' + !!more + ' | click -> 2 frames ' + Math.round(t1 - t0) + ' ms | rows now in DOM=' + sc.querySelectorAll('.group\\\\/turn').length + ' scrollTop=' + sc.scrollTop",
+    "wait": 500,
+    "shot": "ux2-04-show-earlier.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const k = Object.keys(s.items).find(x => x.startsWith(chatId)); const lead = k.slice(chatId.length + 1); window.__ensemble.setState(st => ({ items: { ...st.items, [k]: [...st.items[k], { id: 'e1', kind: 'notice', ts: Date.now(), level: 'error', text: 'Claude stopped: the request failed (overloaded_error). Nothing was lost; the work so far is kept above.' }, { id: 'e2', kind: 'turn', ts: Date.now(), status: 'error', durationMs: 4000 }, { id: 'e3', kind: 'notice', ts: Date.now(), level: 'warn', text: 'ChatGPT is signed out, so its task was skipped.' }] } })); await window.__sleep(500); const sc = document.querySelector('[data-view-scope]').parentElement; sc.scrollTop = sc.scrollHeight; await window.__sleep(500); const buttons = [...document.querySelectorAll('[data-view-scope] button')].slice(-6).map(b => (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 40)); return 'error row shown; buttons in the last rows: [' + buttons.join(' | ') + '] (no Retry / Try again)'",
+    "wait": 400,
+    "shot": "ux2-05-error.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); s.newChat(); await window.__sleep(900); window.__t('Review this project and tell me what to improve'); await window.__sleep(150); window.__key('Enter'); await window.__sleep(1800); const st = window.__ensemble.getState(); const key = Object.keys(st.agents).find(k => k.startsWith(st.chatId)); const before = st.agents[key] && st.agents[key].phase; window.__ta().focus(); window.__key('Escape'); await window.__sleep(1200); const st2 = window.__ensemble.getState(); const after = st2.agents[key] && st2.agents[key].phase; const items = (st2.items[key] || []).filter(i => i.kind === 'turn').map(i => i.status); return 'Esc test: phase before=' + before + ' after=' + after + ' turns=' + items.join(',')",
+    "wait": 800,
+    "shot": "ux2-06-esc.png"
+  },
+  {
+    "js": "window.__ensemble.getState().setView('now'); await window.__sleep(900); return 'mission control: ' + document.body.innerText.replace(/\\s+/g,' ').match(/Mission control.{0,500}/)?.[0]",
+    "wait": 400,
+    "shot": "ux2-07-mission.png"
+  },
+  {
+    "js": "window.__ensemble.getState().setView('chat'); await window.__sleep(500); const s = window.__ensemble.getState(); const rows = [...document.querySelectorAll('aside [class*=group\\\\/chat], [class*=\"group/chat\"]')]; const unreadish = rows.map(r => r.innerHTML.includes('bg-[var(--a2)]') ? 'dot' : '-'); return 'sidebar rows: ' + rows.length + ' unread markers: ' + unreadish.join(',') + ' | s.unread=' + JSON.stringify(s.unread)",
+    "wait": 300
+  },
+  {
+    "theme": "dark",
+    "js": "const s = window.__ensemble.getState(); s.newChat(); await window.__sleep(700); return 'dark empty'",
+    "wait": 500,
+    "shot": "ux2-08-empty-dark.png"
+  }
+]

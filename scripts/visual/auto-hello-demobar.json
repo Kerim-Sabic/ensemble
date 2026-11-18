@@ -1,0 +1,7 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 2600 },
+  { "js": "const s = window.__ensemble.getState(); const c = s.chats[0]; if (c && s.chatId !== c.id) s.openChat ? s.openChat(c.id) : null; return 'trial: ' + s.env.trial + ' | onboarded: ' + s.settings.onboarded + ' | chats: ' + s.chats.map(c => c.title).join(', ') + ' | accounts: ' + s.accounts.map(a => a.name).join(', ')", "wait": 1500, "shot": "hello-demo-welcome-light.png" },
+  { "theme": "dark", "wait": 700, "shot": "hello-demo-welcome-dark.png" },
+  { "js": "const b = [...document.querySelectorAll('button')].find(b => /gocrazy design the landing page/.test(b.textContent)); if (b) b.click(); return 'clicked gocrazy: ' + !!b", "wait": 9000, "shot": "hello-demo-gocrazy-dark.png" },
+  { "size": [960, 760], "theme": "light", "wait": 1200, "shot": "hello-demo-960-light.png" }
+]

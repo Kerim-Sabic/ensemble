@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { Account, AgentState, Chat, HubEvent, Item, PermissionDecision, QuestionSpec, RewindPreview } from '@shared/types'
+import type { Account, AgentState, Chat, HubEvent, Item, PermissionDecision, PermissionLevel, QuestionSpec, RewindPreview } from '@shared/types'
 import fs from 'node:fs'
 import { describeTool, HIDDEN_TEAM_TOOLS, isHandsTool, mediaKind, mediaPathsIn, MEDIA_EXT, toolLine } from '@shared/tools'
 import { readJson, Saver, uid } from './util'
@@ -27,10 +27,23 @@ export interface Pending {
   onDone?(ev: TurnEnd): void
   /** Run again once already, after the agent's process died under it. */
   retried?: boolean
+  /**
+   * What the turn is made of, when it bundles several things: notes and reports that were waiting,
+   * and the user's own messages. A message the user takes back is removed on its own.
+   */
+  parts?: TurnPart[]
   /** Run again once already on a lesser model, after the strongest one hit its limit. */
   stepped?: boolean
   /** The model the hub is about to give this another go on. */
   stepTo?: string
+}
+
+/** One piece of a turn that bundles several. `user` marks the user's own message. */
+export interface TurnPart {
+  text: string
+  itemIds: string[]
+  user?: boolean
+  images?: string[]
 }
 
 export interface RunSpec {
@@ -59,6 +72,8 @@ export interface SessionHost {
   onAttention(session: AgentSession, what: string): void
   registerAsk(requestId: string, ask: OpenAsk): void
   dropAsk(requestId: string): void
+  /** Reports and notes that were waiting when the agent was stopped: kept unread for its next turn, not lost. */
+  keepUnread(session: AgentSession, pending: Pending): void
 }
 
 /** A question to the person that is still on screen. `expire` settles it as dismissed. */
@@ -113,6 +128,12 @@ export class AgentSession implements RuntimeHost {
   private stale = false
   /** The model and effort the running process was started with. */
   private spec = specKey()
+  /** The permission level the running process was started with, or null when none is running. */
+  private builtAt: PermissionLevel | null = null
+  /** Ended for good (its account or chat is gone): nothing more starts here. */
+  private ended = false
+  /** When the agent last finished a reply (or was set up), for sending idle agents home. */
+  idleSince = Date.now()
 
   constructor(
     private host: SessionHost,
@@ -229,6 +250,30 @@ export class AgentSession implements RuntimeHost {
     this.pump()
   }
 
+  /**
+   * Takes a message of the user's out of the queue before it starts. Returns what was taken, so
+   * whatever came along with it can be put back; null when it already started or is not there.
+   */
+  dequeueItem(itemId: string): { back?: TurnPart[] } | null {
+    const i = this.queue.findIndex((q) => (q.kind === 'user' || q.kind === 'team') && q.itemIds.includes(itemId))
+    if (i < 0) return null
+    const p = this.queue[i]
+    const parts: TurnPart[] = p.parts?.length ? p.parts : [{ text: p.text, itemIds: p.itemIds, user: p.kind === 'user', images: p.images }]
+    const mine = parts.find((x) => x.itemIds.includes(itemId))
+    // Only the user's own words can be taken back, not a teammate's note that rides with them.
+    if (!mine?.user) return null
+    const rest = parts.filter((x) => x !== mine)
+    this.queue.splice(i, 1)
+    this.patch(itemId, { queued: false, withdrawn: true })
+    let back: TurnPart[] | undefined
+    if (rest.some((x) => x.user)) {
+      // Other messages of the user's are in the same turn: it keeps its place without this one.
+      this.queue.splice(i, 0, { ...p, parts: rest, text: rest.map((x) => x.text).join('\n\n'), itemIds: rest.flatMap((x) => x.itemIds), images: rest.flatMap((x) => x.images || []) })
+    } else if (rest.length) back = rest
+    this.setState({})
+    return { back }
+  }
+
   /** Removes a not-yet-started task from the queue. */
   dequeueTask(taskId: string): boolean {
     const i = this.queue.findIndex((q) => q.taskId === taskId)
@@ -240,12 +285,13 @@ export class AgentSession implements RuntimeHost {
   }
 
   private pump(): void {
-    if (this.current || !this.queue.length) return
+    if (this.ended || this.current || !this.queue.length) return
     const next = this.queue.shift() as Pending
     // Several teammate notes waiting at once are read together in one turn.
     if (next.kind === 'team') {
       while (this.queue[0]?.kind === 'team') {
         const more = this.queue.shift() as Pending
+        if (next.parts || more.parts) next.parts = [...(next.parts || [{ text: next.text, itemIds: [...next.itemIds] }]), ...(more.parts || [{ text: more.text, itemIds: more.itemIds }])]
         next.text += `\n\n${more.text}`
         next.itemIds.push(...more.itemIds)
       }
@@ -266,6 +312,7 @@ export class AgentSession implements RuntimeHost {
         this.setState({ phase: 'starting', activity: 'Waking up' })
         this.runtime = this.host.buildRuntime(this, next.run)
         this.spec = specKey(next.run)
+        this.builtAt = this.chat.permission
       }
       this.runtime.send({ text: next.text, images: next.images, origin: next.origin })
     } catch (e) {
@@ -283,20 +330,40 @@ export class AgentSession implements RuntimeHost {
     if (this.state.modelWhy !== patch.modelWhy) this.setState(patch)
   }
 
+  /**
+   * Stops the reply under way and what is lined up behind it. Reports and notes from the team
+   * that were waiting are not thrown away: they stay unread and come with the agent's next turn.
+   */
   async stop(): Promise<void> {
-    for (const p of this.queue) {
+    const queue = this.queue
+    this.queue = []
+    for (const p of queue) {
+      if (p.kind === 'team') {
+        this.host.keepUnread(this, p)
+        continue
+      }
       for (const id of p.itemIds) this.patch(id, { queued: false })
       // Whoever was waiting on this turn learns that it is not going to happen.
       p.onDone?.({ type: 'turn-end', status: 'interrupted', resultText: '', durationMs: 0 })
     }
-    this.queue = []
     this.setState({})
     for (const id of [...this.openAsks]) this.host.dropAsk(id)
     if (this.current && this.runtime) await this.runtime.interrupt()
   }
 
+  /**
+   * Passes a new permission level to the running process. The process applies what it can at
+   * once; one that is in the middle of a reply is also replaced once that reply ends, so the
+   * next turn runs at the new level for certain and never keeps a level the user lowered.
+   */
   async setPermission(): Promise<void> {
+    if (this.current && this.runtime && this.builtAt !== this.chat.permission) this.stale = true
     await this.runtime?.setPermission(this.chat.permission)
+  }
+
+  /** The permission level of the running process, or null when none is running. */
+  get runsAt(): PermissionLevel | null {
+    return this.runtime ? this.builtAt : null
   }
 
   /** Drop the process so the next turn starts fresh (new model, new role). */
@@ -308,6 +375,7 @@ export class AgentSession implements RuntimeHost {
     this.stale = false
     this.runtime?.dispose()
     this.runtime = null
+    this.builtAt = null
   }
 
   /** The last thing the person typed here, for carrying over to another teammate. */
@@ -329,6 +397,7 @@ export class AgentSession implements RuntimeHost {
     if (!this.runtime) {
       this.runtime = this.host.buildRuntime(this)
       this.spec = specKey()
+      this.builtAt = this.chat.permission
     }
     if (!this.runtime.rewind) return no(`${this.account.name} cannot undo file changes.`)
     // The provider only lists the files when asked for a preview, so look first.
@@ -352,6 +421,30 @@ export class AgentSession implements RuntimeHost {
     if (this.idleTimer) clearTimeout(this.idleTimer)
     this.runtime?.dispose()
     this.runtime = null
+    this.builtAt = null
+  }
+
+  /**
+   * Ends this agent for good, when its account or its chat goes. Unlike closing the app, nothing
+   * is left to pick up later: the reply under way and everything lined up behind it are settled
+   * as stopped, so tasks report back and loops do not wait for a run that will never end.
+   */
+  end(): void {
+    if (this.ended) return
+    this.ended = true
+    const queue = this.queue
+    this.queue = []
+    for (const id of [...this.openAsks]) this.host.dropAsk(id)
+    // The process goes first, so nothing it says afterwards lands on a settled turn.
+    this.runtime?.dispose()
+    this.runtime = null
+    const stopped: TurnEnd = { type: 'turn-end', status: 'interrupted', resultText: '', durationMs: 0 }
+    if (this.current) this.emit({ ...stopped, durationMs: Date.now() - (this.state.turnStartedAt || Date.now()) })
+    for (const p of queue) {
+      for (const id of p.itemIds) this.patch(id, { queued: false })
+      this.host.onTurnEnd(this, p, stopped)
+    }
+    this.dispose()
   }
 
   // ----- RuntimeHost -----
@@ -498,9 +591,11 @@ export class AgentSession implements RuntimeHost {
           steps: undefined,
           error: failed ? this.explain(ev) : undefined,
         })
+        this.idleSince = Date.now()
         if (pending) this.host.onTurnEnd(this, pending, ev)
         if (this.stale) this.recycle()
-        this.idleTimer = setTimeout(() => this.recycle(), IDLE_MS)
+        if (this.idleTimer) clearTimeout(this.idleTimer)
+        if (!this.ended) this.idleTimer = setTimeout(() => this.recycle(), IDLE_MS)
         this.pump()
         return
       }

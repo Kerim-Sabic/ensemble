@@ -2,14 +2,14 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { ChangedFile, FolderChanges, PermissionLevel, RewindPreview } from '@shared/types'
-import { uid } from '../util'
+import { demoSpeed, uid } from '../util'
 import { toolText, type AgentRuntime, type RuntimeEvent, type RuntimeOptions, type TurnInput } from './types'
 
 // A scripted stand-in for a real agent. It drives the real hub (tasks, messages,
 // approvals) so the interface can be exercised without using anyone's allowance.
 // Only used when the app is started with ENSEMBLE_DEMO=1.
 
-const SPEED = Number(process.env.ENSEMBLE_DEMO_SPEED || '1')
+const SPEED = demoSpeed()
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms / SPEED))
 
 /** The first line of a message, short enough to quote. */
@@ -81,6 +81,66 @@ function tone(file: string, freq: number, secs = 1.6): void {
   fs.writeFileSync(file, buf)
 }
 
+/** A Live answer `ui` fence holding one block, as a lead writes it. */
+function uiFence(block: Record<string, unknown>): string {
+  return '```ui\n' + JSON.stringify(block) + '\n```'
+}
+
+/**
+ * The winning landing page of the demo's Ultra run, as the lead shows it running in an `app` block:
+ * self-contained, no network, coloured by the frame's variables so it fits light and dark.
+ */
+const WINNER_PAGE = `<!doctype html>
+<html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0}
+body{font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding:28px 32px}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:34px}
+.logo{display:flex;align-items:center;gap:8px;font-weight:650;letter-spacing:-.01em}
+.mark{width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 45%,var(--ink)))}
+.links{display:flex;gap:18px;color:var(--ink-2);font-size:13px}
+.hero{display:grid;grid-template-columns:1.15fr .85fr;gap:28px;align-items:center;margin-bottom:28px}
+h1{font-size:34px;line-height:1.08;letter-spacing:-.025em;font-weight:700;margin-bottom:12px}
+.lede{color:var(--ink-2);max-width:40ch;margin-bottom:18px}
+.cta{display:inline-flex;align-items:center;gap:8px;border:0;border-radius:10px;padding:10px 16px;font:600 13px system-ui,sans-serif;background:var(--accent);color:#fff;cursor:pointer}
+.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line);margin-left:6px}
+.art{height:150px;border-radius:16px;background:var(--surface);border:1px solid var(--line);position:relative;overflow:hidden}
+.art i{position:absolute;border-radius:50%;filter:blur(2px);opacity:.85}
+.art i:nth-child(1){width:120px;height:120px;left:18px;top:14px;background:color-mix(in srgb,var(--accent) 70%,transparent)}
+.art i:nth-child(2){width:90px;height:90px;right:26px;bottom:-18px;background:color-mix(in srgb,var(--accent) 35%,transparent)}
+.art b{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:600 12px system-ui;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
+.card h3{font-size:13px;margin-bottom:4px}
+.card p{color:var(--ink-2);font-size:12.5px}
+.price{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.toggle{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+.toggle button{border:0;background:transparent;color:var(--ink-2);font:600 12px system-ui;padding:5px 12px;border-radius:999px;cursor:pointer}
+.toggle button.on{background:var(--bg);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.amount{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.amount small{font-size:12px;color:var(--ink-2);font-weight:500}
+.save{color:var(--accent);font-size:12px;font-weight:600;margin-left:8px}
+@media (max-width:640px){.hero{grid-template-columns:1fr}.art{display:none}.cards{grid-template-columns:1fr}}
+</style></head><body>
+<div class="nav"><div class="logo"><span class="mark"></span>Northwind</div><div class="links"><span>Product</span><span>Pricing</span><span>Docs</span></div></div>
+<div class="hero"><div>
+<h1>Plan the week in five minutes.</h1>
+<p class="lede">Northwind turns scattered tasks into one calm plan, and keeps it current as the week moves.</p>
+<button class="cta" onclick="ensemble.propose('Use version B')">Start free</button><button class="cta ghost">See how it works</button>
+</div><div class="art"><i></i><i></i><b>12 tasks, 1 plan</b></div></div>
+<div class="cards">
+<div class="card"><h3>One inbox</h3><p>Mail, chat and notes land in one list you can sort in seconds.</p></div>
+<div class="card"><h3>A plan that adapts</h3><p>Move one thing and the rest of the week rearranges itself.</p></div>
+<div class="card"><h3>Calm by default</h3><p>No badges, no noise: one summary each morning.</p></div>
+</div>
+<div class="price"><div><span class="amount" id="amt">$12<small> / month</small></span><span class="save" id="save"></span></div>
+<div class="toggle"><button class="on" id="m">Monthly</button><button id="y">Yearly</button></div></div>
+<script>
+const m=document.getElementById('m'),y=document.getElementById('y'),amt=document.getElementById('amt'),save=document.getElementById('save');
+function set(yearly){m.classList.toggle('on',!yearly);y.classList.toggle('on',yearly);amt.innerHTML=(yearly?'$10':'$12')+'<small> / month'+(yearly?', paid yearly':'')+'</small>';save.textContent=yearly?'Two months free':'';}
+m.onclick=()=>set(false);y.onclick=()=>set(true);
+</script>
+</body></html>`
+
 function demoPage(): string {
   const file = path.join(os.tmpdir(), 'ensemble-demo-site', 'pricing.html')
   try {
@@ -141,6 +201,9 @@ export function demoDiff(rel: string): string {
   return [`--- /dev/null`, `+++ b/${rel}`, `@@ -0,0 +1,${body.length} @@`, ...body.map((l) => `+${l}`)].join('\n')
 }
 
+/** Thrown inside a scripted turn once it has been stopped, so the turn ends there and starts nothing more. */
+class Stopped extends Error {}
+
 export class DemoRuntime implements AgentRuntime {
   private stopped = false
   private disposed = false
@@ -163,39 +226,59 @@ export class DemoRuntime implements AgentRuntime {
     void this.play(input)
   }
 
+  /** Waits like the real thing would, but a stop cuts the wait short and ends the turn. */
+  private wakers = new Set<() => void>()
+  private async pause(ms: number): Promise<void> {
+    if (this.stopped) throw new Stopped()
+    await new Promise<void>((r) => {
+      const done = (): void => {
+        clearTimeout(t)
+        this.wakers.delete(done)
+        r()
+      }
+      const t = setTimeout(done, ms / SPEED)
+      this.wakers.add(done)
+    })
+    if (this.stopped) throw new Stopped()
+  }
+
   private async say(text: string): Promise<void> {
+    if (this.stopped) throw new Stopped()
     const id = uid('a')
     this.emit({ type: 'text-start', id })
     const words = text.split(/(\s+)/)
     for (let i = 0; i < words.length && !this.stopped; i += 3) {
       this.emit({ type: 'text-delta', id, text: words.slice(i, i + 3).join('') })
-      await wait(28)
+      await this.pause(28)
     }
     this.emit({ type: 'text-end', id, text })
   }
 
   private async think(text: string, ms = 900): Promise<void> {
+    if (this.stopped) throw new Stopped()
     const id = uid('r')
     this.emit({ type: 'thinking-start', id })
-    await wait(ms)
+    await this.pause(ms)
     this.emit({ type: 'thinking-end', id, text })
   }
 
   private async tool(name: string, input: unknown, output: string, ms = 700, isError = false): Promise<void> {
-    if (this.stopped) return
+    if (this.stopped) throw new Stopped()
     const id = uid('t')
     this.emit({ type: 'tool-start', id, name, input })
-    await wait(ms)
+    await this.pause(ms)
     this.emit({ type: 'tool-end', id, output, isError })
   }
 
   private async call(name: string, args: Record<string, unknown>): Promise<string> {
+    // A stopped turn hands out nothing more and starts no more agents.
+    if (this.stopped) throw new Stopped()
     const t = this.o.tools.find((x) => x.name === name)
     if (!t) return ''
     const id = uid('t')
     this.emit({ type: 'tool-start', id, name: `mcp__team__${name}`, input: args })
     const out = toolText(await t.run(args))
-    await wait(250)
+    await this.pause(250)
     this.emit({ type: 'tool-end', id, output: out, isError: false })
     return out
   }
@@ -215,7 +298,7 @@ export class DemoRuntime implements AgentRuntime {
     let last = ''
     let edited = false
     const MODELS: Record<string, string> = { fable: 'claude-fable-5-2', opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5' }
-    this.emit({ type: 'session', sessionId: `demo-${this.o.account.id}`, model: this.o.account.provider === 'claude' ? MODELS[this.o.model || ''] || 'claude-fable-5-2' : 'gpt-5.2-codex' })
+    this.emit({ type: 'session', sessionId: `demo-${this.o.account.id}`, model: this.o.account.provider === 'claude' ? MODELS[this.o.model || ''] || 'claude-fable-5-2' : this.o.model || this.o.defaultModel || 'gpt-6.1-sol' })
     // Only the short window moves as it works: the week and the strongest model's allowance stay as the demo set them.
     this.emit({ type: 'usage', usage: { session: { utilization: Math.min(0.95, 0.12 + this.turn * 0.07), resetsAt: Date.now() + 3.2 * 3600e3 } } })
     // Lets the "ran out of allowance" path be seen without anyone running out.
@@ -232,7 +315,8 @@ export class DemoRuntime implements AgentRuntime {
         edited = this.wrote
       }
     } catch (e) {
-      this.emit({ type: 'turn-end', status: 'error', resultText: '', durationMs: Date.now() - started, reason: 'other', error: (e as Error).message })
+      if (e instanceof Stopped || this.stopped) this.emit({ type: 'turn-end', status: 'interrupted', resultText: '', durationMs: Date.now() - started })
+      else this.emit({ type: 'turn-end', status: 'error', resultText: '', durationMs: Date.now() - started, reason: 'other', error: (e as Error).message })
       return
     }
     this.used += 9000 + last.length * 6
@@ -264,7 +348,7 @@ export class DemoRuntime implements AgentRuntime {
     ].map((t) => ({ ...t, file: path.join(dir, `voice-${t.label.toLowerCase()}.wav`) }))
     const id = uid('t')
     this.emit({ type: 'tool-start', id, name: 'Bash', input: { command: 'python make_voices.py --takes 3', description: 'Making three voice samples' } })
-    await wait(900)
+    await this.pause(900)
     for (const t of takes) tone(t.file, t.freq)
     this.emit({ type: 'tool-end', id, output: ['Saved:', ...takes.map((t) => t.file)].join('\n'), isError: false })
     const answers = await this.o.host.askQuestion(
@@ -313,7 +397,7 @@ export class DemoRuntime implements AgentRuntime {
       await this.tool('Bash', { command: 'npm test', description: 'Run the test suite' }, 'Test Files  12 passed (12)\n     Tests  87 passed (87)\n  Duration  3.41s', 900)
       if (this.o.tools.some((t) => t.name === 'browser')) {
         await this.call('browser', { action: 'open', url: demoPage() })
-        await wait(600)
+        await this.pause(600)
         await this.call('browser', { action: 'look' })
       }
       await this.call('goal_report', { state: 'met', note: 'npm test: 87 of 87 pass. Opened the pricing page: three tiers, and the annual toggle changes the prices.' })
@@ -344,38 +428,78 @@ export class DemoRuntime implements AgentRuntime {
    */
   private async ultraStart(crazy: boolean, input: TurnInput): Promise<string> {
     const ask = truncateLine((input.text.split('</way-of-working>').pop() || '').trim()) || 'this request'
+    // A choice clicked in a Live answer comes back as plain words: answered directly, nobody started.
+    const chose = /^(?:Chose|Answers):\s*(.+)$/i.exec(ask) || /^((?:Use|Show me) version \w|Refine \w once more)\b.*$/i.exec(ask)
+    if (chose) {
+      const pick = chose[1].trim()
+      const text = /use version/i.test(pick)
+        ? `Done: version B is copied into \`site/index.html\` and the old page is kept as \`site/index.old.html\`.\n\nI opened it at phone and laptop sizes in light and dark mode, and it matches what you saw above.`
+        : /refine/i.test(pick)
+          ? 'One more round on B: a fresh reviewer goes over it against the rubric, and I fix what it finds. Send "go" when you want it started.'
+          : `Version A is in \`designs/a/index.html\`, with screenshots in \`designs/a/shots/\`. It scored 43 of 50, three behind B, mostly on hierarchy.`
+      await this.say(text)
+      return text
+    }
+    // Ultra stays on for the chat, so a thank-you or a quick question arrives this way too: it gets a direct answer, as the briefing says.
+    if (/^(thanks|thank you|thx|ty|cheers|great|nice|perfect|awesome|ok|okay|cool|looks good)\b/i.test(ask) || (ask.length < 60 && /\?$/.test(ask) && /\b(status|where are we|how far|done yet|progress)\b/i.test(ask))) {
+      const text = /\?$/.test(ask) ? 'Nothing is running right now. The last run finished, with version B as the winner.' : 'Glad it helps. Tell me what to change next and I will take it from there.'
+      await this.say(text)
+      return text
+    }
     await this.think(
       crazy
         ? 'Go crazy: the whole pipeline at full scale. A wide scout swarm on the fast models, every strong model building its own version, then two rounds of judges who built nothing.'
         : 'Ultra: a rubric first, then scouts on the fast models, builders on the strongest models at full effort, and a judge who did none of the work.',
       900,
     )
-    await this.call('roster', {})
+    const roster = await this.call('roster', {})
+    // Names already in the chat (from an earlier run) are not used again, so nobody is renamed under their task.
+    const taken = new Set([...roster.matchAll(/^- (.+?) \(/gm)].map((m) => m[1].toLowerCase()))
+    const free = (names: string[]): string => {
+      const name = names.find((n) => !taken.has(n.toLowerCase())) || names[names.length - 1]
+      taken.add(name.toLowerCase())
+      return name
+    }
+    const numbered = (base: string): string => free(Array.from({ length: 60 }, (_, i) => `${base} ${i + 1}`))
+    const lettered = (): string => free([...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((l) => `Builder ${l}`))
     await this.call('board_post', {
       title: 'Rubric',
       text: `What the best result for "${ask}" looks like. Every version is scored 1 to 10 on each:\n1. Does exactly what was asked\n2. Correct: it runs, nothing is broken\n3. Complete: no placeholders, every state handled\n4. Craft: typography, spacing, hierarchy, the details\n5. Fast and accessible\n6. Holds up next to the best reference the scouts find`,
     })
+    // The models come from the team the note describes, as a real lead's would: a team of ChatGPT
+    // accounts alone scouts on Luna and builds on Astra; one of Claude alone, Haiku and Fable.
+    const told = (word: string): { value: string; label: string }[] => [...input.text.matchAll(new RegExp(`${word} ([^(\\n]+?) \\(\`([^\`]+)\``, 'g'))].map((m) => ({ label: m[1].trim(), value: m[2] }))
+    const strong = told('strongest')
+    const fast = told('fastest')
+    const strongOf = (i: number, fallback: string): string => (strong.length ? strong[i % strong.length].value : fallback)
+    const fastOf = (i: number, fallback: string): string => (fast.length ? fast[i % fast.length].value : fallback)
+    const short = (list: { label: string }[], fallback: string): string => (list.length ? [...new Set(list.map((m) => m.label.replace(/^GPT-[\d.]+-/, '').replace(/ [\d.]+$/, '')))].join(' and ') : fallback)
     const angles = crazy
       ? ['the best work in this field', 'design systems and type', 'what users complain about', 'accessibility rules', 'performance budgets', 'motion and interaction', 'competitors, side by side', 'award-winning examples']
       : ['the best work in this field', 'what users complain about', 'accessibility and performance', 'competitors, side by side']
-    const builders = crazy
-      ? [
-          { name: 'Builder A', model: 'fable', effort: 'max' },
-          { name: 'Builder B', model: 'opus', effort: 'max' },
-          { name: 'Builder C', model: 'astra', effort: 'xhigh' },
-          { name: 'Builder D', model: 'astra', effort: 'max' },
-        ]
-      : [
-          { name: 'Builder A', model: 'fable', effort: 'max' },
-          { name: 'Builder B', model: 'astra', effort: 'xhigh' },
-        ]
-    const judges = crazy
-      ? [
-          { name: 'Judge 1', model: 'fable', effort: 'max', round: 1 },
-          { name: 'Judge 2', model: 'astra', effort: 'xhigh', round: 1 },
-          { name: 'Judge 3', model: 'opus', effort: 'max', round: 2 },
-        ]
-      : [{ name: 'Judge', model: 'fable', effort: 'max', round: 1 }]
+    const builders = (
+      crazy
+        ? [
+            { model: strongOf(0, 'fable'), effort: 'max' },
+            // A second strong Claude model where the team has Claude at all.
+            { model: strong.some((m) => /fable/i.test(m.value)) ? 'opus' : strongOf(1, 'opus'), effort: 'max' },
+            { model: strongOf(1, 'astra'), effort: 'xhigh' },
+            { model: strongOf(1, 'astra'), effort: 'max' },
+          ]
+        : [
+            { model: strongOf(0, 'fable'), effort: 'max' },
+            { model: strongOf(1, 'astra'), effort: 'xhigh' },
+          ]
+    ).map((b) => ({ ...b, name: lettered() }))
+    const judges = (
+      crazy
+        ? [
+            { model: strongOf(0, 'fable'), effort: 'max', round: 1 },
+            { model: strongOf(1, 'astra'), effort: 'xhigh', round: 1 },
+            { model: strong.some((m) => /fable/i.test(m.value)) ? 'opus' : strongOf(0, 'opus'), effort: 'max', round: 2 },
+          ]
+        : [{ model: strongOf(0, 'fable'), effort: 'max', round: 1 }]
+    ).map((j) => ({ ...j, name: numbered('Judge') }))
     const started: string[] = []
     // Starts one agent; when its model cannot run here, it starts on the account's usual model instead.
     const start = async (args: Record<string, unknown>): Promise<string | undefined> => {
@@ -388,17 +512,21 @@ export class DemoRuntime implements AgentRuntime {
     const scoutIds: string[] = []
     for (const [i, angle] of angles.entries()) {
       const id = await start({
-        name: `Scout ${i + 1}`,
+        name: numbered('Scout'),
         role: `scouts ${angle}`,
         title: `Scout: ${angle}`,
-        model: i % 2 ? 'luna' : 'haiku',
+        model: fastOf(i, i % 2 ? 'luna' : 'haiku'),
         effort: 'medium',
         brief: `Request: ${ask}\n\nYour one angle: ${angle}. Find the strongest examples and facts on it, nothing else. Report up to six findings, each with a link and the date you read it, and say what you could not confirm.`,
       })
       if (id) scoutIds.push(id)
     }
     const buildIds: string[] = []
-    for (const b of builders) {
+    for (const [bi, b] of builders.entries()) {
+      // Each builder is a small cell: a critic on another model attacks its draft before it is submitted,
+      // and the first builders (all of them in Ultra's first) also get a tester that renders it.
+      const tester = crazy ? bi < 2 : bi === 0
+      const cell = `Before you submit, start a critic on a different model to attack your draft${tester ? ', and a tester that renders it and reports what it saw' : ''}; answer the critic's points first.${crazy && bi === 0 ? ' Your critic may start a fact-checker for the claims it leans on.' : ''}`
       const id = await start({
         name: b.name,
         role: `builds version ${b.name.slice(-1)}`,
@@ -406,7 +534,7 @@ export class DemoRuntime implements AgentRuntime {
         model: b.model,
         effort: b.effort,
         after: scoutIds,
-        brief: `Request: ${ask}\n\nMake a complete version of your own, working to the rubric on the board and using the scouts' findings below. Do not look at the other versions. Work in designs/${b.name.slice(-1).toLowerCase()}/ only. Render it and take a screenshot in light and dark mode. Report the path and the screenshots.`,
+        brief: `Request: ${ask}\n\nMake a complete version of your own, working to the rubric on the board and using the scouts' findings below. Do not look at the other versions. Work in designs/${b.name.slice(-1).toLowerCase()}/ only. Render it and take a screenshot in light and dark mode. ${cell} Report the path and the screenshots.`,
       })
       if (id) buildIds.push(id)
     }
@@ -415,18 +543,18 @@ export class DemoRuntime implements AgentRuntime {
       const id = await start({
         name: j.name,
         role: j.round === 1 ? 'judges the versions against the rubric' : 'judges the final round, fresh',
-        title: j.round === 1 ? `Judge: round 1 (${j.name})` : 'Judge: round 2',
+        title: `Judge: round ${j.round}`,
         model: j.model,
         effort: j.effort,
         after: j.round === 1 ? buildIds : [...buildIds, ...round1],
-        brief: `You did none of this work. Score every version (A, B${crazy ? ', C, D' : ''}) on each rubric criterion from 1 to 10 with a reason, name the best version, and list the best ideas in the others.${j.round === 2 ? ' Round one has judged already; judge the improved versions afresh.' : ''}`,
+        brief: `You did none of this work. Score every version (A, B${crazy ? ', C, D' : ''}) on each rubric criterion from 1 to 10 with a reason, name the best version, and list the best ideas in the others.${j.round === 2 ? ' Round one has judged already; judge the improved versions afresh.' : ''}${crazy && j === judges[0] ? ' Start a verifier who checks your scores against the screenshots before you report.' : ''}`,
       })
       if (id && j.round === 1) round1.push(id)
     }
     const text =
       `${crazy ? 'Going crazy' : 'Ultra is under way'}: ${started.length} agents are working on "${ask}".\n\n` +
-      `1. **Scouts** (${angles.length}, on Haiku and Luna): one narrow angle each, with sources\n` +
-      `2. **Builders** (${builders.length}, on ${[...new Set(builders.map((b) => b.model))].join(', ')} at full effort): each makes a complete version of its own once the scouts are in\n` +
+      `1. **Scouts** (${angles.length}, on ${short(fast, 'Haiku and Luna')}): one narrow angle each, with sources\n` +
+      `2. **Builders** (${builders.length}, on ${short(strong, 'Fable and Astra')} at full effort): each makes a complete version of its own once the scouts are in\n` +
       `3. **Judges** (${judges.length}${crazy ? ', in two rounds' : ''}): score every version against the rubric on the board\n\n` +
       'I will merge the best ideas into the winner, refine it, and check it myself before I answer.'
     await this.say(text)
@@ -448,14 +576,27 @@ export class DemoRuntime implements AgentRuntime {
     await this.tool('Edit', { file_path: `${this.o.cwd}\\designs\\b\\index.html`, old_string: '<section class="hero">', new_string: '<section class="hero" data-merged="A:type-scale C:motion">' }, 'Applied 1 edit', 600)
     await this.tool('Bash', { command: 'npx playwright screenshot designs/b/index.html --viewport 390x844,1440x900 --color-scheme light,dark', description: 'Screenshot the winner at two sizes, light and dark' }, '4 screenshots saved to designs/b/shots/', 900)
     for (const t of tasks.filter((x) => x.title.startsWith('Scout'))) await this.call('dismiss_agent', { name: t.who })
+    // The answer is made of Live answer blocks, as a real lead's would be: the versions side by side,
+    // the judges' scores, the next step as choices, and the winner running.
+    const versions = crazy ? ['A', 'B', 'C', 'D'] : ['A', 'B']
+    const scores: Record<string, number> = { A: 43, B: 46, C: 42, D: 42 }
+    const notes: Record<string, { summary: string; pros: string[]; cons: string[] }> = {
+      A: { summary: 'Editorial and calm, built on a strong type scale', pros: ['The best type scale of the four', 'Fast on a phone'], cons: ['The call to action sits low on small screens'] },
+      B: { summary: 'One idea per screen, a clear path to the call to action', pros: ['The clearest hierarchy', 'The most careful details, light and dark'], cons: ['Motion is minimal'] },
+      C: { summary: 'Rich motion and depth', pros: ['The best motion, merged into B'], cons: ['Heavier to load', 'Busier hierarchy'] },
+      D: { summary: 'Dense and product-led', pros: ['Shows the product early'], cons: ['Feels crowded at laptop size'] },
+    }
     const text =
-      `**Version B won${crazy ? ' both judging rounds' : ''}, with the best ideas of the others merged in.**\n\n` +
-      '| Version | Asked for | Correct | Complete | Craft | Fast, accessible | Total |\n| --- | --- | --- | --- | --- | --- | --- |\n' +
-      '| A | 9 | 9 | 8 | 8 | 9 | 43 |\n| **B** | 9 | 9 | 9 | 10 | 9 | **46** |\n' +
-      (crazy ? '| C | 8 | 9 | 8 | 9 | 8 | 42 |\n| D | 9 | 8 | 8 | 9 | 8 | 42 |\n' : '') +
-      '\n**Merged in:** the type scale from A' + (crazy ? ', the motion from C' : '') + '.\n\n' +
-      '**Checked:** rendered at phone and laptop sizes in light and dark mode (`designs/b/shots/`), and the judges re-scored the merged version.\n\n' +
-      '**Not checked:** how it reads with your real content; the copy is placeholder.'
+      `**Version B won${crazy ? ' both judging rounds' : ''}**, with the type scale from A${crazy ? ' and the motion from C' : ''} merged in. Below: the versions, the judges' scores, and the winner running.\n\n` +
+      uiFence({ type: 'compare', title: 'The versions', options: versions.map((v) => ({ name: `Version ${v}`, summary: notes[v].summary, pros: notes[v].pros, cons: notes[v].cons, score: scores[v], pick: v === 'B' })) }) +
+      '\n\n' +
+      uiFence({ type: 'chart', kind: 'bar', title: `Judges' scores (of 50)${crazy ? ', final round' : ''}`, x: versions.map((v) => `Version ${v}`), series: [{ name: 'Score', data: versions.map((v) => scores[v]) }], note: 'Five criteria from the rubric, 1 to 10 each' }) +
+      '\n\n' +
+      '```app title="Version B, the winner" height=520\n' +
+      WINNER_PAGE +
+      '\n```\n\n' +
+      '**Checked:** rendered at phone and laptop sizes in light and dark mode (`designs/b/shots/`), and the judges re-scored the merged version. **Not checked:** how it reads with your real content; the copy is placeholder.\n\n' +
+      uiFence({ type: 'choices', prompt: 'What next?', options: [{ label: 'Use version B', detail: 'Copy it into the site' }, { label: 'Refine B once more', detail: 'Another review and fix round' }, { label: 'Show me version A', detail: 'The runner-up, running' }] })
     await this.say(text)
     return text
   }
@@ -464,7 +605,9 @@ export class DemoRuntime implements AgentRuntime {
   private async modeTurn(mode: string, input: TurnInput): Promise<string | null> {
     if (mode === 'ultra' || mode === 'gocrazy') return this.ultraStart(mode === 'gocrazy', input)
     if (mode === 'quick') {
-      const text = 'Short answer: keep the annual discount at 20%. It is the usual range, and "two months free" is easy to say.'
+      const text =
+        'Short answer: keep the annual discount at 20%. It is the usual range, and "two months free" is easy to say.\n\n' +
+        uiFence({ type: 'stats', items: [{ label: 'Suggested discount', value: '20%' }, { label: 'Usual range', value: '15 to 20%' }, { label: 'Months free', value: 2, hint: 'per year, paid yearly' }] })
       await this.say(text)
       return text
     }
@@ -490,7 +633,16 @@ export class DemoRuntime implements AgentRuntime {
       const text =
         'Three independent answers are in.\n\n' +
         '**Where everyone agrees**\n\n- An annual discount is worth offering, and it should be a round number that is easy to say\n\n' +
-        '**Where they differ**\n\n- Opus: 20% ("two months free"), because clarity beats a finer number\n- Sonnet: 15%, to protect margin until churn is known\n- ChatGPT: 17%, the median of comparable products\n\n' +
+        '**Where they differ**\n\n' +
+        uiFence({
+          type: 'compare',
+          options: [
+            { name: 'Opus: 20%', summary: '"Two months free"', pros: ['Clarity beats a finer number'], cons: ['Gives up a little margin'], pick: true },
+            { name: 'Sonnet: 15%', summary: 'Protect margin first', pros: ['Safer until churn is known'], cons: ['Harder to say in a headline'] },
+            { name: 'ChatGPT: 17%', summary: 'The median of comparable products', pros: ['Matches the market'], cons: ['An odd number to advertise'] },
+          ],
+        }) +
+        '\n\n' +
         '**My judgment**\n\n20%. The margin argument is real but small at this size, and the simple message is worth more than three points.\n\n' +
         '**Still uncertain**\n\nNobody had data on your own churn, which is what would settle it.'
       await this.say(text)
@@ -513,7 +665,7 @@ export class DemoRuntime implements AgentRuntime {
       const status = await this.call('task_status', {})
       // The latest work handed out was an Ultra stage: that story carries on instead.
       const latest = [...status.matchAll(/^t(\d+) · [^\n]* · ([^·\n]+)$/gm)].sort((a, b) => Number(b[1]) - Number(a[1]))[0]
-      if (latest && /^(Scout|Build|Judge):/.test(latest[2])) return this.ultraReport(status)
+      if (latest && /^(Scout|Build|Judge|Critique|Test|Verify|Fact-check):/.test(latest[2])) return this.ultraReport(status)
       const done =[...status.matchAll(/^t\d+ · done · .+? · (.+)$/gm)].map((m) => m[1])
       const finished: number[] = []
       if (done.some((t) => /pricing/i.test(t))) finished.push(1)
@@ -534,9 +686,9 @@ export class DemoRuntime implements AgentRuntime {
       const page = await this.call('browser', { action: 'open', url: demoPage() })
       const annual = /\[(\d+)\] button "Annual/.exec(page)?.[1]
       if (annual) {
-        await wait(900)
+        await this.pause(900)
         await this.call('browser', { action: 'click', ref: Number(annual) })
-        await wait(900)
+        await this.pause(900)
         await this.call('browser', { action: 'look' })
       }
       // A quick second opinion from a teammate on another provider, without ending the turn.
@@ -575,11 +727,11 @@ export class DemoRuntime implements AgentRuntime {
         await this.say(text)
         return text
       }
-      await wait(500)
+      await this.pause(500)
       await this.call('computer', { action: 'left_click', coordinate: [640, 300] })
-      await wait(400)
+      await this.pause(400)
       await this.call('computer', { action: 'type', text: ['Design review, Thursday 3pm', '- Pricing page', '- Checkout flow'].join('\n') })
-      await wait(400)
+      await this.pause(400)
       await this.call('computer', { action: 'key', text: 'ctrl+s' })
       const text = 'Done. The note is written and saved in Notes.'
       await this.say(text)
@@ -681,8 +833,10 @@ export class DemoRuntime implements AgentRuntime {
       return text
     }
     // A stage of an Ultra run: scout, builder or judge.
-    const stage = /<task id="[^"]*" from="[^"]*" title="(Scout|Build|Judge):\s*([^"]*)"/.exec(input.text)
-    if (stage) return this.ultraStage(stage[1], stage[2])
+    const stage = /<task id="[^"]*" from="[^"]*" title="(Scout|Build|Judge|Critique|Test|Verify|Fact-check):\s*([^"]*)"/.exec(input.text)
+    if (stage) return this.ultraStage(stage[1], stage[2], input.text)
+    // A helper this agent started inside an Ultra run has reported.
+    if (/^\s*<task-result/.test(input.text) && /title="(Critique|Test|Verify|Fact-check):/.test(input.text)) return this.ultraHelped()
     // A sub-agent this teammate started has reported: check it and write the report on the whole task.
     if (/^\s*<task-result/.test(input.text)) {
       await this.think('The tests are in. Running everything together before reporting.', 600)
@@ -764,8 +918,8 @@ export class DemoRuntime implements AgentRuntime {
     return text
   }
 
-  /** One agent's part in an Ultra run. */
-  private async ultraStage(kind: string, what: string): Promise<string> {
+  /** One agent's part in an Ultra run: a scout, a builder, a judge, or a helper one of them started. */
+  private async ultraStage(kind: string, what: string, text: string): Promise<string> {
     if (kind === 'Scout') {
       await this.think(`One angle only: ${what}. Sources for everything.`, 500)
       await this.tool('WebSearch', { query: what }, '10 results', 700)
@@ -783,21 +937,123 @@ export class DemoRuntime implements AgentRuntime {
       await this.tool('Bash', { command: `npx playwright screenshot designs/${v}/index.html --color-scheme light,dark`, description: 'Render the version in light and dark' }, `2 screenshots saved to designs/${v}/shots/`, 800)
       const sample = process.env.ENSEMBLE_DEMO_IMAGE
       if (sample && fs.existsSync(sample)) this.emit({ type: 'image', path: sample })
-      const text = `Done: version ${v.toUpperCase()} is complete in \`designs/${v}/index.html\`, with screenshots in light and dark mode in \`designs/${v}/shots/\`. It scores itself 8 or 9 on every criterion; the weakest is motion, which is minimal.`
-      await this.say(text)
-      return text
+      // The builder's own cell: a critic on another model, and sometimes a tester, before it submits.
+      const V = v.toUpperCase()
+      const other = this.o.account.provider === 'claude' ? 'astra' : 'opus'
+      const helpers: string[] = []
+      if (/start a critic/.test(text)) {
+        const ok = await this.helper({
+          name: `Critic ${V}`,
+          role: `attacks version ${V} before it is submitted`,
+          title: `Critique: version ${V}`,
+          model: other,
+          effort: 'high',
+          brief: `Version ${V} is in designs/${v}/ with screenshots in designs/${v}/shots/. You did not make it. Attack it against the rubric on the board: what is weakest, most serious first, each with where it is and the smallest fix.${/may start a fact-checker/.test(text) ? ' Start a fact-checker for the claims your critique leans on.' : ''}`,
+        })
+        if (ok) helpers.push('critic')
+      }
+      if (/and a tester/.test(text)) {
+        const ok = await this.helper({
+          name: `Tester ${V}`,
+          role: `renders version ${V} and reports what it sees`,
+          title: `Test: version ${V}`,
+          model: 'sonnet',
+          effort: 'medium',
+          brief: `Render designs/${v}/index.html at phone and laptop sizes in light and dark mode, run an accessibility check, and report exactly what you saw: what breaks, what overflows, any contrast failures. Do not change the files.`,
+        })
+        if (ok) helpers.push('tester')
+      }
+      if (helpers.length) return this.said(`Draft of version ${V} is in \`designs/${v}/\`. My ${helpers.join(' and ')} ${helpers.length === 1 ? 'is' : 'are'} on it; I submit once their points are answered.`)
+      return this.said(`Done: version ${V} is complete in \`designs/${v}/index.html\`, with screenshots in light and dark mode in \`designs/${v}/shots/\`. It scores itself 8 or 9 on every criterion; the weakest is motion, which is minimal.`)
     }
+    if (kind === 'Critique') {
+      const V = /version (\w)/i.exec(what)?.[1] || 'A'
+      await this.think('I did not make this. Looking for what a demanding creative director would reject first.', 600)
+      await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\${V.toLowerCase()}\\index.html` }, '<section class="hero">…</section>', 400)
+      if (/start a fact-checker/i.test(text)) {
+        const ok = await this.helper({
+          name: `Fact-checker ${V}`,
+          role: `checks the claims in the critique of version ${V}`,
+          title: `Fact-check: critique of version ${V}`,
+          model: 'haiku',
+          effort: 'medium',
+          brief: 'The critique leans on two claims: that body text needs at least 4.5:1 contrast, and that small interface motion over 300 ms reads as slow. Check each at the primary source, with a link and a date, and say whether it holds.',
+        })
+        if (ok) return this.said(`First notes on version ${V} are in. A fact-checker is confirming the two claims they lean on; my critique follows once it reports.`)
+      }
+      return this.said(`Critique of version ${V}, most serious first:\n\n1. The secondary text is too faint in dark mode (about 3.8:1); raise it to 4.5:1\n2. The hero headline wraps to three lines on a phone; tighten it or step the size down\n3. The pricing cards' hover lifts by 8 px and feels loose; 2 px is enough`)
+    }
+    if (kind === 'Test') {
+      const v = (/version (\w)/i.exec(what)?.[1] || 'A').toLowerCase()
+      await this.tool('Bash', { command: `npx playwright screenshot designs/${v}/index.html --viewport 390x844,1440x900 --color-scheme light,dark`, description: 'Render at phone and laptop sizes, light and dark' }, `4 screenshots saved to designs/${v}/tested/`, 800)
+      await this.tool('Bash', { command: `npx axe designs/${v}/index.html`, description: 'Run an accessibility check' }, '1 issue: color-contrast on .muted (3.8:1)', 600)
+      return this.said(`Rendered version ${v.toUpperCase()} at 390 and 1440 px, light and dark (\`designs/${v}/tested/\`). Nothing overflows. One accessibility failure: \`.muted\` text is 3.8:1 in dark mode.`)
+    }
+    if (kind === 'Verify') {
+      await this.think("Checking each score against what the screenshots really show, not against the judge's words.", 600)
+      await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\b\\shots\\dark.png` }, '[image]', 400)
+      return this.said("Verified. The scores match the screenshots, with one correction: B's craft is a 9 in dark mode, not a 10, because of a faint caption. B still leads.")
+    }
+    if (kind === 'Fact-check') {
+      await this.tool('WebSearch', { query: 'WCAG 2.2 contrast minimum body text' }, '10 results', 600)
+      await this.tool('WebFetch', { url: 'https://www.w3.org/TR/WCAG22/#contrast-minimum' }, 'Success Criterion 1.4.3: at least 4.5:1 for normal text.', 600)
+      return this.said('Both claims hold.\n\n1. 4.5:1 for body text: WCAG 2.2, criterion 1.4.3 (w3.org/TR/WCAG22, read today)\n2. Small interface motion reads as slow past about 300 ms: platform motion guidelines put small transitions at 100 to 300 ms (read today)')
+    }
+    // A judge. The first judge when going crazy has its scores verified before it reports.
     await this.think('I built none of these. Scoring each one against the rubric, criterion by criterion.', 700)
     await this.call('board_read', {})
     await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\a\\index.html` }, '<section class="hero">…</section>', 400)
     await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\b\\index.html` }, '<section class="hero">…</section>', 400)
-    const text = `Done (${what}).\n\n| Version | Total of 50 |\n| --- | --- |\n| A | 43 |\n| **B** | **46** |\n\nBest: **B**, for the clearest hierarchy and the most careful details. Worth taking from A: its type scale.`
+    if (/start a verifier/i.test(text)) {
+      const ok = await this.helper({
+        name: 'Verifier',
+        role: "checks the judge's scores against the screenshots",
+        title: `Verify: ${what}`,
+        model: 'sonnet',
+        effort: 'high',
+        brief: 'Draft scores (of 50): A 43, B 46, C 42, D 42. Check each against the screenshots in designs/*/shots/, not against my words, and say where a score is wrong and why.',
+      })
+      if (ok) return this.said('Draft scores are in. A verifier is checking them against the screenshots; I report once it is done.')
+    }
+    return this.said(`Done (${what}).\n\n| Version | Total of 50 |\n| --- | --- |\n| A | 43 |\n| **B** | **46** |\n\nBest: **B**, for the clearest hierarchy and the most careful details. Worth taking from A: its type scale.`)
+  }
+
+  private async said(text: string): Promise<string> {
     await this.say(text)
     return text
   }
 
+  /** Starts a helper of this agent's own inside an Ultra run; false when the chat allows no deeper level. */
+  private async helper(args: Record<string, unknown>): Promise<boolean> {
+    if (this.stopped || !this.o.tools.some((t) => t.name === 'spawn_agent')) return false
+    return /joined the chat/.test(await this.call('spawn_agent', args))
+  }
+
+  /** A builder, judge or critic hears from a helper it started: waits for the rest, then submits. */
+  private async ultraHelped(): Promise<string> {
+    const status = await this.call('task_status', {})
+    const mine = [...status.matchAll(/^t\d+ · (\w+)[^·\n]* · .+? · ((Critique|Test|Verify|Fact-check):[^\n]*)$/gm)].map((m) => ({ status: m[1], title: m[2], kind: m[3] }))
+    const open = mine.filter((t) => !/^(done|failed|cancelled)$/.test(t.status))
+    if (open.length) {
+      const who = open.map((t) => (t.kind === 'Critique' ? 'the critic' : t.kind === 'Test' ? 'the tester' : t.kind === 'Verify' ? 'the verifier' : 'the fact-checker'))
+      return this.said(`Got one report; waiting on ${who.join(' and ')}.`)
+    }
+    const kinds = new Set(mine.map((t) => t.kind))
+    const V = /version (\w)/i.exec(mine[0]?.title || '')?.[1] || 'A'
+    if (kinds.has('Fact-check')) {
+      return this.said(`Critique of version ${V}, most serious first, with both claims confirmed by the fact-checker:\n\n1. The secondary text is too faint in dark mode (3.8:1; WCAG 1.4.3 asks 4.5:1)\n2. The hero headline wraps to three lines on a phone\n3. The cards' hover lift of 8 px reads as loose; 2 px is enough`)
+    }
+    if (kinds.has('Verify')) {
+      return this.said('Done (round 1), with the scores verified against the screenshots.\n\n| Version | Total of 50 |\n| --- | --- |\n| A | 43 |\n| **B** | **45** |\n| C | 42 |\n| D | 42 |\n\nBest: **B**. Worth taking from A: its type scale; from C: its motion.')
+    }
+    await this.think("My critic's points first: contrast, the headline on a phone, the hover.", 600)
+    await this.tool('Edit', { file_path: `${this.o.cwd}\\designs\\${V.toLowerCase()}\\index.html`, old_string: '.muted { opacity: .55 }', new_string: '.muted { opacity: .72 }' }, 'Applied 1 edit', 600)
+    return this.said(`Done: version ${V} is complete in \`designs/${V.toLowerCase()}/index.html\`. My ${kinds.has('Test') ? 'critic and tester' : 'critic'} found ${kinds.has('Test') ? 'a contrast failure and a long headline' : 'three weak spots'}; all are fixed and re-rendered in light and dark (\`designs/${V.toLowerCase()}/shots/\`).`)
+  }
+
   async interrupt(): Promise<void> {
     this.stopped = true
+    for (const wake of [...this.wakers]) wake()
   }
 
   async setPermission(_level: PermissionLevel): Promise<void> {}
@@ -810,5 +1066,6 @@ export class DemoRuntime implements AgentRuntime {
   dispose(): void {
     this.disposed = true
     this.stopped = true
+    for (const wake of [...this.wakers]) wake()
   }
 }

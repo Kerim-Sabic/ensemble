@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type ReactNode } from 'react'
+import { Children, isValidElement, memo, useMemo, useState, type ReactNode } from 'react'
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -6,6 +6,9 @@ import { Check, Copy } from 'lucide-react'
 import { IMAGE_EXT } from '@shared/tools'
 import { api, baseName, cn } from '@/lib/util'
 import { viewFrom } from './Viewer'
+import { AppFence, IUI_LANGS, UiFence } from './iui/Block'
+import { IuiContext } from './iui/kit'
+import { MdTable, scopeOf, TaskBox, TaskScope } from './iui/MdTable'
 
 const ABS_PATH = /^(?:[A-Za-z]:[\\/]|\/)[^\n]*$/
 
@@ -44,8 +47,45 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   )
 }
 
+type Hast = { type: string; tagName?: string; value?: string; children?: Hast[]; properties?: { className?: unknown }; data?: { meta?: string | null }; position?: { end?: { offset?: number } } }
+const hastText = (n: Hast): string => (n.type === 'text' ? n.value || '' : (n.children || []).map(hastText).join(''))
+
+/**
+ * A fence whose language is `ui` or `app` is a Live answers block; anything
+ * else is code. `open` is given while the text is still arriving and its last fence has not
+ * been closed: the block reaching the end of the text is then still being written.
+ */
+function pre(open?: { end: number }): NonNullable<Components['pre']> {
+  return function Pre({ children, node }) {
+    const code = (node as Hast | undefined)?.children?.find((c) => c.type === 'element' && c.tagName === 'code')
+    const cls = code?.properties?.className
+    const lang = (Array.isArray(cls) ? cls : [cls]).map(String).find((c) => c.startsWith('language-'))?.slice(9).toLowerCase()
+    if (code && lang && IUI_LANGS.has(lang)) {
+      const source = hastText(code).replace(/\n$/, '')
+      const writing = !!open && ((node as Hast).position?.end?.offset ?? 0) >= open.end
+      return lang === 'ui' ? <UiFence source={source} open={writing} /> : <AppFence source={source} meta={code.data?.meta || undefined} open={writing} />
+    }
+    return <CodeBlock>{children}</CodeBlock>
+  }
+}
+
+/** A task list item ([ ] or [x]): its box can be ticked. */
+const li: NonNullable<Components['li']> = ({ node, className, children, ...rest }) => {
+  if (!String(className || '').includes('task-list-item')) return <li className={className} {...rest}>{children}</li>
+  const at = (node as { position?: { start?: { offset?: number } } } | undefined)?.position?.start?.offset ?? 0
+  const kids = Children.toArray(children).map((c) => (isValidElement(c) && c.type === 'input' ? <TaskBox key="box" at={at} checked={!!(c.props as { checked?: boolean }).checked} /> : c))
+  return (
+    <li className={className} {...rest}>
+      {kids}
+    </li>
+  )
+}
+
 const components: Components = {
-  pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
+  pre: pre(),
+  // Every table is sortable, and one of labels and figures can be flipped to a chart.
+  table: ({ children }) => <MdTable>{children}</MdTable>,
+  li,
   a: ({ href, children }) => (
     <a
       onClick={(e) => {
@@ -127,10 +167,26 @@ function settledAt(text: string): number {
 const REMARK = [remarkGfm]
 const REHYPE: [typeof rehypeHighlight, { detect: boolean; ignoreMissing: boolean }][] = [[rehypeHighlight, { detect: false, ignoreMissing: true }]]
 
+/** Whether a text ends inside a fenced block that has not been closed yet. */
+export function endsOpen(text: string): boolean {
+  let fence: string | null = null
+  for (const line of text.split('\n')) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line)
+    if (!m) continue
+    if (!fence) fence = m[1]
+    else if (m[1][0] === fence[0] && m[1].length >= fence.length && !m[2].trim()) fence = null
+  }
+  return !!fence
+}
+
 /** One stretch of text turned into elements. Drawn again only when its own text changes. */
-const Part = memo(function Part({ text, parts }: { text: string; parts: Components }) {
+const Part = memo(function Part({ text, parts, writing }: { text: string; parts: Components; writing?: boolean }) {
+  // The last stretch of a text still being written may end inside an interactive block.
+  const open = writing && endsOpen(text)
+  const end = text.trimEnd().length
+  const own = useMemo<Components>(() => (open ? { ...parts, pre: pre({ end }) } : parts), [open, end, parts])
   return (
-    <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={parts}>
+    <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={own}>
       {text}
     </ReactMarkdown>
   )
@@ -142,6 +198,7 @@ export const Markdown = memo(function Markdown({
   className,
   onNote,
   streaming,
+  replyTo,
 }: {
   text: string
   compact?: boolean
@@ -150,6 +207,11 @@ export const Markdown = memo(function Markdown({
   onNote?(target: string): void
   /** The text is still being written: only the part that is still changing is worked out on each update. */
   streaming?: boolean
+  /**
+   * The agent who wrote the text. Choices, forms and mini apps in it send their answer to them.
+   * Left out, an answer goes to whoever the chat is focused on.
+   */
+  replyTo?: string
 }) {
   const parts = useMemo<Components>(() => {
     if (!onNote) return components
@@ -171,20 +233,24 @@ export const Markdown = memo(function Markdown({
       ),
     }
   }, [onNote])
+  let out: ReactNode
   if (streaming) {
     const cut = settledAt(text)
-    return (
+    out = (
       <div className={cn('md streaming', compact && 'compact', className)}>
         {cut > 0 && <Part key="settled" text={text.slice(0, cut)} parts={parts} />}
-        <Part key="writing" text={text.slice(cut)} parts={parts} />
+        <Part key="writing" text={text.slice(cut)} parts={parts} writing />
+      </div>
+    )
+  } else {
+    out = (
+      <div className={cn('md', compact && 'compact', className)}>
+        <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={parts} urlTransform={onNote ? (u) => (NOTE.test(u) ? u : defaultUrlTransform(u)) : undefined}>
+          {text}
+        </ReactMarkdown>
       </div>
     )
   }
-  return (
-    <div className={cn('md', compact && 'compact', className)}>
-      <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={parts} urlTransform={onNote ? (u) => (NOTE.test(u) ? u : defaultUrlTransform(u)) : undefined}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  )
+  out = <TaskScope.Provider value={streaming ? '' : scopeOf(text)}>{out}</TaskScope.Provider>
+  return replyTo ? <IuiContext.Provider value={{ replyTo }}>{out}</IuiContext.Provider> : out
 })

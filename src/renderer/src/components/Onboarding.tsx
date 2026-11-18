@@ -17,7 +17,7 @@ type Step = 'connect' | 'memory' | 'ready'
 
 const PROVIDERS: Record<Provider, { name: string; blurb: string; accent: 'clay' | 'green' }> = {
   claude: { name: 'Claude', blurb: 'Plans, builds and checks the work. Uses your Claude Pro or Max plan.', accent: 'clay' },
-  chatgpt: { name: 'ChatGPT', blurb: 'Draws images and gives a second opinion. Uses your ChatGPT plan.', accent: 'green' },
+  chatgpt: { name: 'ChatGPT', blurb: 'Plans, builds and checks the work too, and draws images. Uses your ChatGPT plan.', accent: 'green' },
 }
 
 const IDEAS = [
@@ -120,7 +120,33 @@ function ConnectStep({ status, onStatus, onNext }: { status: SetupStatus | null;
         </Button>
         <p className="text-[12px] text-ink-3">{count === 0 ? 'Connect at least one account to continue.' : `${count} ${count === 1 ? 'account' : 'accounts'} on your team.`}</p>
       </div>
+      <TryDemo />
     </>
+  )
+}
+
+/** The second way in: watch a scripted team work before signing in to anything. */
+function TryDemo() {
+  const [going, setGoing] = useState(false)
+  return (
+    <div className="mt-7 flex items-center gap-3 rounded-[14px] border border-line px-4 py-3">
+      <Sparkles className="size-4 shrink-0 text-accent" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13px] font-semibold text-ink">See it work first</div>
+        <div className="text-[12px] text-ink-3">A scripted team: no account, no allowance, nothing sent anywhere.</div>
+      </div>
+      <Button
+        size="sm"
+        disabled={going}
+        onClick={() => {
+          setGoing(true)
+          void api.switchDemo(true).catch(() => setGoing(false))
+        }}
+      >
+        {going ? <Spinner /> : null}
+        Try the demo team
+      </Button>
+    </div>
   )
 }
 

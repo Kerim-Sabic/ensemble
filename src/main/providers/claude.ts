@@ -139,7 +139,9 @@ export class ClaudeRuntime implements AgentRuntime {
       promptSuggestions: !!o.suggestions,
       additionalDirectories: o.extraDirs?.length ? o.extraDirs : undefined,
       mcpServers: o.tools.length || Object.keys(o.connectors || {}).length ? { ...((o.connectors || {}) as Record<string, McpServerConfig>), ...(o.tools.length ? { team: teamServer(o.tools) } : {}) } : undefined,
-      allowedTools: o.tools.map((t) => `mcp__team__${t.name}`),
+      // Searching and reading the web only reads, so it never waits on a permission card:
+      // without this, the 'ask' and 'edits' levels stop at every search and every new site.
+      allowedTools: ['WebSearch', 'WebFetch', ...o.tools.map((t) => `mcp__team__${t.name}`)],
       stderr: () => {},
       canUseTool: async (toolName, input, opts) => {
         if (toolName === 'AskUserQuestion') {
@@ -441,7 +443,12 @@ export class ClaudeRuntime implements AgentRuntime {
     // Full access has to be granted when the process starts, so crossing that
     // line means a fresh process that resumes the same conversation.
     if (level === 'full' || wasFull) {
-      if (this.inTurn) return
+      if (this.inTurn) {
+        // Stepping down takes effect in the reply under way; the session replaces the process
+        // once the reply ends, so the next turn starts without full access for certain.
+        if (wasFull && level !== 'full') await this.q.setPermissionMode(MODE[level]).catch(() => {})
+        return
+      }
       const q = this.q
       this.q = null
       this.input.close()
@@ -549,7 +556,16 @@ export async function probeClaude(configDir: string | null, cwd: string, executa
   }
 }
 
-/** One short, tool-less call. Used for chat titles. */
+/**
+ * The answer in a one-shot call's result. An error (a usage limit, a failed request) can arrive
+ * marked as a success with is_error set: it is thrown, never passed off as an answer.
+ */
+export function onceResult(m: { subtype: string; is_error?: boolean; result?: string; errors?: string[] }): string {
+  if (m.is_error || m.subtype !== 'success') throw new Error((m.subtype === 'success' ? m.result : (m.errors || []).join('\n')) || 'The request failed.')
+  return m.result || ''
+}
+
+/** One short, tool-less call: chat titles, rewrites, checks. Rejects on an error, on `timeoutMs`, or when `signal` aborts. */
 export async function askClaudeOnce(o: {
   configDir: string | null
   cwd: string
@@ -558,7 +574,15 @@ export async function askClaudeOnce(o: {
   prompt: string
   model?: string
   effort?: 'low' | 'medium' | 'high'
+  timeoutMs?: number
+  signal?: AbortSignal
 }): Promise<string> {
+  // Ending the wait also ends the call, so a stalled one does not keep running and spending.
+  const abort = new AbortController()
+  const stop = (): void => abort.abort()
+  if (o.signal?.aborted) throw new Error('Cancelled.')
+  o.signal?.addEventListener('abort', stop)
+  const timer = o.timeoutMs ? setTimeout(stop, o.timeoutMs) : null
   const q = query({
     prompt: o.prompt,
     options: {
@@ -574,12 +598,30 @@ export async function askClaudeOnce(o: {
       maxTurns: 1,
       effort: o.effort || 'low',
       stderr: () => {},
+      abortController: abort,
       ...(o.executable ? { pathToClaudeCodeExecutable: o.executable } : {}),
     },
   })
-  let out = ''
-  for await (const m of q) {
-    if (m.type === 'result' && m.subtype === 'success') out = m.result
+  const why = (): Error => new Error(o.signal?.aborted ? 'Cancelled.' : 'Timed out.')
+  const read = (async (): Promise<string> => {
+    let out = ''
+    for await (const m of q) {
+      if (m.type === 'result') out = onceResult(m)
+    }
+    return out
+  })()
+  // The caller hears at once; the process is shut down in the background, which can take a few seconds.
+  const ended = new Promise<never>((_, no) => abort.signal.addEventListener('abort', () => no(why()), { once: true }))
+  read.catch(() => {})
+  ended.catch(() => {})
+  try {
+    const out = await Promise.race([read, ended])
+    if (abort.signal.aborted) throw why()
+    return out.trim()
+  } catch (e) {
+    throw abort.signal.aborted ? why() : e
+  } finally {
+    if (timer) clearTimeout(timer)
+    o.signal?.removeEventListener('abort', stop)
   }
-  return out.trim()
 }

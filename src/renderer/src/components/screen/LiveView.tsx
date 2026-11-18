@@ -28,11 +28,12 @@ import type { Account, ScreenInput, ScreenKind, ScreenState } from '@shared/type
 import { agentKey, isBusy, screenKey, useStore, useTeam } from '@/store'
 import { screenSteps, type ScreenItem } from '@/lib/derive'
 import { accentVars, api, cn, relative, siteOf } from '@/lib/util'
-import { Button, IconButton, Spinner, Tip } from '../ui'
+import { Button, IconButton, Segmented, Spinner, Tip } from '../ui'
 import { KeyRound } from 'lucide-react'
 import { Orb } from '../Orb'
 import { seedComposer } from '../chat/Composer'
 import { LiveFrame, Pointer, StepMark, SurfaceIcon } from './Screen'
+import { LiveGrid } from './LiveGrid'
 
 export function StepIcon({ action, surface, className }: { action: string; surface: ScreenKind; className?: string }) {
   const p = { className, strokeWidth: 1.75 }
@@ -469,6 +470,18 @@ function Empty({ chatId }: { chatId: string }) {
   )
 }
 
+type Mode = 'single' | 'all'
+const MODE_KEY = 'ensemble.live.mode'
+const readMode = (): Mode => {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'single' ? 'single' : 'all'
+  } catch {
+    return 'all'
+  }
+}
+/** The screen the Live view showed last, so coming back after being sent to another one opens that one. */
+let lastKey: string | null = null
+
 /** Every screen the team is working in this chat, live, with a recording of each step. */
 export function LiveView() {
   const chatId = useStore((s) => s.chatId)
@@ -476,6 +489,29 @@ export function LiveView() {
   const setLive = useStore((s) => s.setLive)
   const entries = useScreens(chatId || '')
   const [control, setControl] = useState(false)
+  // Single or All. Being sent to one screen (from a card in the chat, a step, signing in) shows that one.
+  const [mode, setModeState] = useState<Mode>(() => (live.step || live.control || (live.key && live.key !== lastKey) ? 'single' : readMode()))
+  const setMode = useCallback((m: Mode) => {
+    setModeState(m)
+    try {
+      localStorage.setItem(MODE_KEY, m)
+    } catch {
+      /* forgotten next time */
+    }
+  }, [])
+  const first = useRef(true)
+  useEffect(() => {
+    if (first.current) {
+      first.current = false
+      return
+    }
+    if (live.key || live.step) setModeState('single')
+  }, [live.key, live.step])
+  useEffect(() => {
+    lastKey = live.key
+  }, [live.key])
+  const open = useMemo(() => entries.filter((e) => e.screen), [entries])
+  const grid = open.length > 1 && mode === 'all' && !live.step && !control
 
   const entry = entries.find((e) => e.key === live.key) || entries[0]
   const step = entry && live.step ? entry.steps.find((s) => s.id === live.step) || null : null
@@ -502,14 +538,14 @@ export function LiveView() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       const t = e.target as HTMLElement | null
-      if (control || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'))) return
+      if (grid || control || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'))) return
       if (e.key === 'ArrowLeft') move(-1)
       else if (e.key === 'ArrowRight') move(1)
       else if (e.key === 'Escape' && live.step) setLive({ step: null })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [move, control, live.step, setLive])
+  }, [move, control, grid, live.step, setLive])
 
   if (!chatId) return null
   if (!entry) return <Empty chatId={chatId} />
@@ -517,12 +553,47 @@ export function LiveView() {
   const index = step ? entry.steps.indexOf(step) : -1
   const busy = isBusy(state)
   const latest = entry.steps[entry.steps.length - 1]
+  const toggle = open.length > 1 && (
+    <Segmented<Mode>
+      value={grid ? 'all' : 'single'}
+      onChange={setMode}
+      className="shrink-0"
+      options={[
+        { value: 'single', label: 'Single' },
+        { value: 'all', label: 'All', badge: open.length },
+      ]}
+    />
+  )
+
+  if (grid) {
+    const working = open.filter((e) => e.screen?.active).length
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-surface-2 px-5 pt-2 pb-4">
+        <div className="flex h-11 shrink-0 items-center gap-3">
+          {toggle}
+          <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-3">
+            {open.length} screens open{working ? ` · ${working} in use right now` : ''} · click one to watch it on its own
+          </span>
+        </div>
+        <LiveGrid
+          entries={open}
+          chatId={chatId}
+          onFocus={(key) => {
+            setMode('single')
+            setLive({ key, step: null })
+          }}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 bg-surface-2">
       <div className="flex min-w-0 flex-1 flex-col px-4 pt-2 pb-3">
         {entries.length > 1 && (
-          <div className="flex shrink-0 gap-1.5 overflow-x-auto pt-1 pb-1.5 [scrollbar-width:none]">
+          <div className="flex shrink-0 items-center gap-3 pt-1 pb-1.5">
+          {toggle}
+          <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto [scrollbar-width:none]">
             {entries.map((e) => (
               <button
                 key={e.key}
@@ -539,6 +610,7 @@ export function LiveView() {
                 {e.screen?.active && <span className="size-1.5 animate-pulse-soft rounded-full bg-bad" />}
               </button>
             ))}
+          </div>
           </div>
         )}
         <Toolbar entry={entry} chatId={chatId} control={control} setControl={setControl} replaying={!!step} />

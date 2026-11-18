@@ -1,0 +1,5044 @@
+[
+{
+"size": [
+3840,
+2160
+],
+"theme": "dark",
+"wait": 1800
+},
+{
+"js": "document.documentElement.style.zoom = '2'; \nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'onboarded=' + window.__ensemble.getState().settings.onboarded + ' size=' + innerWidth + 'x' + innerHeight + ' dpr=' + devicePixelRatio;\n",
+"wait": 1000
+},
+{
+"js": "\nconst s = window.__ensemble.getState();\nconst ren = { 'Claude 3': 'Nova', 'Hello': 'Juno', 'ChatGPT': 'Atlas' };\nfor (const a of s.accounts) if (ren[a.name]) await window.ensemble.updateAccount(a.id, { name: ren[a.name] });\nawait window.ensemble.updateSettings({ sidebarCollapsed: true, inspector: false });\nawait new Promise(r => setTimeout(r, 300));\nreturn window.__ensemble.getState().accounts.map(a => a.name).join(', ');\n",
+"wait": 300
+},
+{
+"js": "\nwindow.__R = 0.03;\nconst keep = () => { if (document.documentElement.dataset.away !== 'false') document.documentElement.dataset.away = 'false'; };\nnew MutationObserver(keep).observe(document.documentElement, { attributes: true, attributeFilter: ['data-away'] }); keep();\nsetInterval(() => { for (const a of document.getAnimations()) if (a.playbackRate !== window.__R) a.playbackRate = window.__R; }, 10);\nreturn 'slowed to ' + window.__R;\n",
+"wait": 50
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__scroller = () => document.querySelector('[data-view-scope]')?.parentElement;\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); if (!c) return 'no chat'; const ag = c.agents || []; const t = s.tasks[c.id] || []; const busy = Object.values(s.agents).filter(a => a.chatId === c.id && a.phase !== 'idle' && a.phase !== 'error').length; return 'ag ' + ag.length + ' gone ' + ag.filter(a => a.spawned?.gone).length + ' tasks ' + t.filter(x => x.status === 'done').length + '/' + t.length + ' busy ' + busy + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "\nconst st = window.__ensemble; const api = window.ensemble;\nconst chat = await api.createChat({});\nawait st.getState().openChat(chat.id);\nawait api.setUltra(chat.id, true);\nawait api.updateChat(chat.id, { title: 'Design the landing page' });\nlocalStorage.setItem('ensemble.flow.feed', '0');\nst.getState().setView('flow');\nawait new Promise(r => setTimeout(r, 800));\nreturn document.querySelectorAll('.nn-node').length + ' neurons before start, view ' + st.getState().view;\n",
+"wait": 300
+},
+{
+"js": "window.__t0 = performance.now(); window.__ensemble.getState().send('/gocrazy design the landing page'); return 0",
+"wait": 150,
+"shot": "film-C2-0001.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0002.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0003.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0004.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0005.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0006.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0007.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0008.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0009.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0010.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0011.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0012.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0013.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0014.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0015.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0016.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0017.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0018.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0019.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0020.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0021.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0022.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0023.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0024.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0025.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0026.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0027.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0028.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0029.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0030.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0031.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0032.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0033.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0034.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0035.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0036.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0037.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0038.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0039.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0040.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0041.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0042.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0043.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0044.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0045.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0046.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0047.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0048.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0049.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0050.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0051.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0052.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0053.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0054.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0055.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0056.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0057.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0058.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0059.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0060.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0061.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0062.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0063.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0064.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0065.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0066.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0067.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0068.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0069.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0070.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0071.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0072.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0073.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0074.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0075.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0076.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0077.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0078.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0079.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0080.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0081.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0082.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0083.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0084.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0085.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0086.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0087.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0088.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0089.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0090.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0091.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0092.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0093.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0094.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0095.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0096.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0097.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0098.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0099.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0100.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0101.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0102.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0103.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0104.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0105.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0106.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0107.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0108.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0109.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0110.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0111.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0112.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0113.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0114.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0115.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0116.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0117.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0118.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0119.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0120.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0121.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0122.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0123.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0124.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0125.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0126.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0127.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0128.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0129.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0130.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0131.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0132.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0133.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0134.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0135.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0136.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0137.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0138.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0139.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0140.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0141.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0142.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0143.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0144.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0145.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0146.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0147.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0148.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0149.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0150.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0151.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0152.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0153.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0154.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0155.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0156.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0157.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0158.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0159.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0160.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0161.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0162.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0163.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0164.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0165.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0166.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0167.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0168.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0169.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0170.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0171.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0172.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0173.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0174.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0175.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0176.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0177.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0178.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0179.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0180.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0181.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0182.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0183.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0184.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0185.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0186.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0187.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0188.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0189.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0190.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0191.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0192.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0193.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0194.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0195.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0196.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0197.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0198.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0199.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0200.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0201.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0202.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0203.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0204.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0205.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0206.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0207.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0208.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0209.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0210.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0211.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0212.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0213.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0214.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0215.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0216.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0217.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0218.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0219.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0220.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0221.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0222.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0223.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0224.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0225.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0226.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0227.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0228.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0229.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0230.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0231.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0232.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0233.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0234.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0235.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0236.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0237.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0238.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0239.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0240.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0241.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0242.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0243.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0244.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0245.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0246.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0247.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0248.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0249.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0250.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0251.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0252.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0253.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0254.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0255.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0256.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0257.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0258.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0259.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0260.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0261.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0262.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0263.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0264.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0265.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0266.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0267.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0268.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0269.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0270.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0271.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0272.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0273.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0274.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0275.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0276.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0277.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0278.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0279.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0280.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0281.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0282.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0283.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0284.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0285.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0286.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0287.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0288.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0289.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0290.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0291.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0292.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0293.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0294.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0295.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0296.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0297.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0298.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0299.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0300.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0301.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0302.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0303.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0304.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0305.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0306.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0307.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0308.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0309.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0310.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0311.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0312.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0313.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0314.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0315.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0316.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0317.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0318.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0319.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0320.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0321.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0322.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0323.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0324.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0325.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0326.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0327.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0328.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0329.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0330.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0331.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0332.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0333.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0334.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0335.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0336.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0337.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0338.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0339.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0340.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0341.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0342.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0343.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0344.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0345.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0346.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0347.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0348.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0349.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0350.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0351.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0352.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0353.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0354.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0355.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0356.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0357.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0358.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0359.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0360.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0361.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0362.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0363.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0364.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0365.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0366.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0367.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0368.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0369.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0370.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0371.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0372.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0373.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0374.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0375.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0376.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0377.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0378.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0379.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0380.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0381.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0382.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0383.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0384.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0385.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0386.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0387.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0388.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0389.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0390.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0391.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0392.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0393.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0394.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0395.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0396.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0397.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0398.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0399.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0400.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0401.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0402.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0403.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0404.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0405.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0406.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0407.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0408.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0409.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0410.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0411.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0412.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0413.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0414.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0415.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0416.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0417.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0418.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0419.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0420.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0421.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0422.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0423.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0424.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0425.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0426.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0427.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0428.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0429.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0430.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0431.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0432.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0433.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0434.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0435.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0436.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0437.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0438.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0439.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0440.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0441.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0442.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0443.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0444.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0445.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0446.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0447.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0448.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0449.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0450.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0451.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0452.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0453.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0454.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0455.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0456.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0457.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0458.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0459.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0460.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0461.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0462.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0463.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0464.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0465.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0466.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0467.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0468.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0469.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0470.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0471.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0472.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0473.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0474.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0475.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0476.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0477.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0478.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0479.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0480.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0481.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0482.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0483.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0484.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0485.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0486.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0487.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0488.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0489.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0490.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0491.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0492.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0493.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0494.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0495.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0496.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0497.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0498.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0499.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0500.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0501.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0502.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0503.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0504.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0505.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0506.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0507.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0508.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0509.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0510.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0511.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0512.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0513.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0514.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0515.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0516.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0517.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0518.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0519.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0520.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0521.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0522.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0523.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0524.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0525.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0526.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0527.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0528.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0529.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0530.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0531.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0532.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0533.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0534.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0535.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0536.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0537.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0538.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0539.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0540.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0541.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0542.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0543.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0544.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0545.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0546.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0547.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0548.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0549.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0550.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0551.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0552.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0553.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0554.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0555.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0556.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0557.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0558.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0559.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0560.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0561.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0562.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0563.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0564.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0565.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0566.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0567.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0568.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0569.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0570.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0571.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0572.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0573.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0574.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0575.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0576.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0577.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0578.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0579.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0580.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0581.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0582.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0583.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0584.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0585.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0586.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0587.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0588.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0589.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0590.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0591.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0592.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0593.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0594.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0595.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0596.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0597.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0598.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0599.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0600.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0601.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0602.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0603.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0604.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0605.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0606.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0607.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0608.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0609.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0610.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0611.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0612.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0613.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0614.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0615.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0616.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0617.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0618.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0619.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0620.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0621.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0622.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0623.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0624.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0625.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0626.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0627.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0628.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0629.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0630.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0631.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0632.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0633.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0634.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0635.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0636.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0637.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0638.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0639.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0640.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0641.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0642.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0643.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0644.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0645.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0646.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0647.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0648.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0649.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0650.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0651.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0652.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0653.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0654.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0655.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0656.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0657.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0658.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0659.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0660.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0661.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0662.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0663.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0664.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0665.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0666.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0667.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0668.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0669.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0670.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0671.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0672.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0673.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0674.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0675.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0676.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0677.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0678.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0679.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0680.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0681.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0682.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0683.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0684.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0685.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0686.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0687.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0688.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0689.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0690.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0691.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0692.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0693.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0694.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0695.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0696.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0697.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0698.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0699.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0700.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0701.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0702.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0703.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0704.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0705.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0706.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0707.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0708.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0709.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0710.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0711.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0712.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0713.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0714.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0715.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0716.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0717.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0718.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0719.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0720.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0721.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0722.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0723.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0724.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0725.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0726.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0727.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0728.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0729.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0730.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0731.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0732.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0733.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0734.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0735.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0736.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0737.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0738.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0739.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0740.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0741.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0742.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0743.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0744.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0745.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0746.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0747.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0748.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0749.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0750.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0751.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0752.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0753.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0754.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0755.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0756.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0757.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0758.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0759.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0760.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0761.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0762.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0763.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0764.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0765.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0766.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0767.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0768.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0769.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0770.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0771.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0772.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0773.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0774.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0775.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0776.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0777.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0778.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0779.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0780.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0781.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0782.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0783.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0784.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0785.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0786.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0787.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0788.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0789.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0790.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0791.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0792.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0793.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0794.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0795.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0796.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0797.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0798.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0799.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0800.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0801.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0802.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0803.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0804.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0805.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0806.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0807.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0808.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0809.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0810.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0811.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0812.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0813.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0814.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0815.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0816.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0817.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0818.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0819.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0820.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0821.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0822.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0823.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0824.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0825.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0826.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0827.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0828.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0829.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0830.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0831.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0832.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0833.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0834.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0835.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0836.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0837.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0838.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0839.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0840.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0841.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0842.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0843.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0844.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0845.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0846.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0847.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0848.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0849.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0850.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0851.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0852.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0853.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0854.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0855.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0856.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0857.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0858.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0859.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0860.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0861.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0862.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0863.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0864.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0865.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0866.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0867.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0868.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0869.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0870.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0871.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0872.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0873.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0874.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0875.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0876.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0877.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0878.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0879.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0880.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0881.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0882.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0883.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0884.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0885.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0886.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0887.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0888.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0889.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0890.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0891.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0892.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0893.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0894.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0895.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0896.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0897.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0898.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0899.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0900.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0901.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0902.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0903.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0904.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0905.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0906.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0907.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0908.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0909.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0910.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0911.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0912.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0913.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0914.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0915.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0916.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0917.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0918.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0919.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0920.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0921.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0922.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0923.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0924.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0925.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0926.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0927.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0928.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0929.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0930.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0931.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0932.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0933.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0934.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0935.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0936.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0937.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0938.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0939.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0940.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0941.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0942.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0943.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0944.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0945.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0946.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0947.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0948.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0949.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0950.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0951.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0952.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0953.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0954.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0955.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0956.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0957.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0958.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0959.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0960.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0961.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0962.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0963.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0964.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0965.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0966.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0967.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0968.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0969.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0970.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0971.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0972.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0973.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0974.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0975.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0976.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0977.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0978.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0979.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0980.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0981.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0982.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0983.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0984.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0985.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0986.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0987.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0988.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0989.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0990.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0991.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0992.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0993.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0994.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0995.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0996.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0997.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0998.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-0999.png"
+},
+{
+"js": "return Math.round(performance.now() - (window.__t0 || 0)) + ' | ' + window.__info();",
+"wait": 150,
+"shot": "film-C2-1000.png"
+},
+{
+"js": "const t0 = Date.now(); while (Date.now() - t0 < 600000) { const s = window.__S(); const t = s.tasks[s.chatId] || []; if (t.length >= 20 && t.every(x => x.status === 'done')) break; await window.__sleep(100); } return 'final | ' + window.__info();",
+"wait": 400,
+"shot": "film-C2-final.png"
+},
+{
+"js": "return JSON.stringify([...document.querySelectorAll('.nn-node')].map(g => { const r = g.getBoundingClientRect(); return { label: g.getAttribute('aria-label'), x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } }))",
+"wait": 50
+},
+{
+"js": "const t0 = Date.now(); while (Date.now() - t0 < 900000) { const s = window.__S(); const st = s.agents[s.chatId + ':' + (s.chats.find(c => c.id === s.chatId).leadId || s.settings.leadId)]; if (!st || st.phase === 'idle') break; await window.__sleep(200); } window.__R = 1; await window.__sleep(2500); return 'end | ' + window.__info();",
+"wait": 400,
+"shot": "film-C2-end.png"
+}
+]

@@ -8,6 +8,7 @@ const call =
 
 const METHODS = [
   'bootstrap',
+  'switchDemo',
   'updateSettings',
   'discoverAccounts',
   'setupStatus',
@@ -44,6 +45,7 @@ const METHODS = [
   'deleteChat',
   'searchChats',
   'setChatLead',
+  'dequeue',
   'resumeChat',
   'dismissRecovery',
   'exportChat',
@@ -102,6 +104,9 @@ api.onFrame = (cb: (f: ScreenFrame) => void): (() => void) => {
 }
 
 api.frameSeen = (key: string): void => ipcRenderer.send('frame-seen', key)
+
+// A mini app from an answer is handed over and comes back as an address in the locked box.
+api.appFrame = (req: { html: string; theme: Record<string, string>; dark: boolean }): Promise<string> => ipcRenderer.invoke('iui-app', req) as Promise<string>
 
 api.fileUrl = (p: string): string => `media://local/${encodeURIComponent(p)}`
 

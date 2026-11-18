@@ -1,0 +1,23 @@
+[
+ {
+  "size": [
+   1200,
+   800
+  ],
+  "theme": "light",
+  "wait": 2000
+ },
+ {
+  "js": "for (let i=0;i<8;i++){ const b=[...document.querySelectorAll('button')].find(b=>/^(Continue|Start using Ensemble|Get started)$/i.test(b.textContent.trim())); if(!b) break; b.click(); await new Promise(r=>setTimeout(r,900)); } await window.__ensemble.getState().send('Add a pricing page with a checkout flow'); return 'sent'",
+  "wait": 1500
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId; const phase = () => (window.__ensemble.getState().agents[s.chatId + ':' + lead] || {}).phase; const blocker = document.querySelector('[role=\"menu\"], [role=\"dialog\"], [role=\"alertdialog\"], [role=\"listbox\"]'); document.activeElement.blur(); const before = phase(); const ev = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }); document.body.dispatchEvent(ev); await new Promise(r=>setTimeout(r,800)); return 'lead phase before ' + before + ', after ' + phase() + ' | handled ' + ev.defaultPrevented + ' | blocker: ' + (blocker ? blocker.outerHTML.slice(0, 160) : 'none') + ' | view ' + s.view + ' modal ' + JSON.stringify(s.modal)",
+  "wait": 300,
+  "shot": "a07-esc-probe.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId; const phase = () => (window.__ensemble.getState().agents[s.chatId + ':' + lead] || {}).phase; await window.__ensemble.getState().send('Now also add a FAQ section'); await new Promise(r=>setTimeout(r,1500)); const before = phase(); await window.ensemble.stop(s.chatId, lead); await new Promise(r=>setTimeout(r,800)); return 'direct api.stop: lead phase before ' + before + ', after ' + phase()",
+  "wait": 300
+ }
+]

@@ -1,0 +1,121 @@
+[
+ {
+  "size": [
+   1400,
+   900
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst st = window.__ensemble;\nfor (let i = 0; i < 10; i++) {\n  if (st.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nawait st.getState().send('How do these compare?', undefined, undefined, { mode: 'quick' });\nawait new Promise(r => setTimeout(r, 3500));\nconst s = st.getState();\nconst chat = s.chats.find(c => c.id === s.chatId);\nconst lead = chat.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id;\nconst k = s.chatId + ':' + lead;\nst.setState(x => ({ items: { ...x.items, [k]: [...(x.items[k] || []), { id: 'tA', kind: 'assistant', text: \"Here is how the three compare for class notes:\\n\\n| App | Price per month | Platforms | Offline | Rating |\\n|---|---|---|---|---|\\n| Notion | $0 | Web, Windows, Mac, iOS, Android | Partly | 4.6 |\\n| Obsidian | $0 | Windows, Mac, Linux, iOS, Android | Yes | 4.8 |\\n| OneNote | $0 | Web, Windows, Mac, iOS, Android | Yes | 4.4 |\\n| GoodNotes | $9.99 | iPad, Mac, Windows | Yes | 4.7 |\\n\\nFor a student on a laptop, **Obsidian** is the safest pick: free, fast and fully offline.\", ts: Date.now() }, { id: 'tB', kind: 'assistant', text: \"Sign-ups are up 2.5 times since January, with a dip in April and August:\\n\\n| Month | Sign-ups | Paying | Churn |\\n|---|---:|---:|---:|\\n| Jan | 120 | 31 | 3.1% |\\n| Feb | 135 | 36 | 2.9% |\\n| Mar | 160 | 44 | 2.7% |\\n| Apr | 158 | 45 | 3.4% |\\n| May | 190 | 58 | 2.6% |\\n| Jun | 240 | 71 | 2.4% |\\n| Jul | 260 | 80 | 2.2% |\\n| Aug | 255 | 79 | 2.9% |\\n| Sep | 300 | 96 | 2.1% |\\n\\nBefore launch:\\n\\n- [x] Pricing page reviewed\\n- [x] Checkout tested\\n- [ ] Release notes written\\n- [ ] Announcement scheduled\", ts: Date.now() }] } }));\nreturn 'tables in ' + k",
+  "wait": 1200
+ },
+ {
+  "theme": "light",
+  "wait": 500
+ },
+ {
+  "js": "\nconst md = [...document.querySelectorAll('.md')].find(m => m.textContent.startsWith(\"Here is how\"));\nif (!md) return 'not found';\nlet sc = md.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nfor (let i = 0; i < 3; i++) { sc.scrollTop += md.getBoundingClientRect().top - sc.getBoundingClientRect().top - 60; await new Promise(r => setTimeout(r, 150)) }\nwindow.__md = md;\nreturn 'at ' + \"Here is how\"",
+  "wait": 400,
+  "shot": "canvas-table-light-plain.png"
+ },
+ {
+  "js": "const md = window.__md; [...md.querySelectorAll('th button')].find(b => b.textContent.includes('Rating')).click(); [...md.querySelectorAll('th button')].find(b => b.textContent.includes('Rating')).click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 300,
+  "shot": "canvas-table-light-sorted.png"
+ },
+ {
+  "js": "const md = window.__md; md.querySelector('button[aria-label=\"Show as a chart\"]').click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 500,
+  "shot": "canvas-table-light-chart.png"
+ },
+ {
+  "js": "\nconst md = [...document.querySelectorAll('.md')].find(m => m.textContent.startsWith(\"Sign-ups are up\"));\nif (!md) return 'not found';\nlet sc = md.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nfor (let i = 0; i < 3; i++) { sc.scrollTop += md.getBoundingClientRect().top - sc.getBoundingClientRect().top - 60; await new Promise(r => setTimeout(r, 150)) }\nwindow.__md = md;\nreturn 'at ' + \"Sign-ups are up\"",
+  "wait": 400,
+  "shot": "canvas-table-light-months.png"
+ },
+ {
+  "js": "const md = window.__md; md.querySelector('button[aria-label=\"Show as a chart\"]').click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 500,
+  "shot": "canvas-table-light-months-chart.png"
+ },
+ {
+  "js": "const md = window.__md; [...md.querySelectorAll('button[aria-pressed]')].find(b => b.textContent === 'Churn').click(); [...md.querySelectorAll('button[role=checkbox]')][2].click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 500,
+  "shot": "canvas-table-light-churn-ticked.png"
+ },
+ {
+  "js": "for (const m of document.querySelectorAll('.md')) for (const b of m.querySelectorAll('button[aria-label=\"Show as a table\"]')) b.click(); return 'reset'",
+  "wait": 300
+ },
+ {
+  "theme": "dark",
+  "wait": 500
+ },
+ {
+  "js": "\nconst md = [...document.querySelectorAll('.md')].find(m => m.textContent.startsWith(\"Here is how\"));\nif (!md) return 'not found';\nlet sc = md.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nfor (let i = 0; i < 3; i++) { sc.scrollTop += md.getBoundingClientRect().top - sc.getBoundingClientRect().top - 60; await new Promise(r => setTimeout(r, 150)) }\nwindow.__md = md;\nreturn 'at ' + \"Here is how\"",
+  "wait": 400,
+  "shot": "canvas-table-dark-plain.png"
+ },
+ {
+  "js": "const md = window.__md; [...md.querySelectorAll('th button')].find(b => b.textContent.includes('Rating')).click(); [...md.querySelectorAll('th button')].find(b => b.textContent.includes('Rating')).click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 300,
+  "shot": "canvas-table-dark-sorted.png"
+ },
+ {
+  "js": "const md = window.__md; md.querySelector('button[aria-label=\"Show as a chart\"]').click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 500,
+  "shot": "canvas-table-dark-chart.png"
+ },
+ {
+  "js": "\nconst md = [...document.querySelectorAll('.md')].find(m => m.textContent.startsWith(\"Sign-ups are up\"));\nif (!md) return 'not found';\nlet sc = md.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nfor (let i = 0; i < 3; i++) { sc.scrollTop += md.getBoundingClientRect().top - sc.getBoundingClientRect().top - 60; await new Promise(r => setTimeout(r, 150)) }\nwindow.__md = md;\nreturn 'at ' + \"Sign-ups are up\"",
+  "wait": 400,
+  "shot": "canvas-table-dark-months.png"
+ },
+ {
+  "js": "const md = window.__md; md.querySelector('button[aria-label=\"Show as a chart\"]').click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 500,
+  "shot": "canvas-table-dark-months-chart.png"
+ },
+ {
+  "js": "const md = window.__md; [...md.querySelectorAll('button[aria-pressed]')].find(b => b.textContent === 'Churn').click(); [...md.querySelectorAll('button[role=checkbox]')][2].click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 500,
+  "shot": "canvas-table-dark-churn-ticked.png"
+ },
+ {
+  "js": "for (const m of document.querySelectorAll('.md')) for (const b of m.querySelectorAll('button[aria-label=\"Show as a table\"]')) b.click(); return 'reset'",
+  "wait": 300
+ },
+ {
+  "theme": "light",
+  "size": [
+   900,
+   900
+  ],
+  "wait": 600
+ },
+ {
+  "js": "\nconst md = [...document.querySelectorAll('.md')].find(m => m.textContent.startsWith(\"Here is how\"));\nif (!md) return 'not found';\nlet sc = md.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nfor (let i = 0; i < 3; i++) { sc.scrollTop += md.getBoundingClientRect().top - sc.getBoundingClientRect().top - 60; await new Promise(r => setTimeout(r, 150)) }\nwindow.__md = md;\nreturn 'at ' + \"Here is how\"",
+  "wait": 400,
+  "shot": "canvas-table-light-900.png"
+ },
+ {
+  "theme": "light",
+  "size": [
+   1400,
+   900
+  ],
+  "wait": 500
+ },
+ {
+  "js": "const st = window.__ensemble; const s = st.getState(); const chat = s.chats.find(c => c.id === s.chatId); const lead = chat.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const k = s.chatId + ':' + lead; const other = s.accounts.find(a => a.enabled && a.id !== lead) || s.accounts[0];\nst.setState(x => ({ items: { ...x.items, [k]: [...(x.items[k] || []), { id: 'peerT', kind: 'peer', from: other.id, tag: 'result', title: 'Speed up the pages', status: 'done', text: \"Done. Load times on the three pages:\\n\\n| Page | Before (ms) | After (ms) |\\n|---|---:|---:|\\n| Home | 1840 | 620 |\\n| Pricing | 2210 | 710 |\\n| Docs | 1530 | 590 |\\n\\nAll three are now under a second.\", ts: Date.now() }] } }));\nawait new Promise(r => setTimeout(r, 600));\nconst md = [...document.querySelectorAll('.md')].find(m => m.textContent.startsWith('Done. Load times'));\nif (!md) return 'no report';\nlet sc = md.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nfor (let i = 0; i < 3; i++) { sc.scrollTop += md.getBoundingClientRect().top - sc.getBoundingClientRect().top - 120; await new Promise(r => setTimeout(r, 150)) }\nwindow.__md = md; return 'report compact: ' + md.classList.contains('compact')",
+  "wait": 500,
+  "shot": "canvas-table-light-report.png"
+ },
+ {
+  "js": "const md = window.__md; md.querySelector('button[aria-label=\"Show as a chart\"]').click(); await new Promise(r => setTimeout(r, 300)); return 'clicked'",
+  "wait": 600,
+  "shot": "canvas-table-light-report-chart.png"
+ }
+]

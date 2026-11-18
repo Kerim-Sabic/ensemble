@@ -19,8 +19,16 @@ export const MODE_INFO: Record<WorkMode, { label: string; hint: string }> = {
 export const GOCRAZY_NEEDS_ULTRA = 'Go crazy works in Ultra mode. Turn Ultra on first (/ultra on).'
 
 /** How many extra agents one chat may have at once, by the way the current message is being worked. */
-export const SPAWN_CAP_ULTRA = 16
-export const SPAWN_CAP_GOCRAZY = 24
+export const SPAWN_CAP_ULTRA = 20
+export const SPAWN_CAP_GOCRAZY = 32
+
+/**
+ * How many levels of agents a chat may hold below its lead: 1 is an agent the lead started, 2 an
+ * agent one of those started, and so on. Deeper teams only while the user chose to spend.
+ */
+export const MAX_DEPTH_USUAL = 2
+export const MAX_DEPTH_ULTRA = 3
+export const MAX_DEPTH_GOCRAZY = 4
 
 /**
  * The way a message really goes: the mode it was sent with, or 'ultra' when it was sent with none
@@ -184,7 +192,7 @@ export function goalLine(g: Goal): string {
     case 'blocked':
       return 'Needs you'
     case 'stopped':
-      return 'Stopped before it was done'
+      return 'Stopped before it was met'
   }
 }
 
@@ -194,5 +202,22 @@ export function loopLine(l: Loop, now = Date.now()): string {
   if (l.status === 'paused') return 'Paused'
   if (l.running) return `Run ${l.runs} under way`
   if (!l.nextAt) return everyLabel(l.every)
-  return l.nextAt <= now ? 'Next run is due' : `Next run in ${countdown(l.nextAt, now)}`
+  // A run that is due does not barge in: it starts as soon as whoever runs it is free.
+  return l.nextAt <= now ? 'Next run starts when the agent is free' : `Next run in ${countdown(l.nextAt, now)}`
+}
+
+/**
+ * Names in plain words, for the window: "Scout 1 and Scout 2". A long list folds numbered or
+ * lettered names into groups: "4 scouts and Builder A".
+ */
+export function namesLine(names: string[]): string {
+  const list = [...new Set(names.filter(Boolean))]
+  const join = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+  if (list.length <= 3) return join(list)
+  const groups = new Map<string, string[]>()
+  for (const n of list) {
+    const stem = n.replace(/\s+(\d+|[A-Z])$/, '').trim() || n
+    groups.set(stem, [...(groups.get(stem) || []), n])
+  }
+  return join([...groups].map(([stem, xs]) => (xs.length > 1 ? `${xs.length} ${stem.toLowerCase()}${/s$/i.test(stem) ? '' : 's'}` : xs[0])))
 }

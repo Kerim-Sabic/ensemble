@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { Codex, type CodexOptions, type Input, type Thread, type ThreadItem, type ThreadOptions } from '@openai/codex-sdk'
 import type { PermissionLevel } from '@shared/types'
 import { IMAGE_EXT } from '@shared/tools'
@@ -14,6 +14,21 @@ export function codexEnv(configDir: string | null): Record<string, string> {
 
 export const codexHome = (configDir: string | null): string => configDir || path.join(os.homedir(), '.codex')
 
+/**
+ * The model an account's own settings file names, when it names one. That is what the account
+ * runs when nothing is chosen for it, whatever the provider calls its default.
+ */
+export function codexOwnModel(configDir: string | null): string | undefined {
+  try {
+    const text = fs.readFileSync(path.join(codexHome(configDir), 'config.toml'), 'utf8')
+    // Only the top of the file, before the first [section], holds the account-wide setting.
+    const top = text.split(/^\s*\[/m)[0]
+    return /^\s*model\s*=\s*["']([^"']+)["']/m.exec(top)?.[1] || undefined
+  } catch {
+    return undefined
+  }
+}
+
 function threadOptions(o: RuntimeOptions, level: PermissionLevel): ThreadOptions {
   // Codex has no way to ask for approval when driven from another app, so the
   // permission level is expressed purely as how tight the sandbox is.
@@ -23,6 +38,9 @@ function threadOptions(o: RuntimeOptions, level: PermissionLevel): ThreadOptions
     approvalPolicy: 'never',
     sandboxMode: level === 'ask' ? 'read-only' : level === 'full' ? 'danger-full-access' : 'workspace-write',
     networkAccessEnabled: level === 'auto' || level === 'full',
+    // Codex otherwise searches a cached index (live only at full access). Live search runs on
+    // OpenAI's side, so it works at every sandbox level and gives current results.
+    webSearchMode: 'live',
   }
   if (o.model) opts.model = o.model
   if (o.effort) opts.modelReasoningEffort = o.effort as ThreadOptions['modelReasoningEffort']
@@ -53,16 +71,19 @@ export class CodexRuntime implements AgentRuntime {
   constructor(private o: RuntimeOptions) {
     this.level = o.permission
     this.threadId = o.resumeId || null
-    this.briefed = !!o.resumeId
+    // A resumed conversation already has its briefing, unless the role or the team changed since.
+    this.briefed = !!o.resumeId && o.briefed !== false
     // The team tools are ours and only touch the hub, so they never need a prompt
     // (Codex cannot show one when driven from another app anyway).
     // A tool call can wait on the person (the OK to use the computer), so it gets a long leash.
     const servers: Record<string, unknown> = { ...(o.connectors || {}), ...(o.toolsUrl ? { team: { url: o.toolsUrl, default_tools_approval_mode: 'approve', tool_timeout_sec: 900 } } : {}) }
-    const config = Object.keys(servers).length ? ({ mcp_servers: servers } as unknown as CodexOptions['config']) : undefined
+    // Codex gives its models a sleep tool, and they use it to wait for a teammate's report. Reports
+    // are only handed over between turns, so that waiting holds back the very thing it waits for.
+    const config = { ...(Object.keys(servers).length ? { mcp_servers: servers } : {}), features: { sleep_tool: false } } as unknown as CodexOptions['config']
     this.codex = new Codex({
       env: codexEnv(o.configDir),
       ...(o.executable ? { codexPathOverride: o.executable } : {}),
-      ...(config ? { config } : {}),
+      config,
     })
     this.thread = this.makeThread()
   }
@@ -99,7 +120,8 @@ export class CodexRuntime implements AgentRuntime {
 
     let text = input.text
     if (!this.briefed) {
-      text = `<team-briefing>\n${this.o.briefing}\n</team-briefing>\n\n${text}`
+      const again = this.threadId ? 'Your role or the team has changed. This briefing replaces the one you were given earlier.\n\n' : ''
+      text = `<team-briefing>\n${again}${this.o.briefing}\n</team-briefing>\n\n${text}`
       this.briefed = true
     }
     const payload: Input = input.images?.length
@@ -162,7 +184,8 @@ export class CodexRuntime implements AgentRuntime {
           if (phase === 'completed') finish('', false)
           return
         case 'error':
-          if (phase === 'completed') this.emit({ type: 'notice', level: 'warn', text: item.message })
+          // A task may ask for another model than the one before it: that is the app's doing, not a problem to report.
+          if (phase === 'completed' && !/recorded with model .+ but is resuming with/i.test(item.message)) this.emit({ type: 'notice', level: 'warn', text: item.message })
           return
       }
     }
@@ -172,7 +195,7 @@ export class CodexRuntime implements AgentRuntime {
       for await (const ev of events) {
         if (ev.type === 'thread.started') {
           this.threadId = ev.thread_id
-          this.emit({ type: 'session', sessionId: ev.thread_id, model: this.o.model || undefined })
+          this.emit({ type: 'session', sessionId: ev.thread_id, model: this.o.model || this.o.defaultModel || undefined })
         } else if (ev.type === 'item.started') onItem('started', ev.item)
         else if (ev.type === 'item.updated') onItem('updated', ev.item)
         else if (ev.type === 'item.completed') onItem('completed', ev.item)
@@ -254,6 +277,89 @@ export class CodexRuntime implements AgentRuntime {
       /* nothing running */
     }
   }
+}
+
+/**
+ * One answer from a ChatGPT account that knows nothing of any chat: a check, a rewrite, a title.
+ * It runs the account's program directly for one turn: read-only, on no settings but the app's
+ * own (so none of the user's connectors are started for it), and leaving no session behind in
+ * the account's history. This is what lets a team with no Claude account have a fresh checker,
+ * titles and the improver.
+ */
+export function askCodexOnce(o: {
+  configDir: string | null
+  cwd: string
+  executable?: string | null
+  system: string
+  prompt: string
+  model?: string
+  effort?: 'low' | 'medium' | 'high'
+  timeoutMs?: number
+  signal?: AbortSignal
+}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (o.signal?.aborted) return reject(new Error('Cancelled.'))
+    if (!o.executable) return reject(new Error('The ChatGPT runtime was not found.'))
+    const args = ['exec', '--ephemeral', '--ignore-user-config', '--skip-git-repo-check', '--json', '-s', 'read-only', '-c', `model_reasoning_effort=${o.effort || 'low'}`, '-c', 'features.sleep_tool=false']
+    if (o.model) args.push('-m', o.model)
+    // The message itself comes in on standard input, so its length is never a problem.
+    args.push('-')
+    const child = spawn(o.executable, args, { cwd: o.cwd, env: codexEnv(o.configDir), windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] })
+    let out = ''
+    let error: string | undefined
+    let settled = false
+    let buffer = ''
+    let stderr = ''
+    const finish = (fail?: Error): void => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      o.signal?.removeEventListener('abort', onAbort)
+      // The process can linger after its turn; this ends it.
+      try {
+        child.kill()
+      } catch {
+        /* already gone */
+      }
+      if (fail) reject(fail)
+      // An error is thrown, never passed off as the answer.
+      else if (!out.trim()) reject(new Error(error || stderr.trim().split('\n').pop() || 'No answer came back.'))
+      else resolve(out.trim())
+    }
+    const onAbort = (): void => finish(new Error('Cancelled.'))
+    o.signal?.addEventListener('abort', onAbort)
+    const timer = o.timeoutMs ? setTimeout(() => finish(new Error('Timed out.')), o.timeoutMs) : null
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      buffer += chunk
+      let nl: number
+      while ((nl = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, nl).trim()
+        buffer = buffer.slice(nl + 1)
+        if (!line.startsWith('{')) continue
+        try {
+          const ev = JSON.parse(line) as { type?: string; item?: { type?: string; text?: string }; error?: { message?: string }; message?: string }
+          if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && typeof ev.item.text === 'string') out = ev.item.text
+          else if (ev.type === 'turn.failed') {
+            error = ev.error?.message || 'The reply failed.'
+            finish()
+          } else if (ev.type === 'error') error = ev.message
+          else if (ev.type === 'turn.completed') finish()
+        } catch {
+          /* not an event line */
+        }
+      }
+    })
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => {
+      if (stderr.length < 4000) stderr += chunk
+    })
+    child.on('error', (e) => finish(e))
+    child.on('close', () => finish())
+    const text = `<instructions>\n${o.system}\n\nAnswer from what is written in this message alone, in one reply. Do not run commands, read files or search: there is nothing to look at.\n</instructions>\n\n${o.prompt}`
+    child.stdin.on('error', () => undefined)
+    child.stdin.end(text, 'utf8')
+  })
 }
 
 export function codexLoginStatus(executable: string, configDir: string | null): Promise<{ signedIn: boolean; method?: string }> {

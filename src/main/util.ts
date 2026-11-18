@@ -273,3 +273,18 @@ export function mimeOf(file: string): string {
     'application/octet-stream'
   )
 }
+
+/** How fast the scripted demo team runs: ENSEMBLE_DEMO_SPEED, where 2 is twice as fast and 0.5 half. 1 when unset or not a number. */
+export function demoSpeed(): number {
+  const n = Number(process.env.ENSEMBLE_DEMO_SPEED || '1')
+  return Number.isFinite(n) && n > 0 ? n : 1
+}
+
+/**
+ * A wait as the engine should count it. In demo mode it follows the demo team's speed, so a slowed
+ * demo behaves like a normal one stretched in time (and a fast one like a normal one squeezed).
+ * Outside demo mode, and at speed 1, it is `ms` unchanged.
+ */
+export function demoTime(ms: number, demo: boolean): number {
+  return demo ? ms / demoSpeed() : ms
+}

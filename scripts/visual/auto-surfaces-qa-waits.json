@@ -1,0 +1,29 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1000
+ },
+ {
+  "js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__chat = () => { const s = window.__S(); return s.chats.find(c => c.id === s.chatId) };\nwindow.__busy = () => Object.values(window.__S().agents).filter(a => a.chatId === window.__S().chatId && a.phase !== 'idle' && a.phase !== 'error').length;\nwindow.__bottom = () => { const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; };\nwindow.__waitIdle = async (max) => { const t0 = Date.now(); while (Date.now() - t0 < max) { await window.__sleep(500); if (window.__busy() === 0) return Math.round((Date.now() - t0) / 1000) + 's'; } return 'still busy'; };\nwindow.__counts = () => {\n  const strip = document.querySelector('[data-network-strip] > button')?.textContent.replace(/\\s+/g, ' ').trim();\n  const insp = [...document.querySelectorAll('aside section')].find(x => /In this chat/.test(x.textContent));\n  const right = insp ? insp.querySelector('.tabular')?.textContent : '';\n  const groups = insp ? [...insp.querySelectorAll('button[aria-expanded]')].map(b => b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 30)) : [];\n  return 'strip [' + strip + '] inspector [' + right + '] groups [' + groups.join(' | ') + ']';\n};\nreturn 'helpers';\n",
+  "wait": 50
+ },
+ {
+  "js": "await window.__S().send('Add a pricing page with a checkout flow, and a hero image for it.'); await window.ensemble.setUltra(window.__S().chatId, true); await window.__sleep(2500); await window.__waitIdle(60000); await window.__S().send('design the landing page'); await window.__sleep(5500); const d = [...document.querySelectorAll('[data-view-scope] button')].filter(b => /^Handed out/.test(b.textContent.trim())).pop(); if (d && d.getAttribute('aria-expanded') !== 'true') d.click(); await window.__sleep(400); d && d.scrollIntoView({ block: 'center' }); await window.__sleep(300); const L = document.body.innerText.split(String.fromCharCode(10)); const ids = L.filter(l => /\bt\\d+\b/.test(l)); return 'names: ' + L.filter(l => /Waits for|after |Lined up/.test(l)).slice(0, 6).join(' | ') + ' || lines with t<n>: ' + (ids.join(' | ') || 'none');",
+  "wait": 200,
+  "shot": "auto-surfaces-q15-ultra-names-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const d = [...document.querySelectorAll('[data-view-scope] button')].filter(b => /^Handed out/.test(b.textContent.trim())).pop(); if (d && d.getAttribute('aria-expanded') !== 'true') d.click(); await window.__sleep(400); d && d.scrollIntoView({ block: 'center' }); await window.__sleep(300); const L = document.body.innerText.split(String.fromCharCode(10)); const ids = L.filter(l => /\bt\\d+\b/.test(l)); return 'names: ' + L.filter(l => /Waits for|after |Lined up/.test(l)).slice(0, 6).join(' | ') + ' || lines with t<n>: ' + (ids.join(' | ') || 'none');",
+  "wait": 500,
+  "shot": "auto-surfaces-q16-ultra-names-dark.png"
+ }
+]

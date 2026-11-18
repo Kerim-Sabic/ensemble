@@ -1,0 +1,46 @@
+title: "What my team made: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Show what an Ensemble team made for you. Real results only, please, and leave out anything private.
+  - type: textarea
+    id: asked
+    attributes:
+      label: What you asked for
+      description: The message you sent, or a short version of it.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What came back
+      description: A screenshot of the result or the network view helps most. A link is fine too.
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Way of working
+      options:
+        - Auto (an ordinary message)
+        - Quick
+        - Plan first
+        - Thorough
+        - Council
+        - Deep research
+        - Ultra
+        - Go crazy
+        - A goal or a loop
+  - type: dropdown
+    id: accounts
+    attributes:
+      label: Accounts on the team
+      options:
+        - Claude only
+        - ChatGPT only
+        - Claude and ChatGPT
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything you'd tell someone trying the same

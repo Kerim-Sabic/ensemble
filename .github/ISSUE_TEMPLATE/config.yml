@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question or show what your team made
+    url: https://github.com/Kerim-Sabic/ensemble/discussions
+    about: Questions, ideas and results belong in Discussions.
+  - name: Report a security problem privately
+    url: https://github.com/Kerim-Sabic/ensemble/security/advisories/new
+    about: Please do not open a public issue for a security problem.

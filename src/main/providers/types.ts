@@ -96,6 +96,8 @@ export interface RuntimeOptions {
   permission: PermissionLevel
   /** The model and effort for this run. null means the account's own default. */
   model?: string | null
+  /** What the account runs when no model is chosen, when that is known. Only for showing it. */
+  defaultModel?: string
   effort?: string | null
   /** Folders besides the working one that the agent may read and write (the knowledge vault). */
   extraDirs?: string[]
@@ -106,6 +108,11 @@ export interface RuntimeOptions {
   forkSession?: boolean
   /** Role and team briefing appended to the agent's own instructions. */
   briefing: string
+  /**
+   * For a resumed conversation: false when the briefing has changed since it was last given
+   * (a new role, a new team), so a provider that sends it as a message sends it again.
+   */
+  briefed?: boolean
   tools: TeamTool[]
   executable?: string | null
   /** URL of the local team-tools endpoint, for providers that reach tools over HTTP. */

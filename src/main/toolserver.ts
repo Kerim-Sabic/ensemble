@@ -33,6 +33,14 @@ export class ToolServer {
     return `http://127.0.0.1:${this.port}/mcp/${token}`
   }
 
+  /** Forgets an agent's tools once it is gone, so its address stops answering. */
+  unregister(key: string): void {
+    const token = this.tokens.get(key)
+    if (!token) return
+    this.tokens.delete(key)
+    this.routes.delete(token)
+  }
+
   private async handle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const m = /^\/mcp\/([\w-]+)/.exec(req.url || '')
     const tools = m ? this.routes.get(m[1]) : undefined
