@@ -96,11 +96,11 @@ export function useStripShown(chatId: string | null | undefined): boolean {
  * with how many are working and a thumbnail of the network. A click opens the full network
  * (about 120 px in all); another folds it back to the line.
  */
-export function NetworkStrip({ chatId, onOpen }: { chatId: string; onOpen?(id: string): void }) {
+export function NetworkStrip({ chatId, onOpen, off }: { chatId: string; onOpen?(id: string): void; /** Hidden while the brain view stands in for it. */ off?: boolean }) {
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === chatId)?.ultra)
   const { net, busy, tasks, finished } = useNet(chatId)
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1')
-  const show = useStripShown(chatId) && net.nodes.length > 1
+  const show = useStripShown(chatId) && net.nodes.length > 1 && !off
   const done = tasks.filter((t) => t.status === 'done').length
   const toggle = (): void => {
     setOpen((o) => {

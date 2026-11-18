@@ -13,7 +13,9 @@ import {
   type LoginProgress,
   type ModelOption,
   type Provider,
+  type Supply,
 } from '@shared/types'
+import { supplyNow, supplyOf } from '@shared/failover'
 import { exists, readJson, slugify, writeJson } from './util'
 import { claudeEnv, probeClaude } from './providers/claude'
 import { codexEnv, codexLoginStatus, codexOwnModel } from './providers/codex'
@@ -136,7 +138,7 @@ export class AccountManager {
     this.file = path.join(host.dataDir, 'accounts.json')
     this.usageFile = path.join(host.dataDir, 'usage.json')
     this.accounts = readJson<Account[]>(this.file, [])
-    for (const u of readJson<AccountUsage[]>(this.usageFile, [])) this.usage.set(u.accountId, u)
+    for (const u of readJson<AccountUsage[]>(this.usageFile, [])) this.usage.set(u.accountId, { ...u, supply: supplyOf(u, u.supply) })
     if (this.balanceRoles(false)) writeJson(this.file, this.accounts)
   }
 
@@ -222,6 +224,24 @@ export class AccountManager {
       if (w && (w.status === 'rejected' || w.utilization >= 1) && w.resetsAt && w.resetsAt > now) return w.resetsAt
     }
     return null
+  }
+
+  /** Whether an account (or the account a started agent works on) can take work: ok, running low, or out. */
+  supply(id: string): Supply {
+    return supplyNow(this.usage.get(this.baseId(id)))
+  }
+
+  /** Works an account's state out again (a window refilled with nothing reported) and tells the window if it changed. */
+  recheck(id: string): Supply {
+    const u = this.usage.get(this.baseId(id))
+    if (!u) return { state: 'ok', until: null }
+    const now = supplyOf(u, u.supply)
+    if (now.state !== u.supply?.state || now.until !== u.supply?.until) {
+      const next = { ...u, supply: now }
+      this.usage.set(u.accountId, next)
+      this.host.emit({ type: 'account-usage', usage: next })
+    }
+    return now
   }
 
   private nextAccent(): AccentKey {
@@ -360,6 +380,7 @@ export class AccountManager {
       scoped: partial.scoped ?? prev?.scoped,
       updatedAt: Date.now(),
     }
+    next.supply = supplyOf(next, prev?.supply)
     this.usage.set(accountId, next)
     this.host.emit({ type: 'account-usage', usage: next })
     writeJson(this.usageFile, [...this.usage.values()])

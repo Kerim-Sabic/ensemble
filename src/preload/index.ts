@@ -46,6 +46,7 @@ const METHODS = [
   'searchChats',
   'setChatLead',
   'dequeue',
+  'steer',
   'resumeChat',
   'dismissRecovery',
   'exportChat',

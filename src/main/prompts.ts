@@ -135,12 +135,37 @@ Your own knowledge stops at a date and is sometimes wrong. For anything factual 
 - Check important claims against a second, independent source, and say where sources disagree.
 - Say what you looked for and could not find, rather than fill the gap with a guess.`
 
+/** Whether this team can generate pictures: a ChatGPT agent is on it, or this agent is one. */
+function draws(ctx: BriefingContext): boolean {
+  return ctx.self.provider === 'chatgpt' || ctx.teammates.some((t) => t.account.provider === 'chatgpt')
+}
+
+/**
+ * Pictures for design work: generated, fully, when the team has a ChatGPT account; drawn in SVG and
+ * CSS when it has none. `draw` undefined (a note that does not know the team) says both.
+ */
+function imageLine(draw: boolean | undefined, self = false): string {
+  if (draw === false) return 'Images: nobody on this team can generate pictures, so draw what the design needs in SVG and CSS (illustrations, icons, patterns, gradients), and never say a picture exists that was not made.'
+  const who = self
+    ? 'you generate them yourself with your built-in image generation ($imagegen)'
+    : draw
+      ? 'a ChatGPT agent on the team generates them with its built-in image generation'
+      : 'a ChatGPT agent generates them with its built-in image generation; on a team without one, draw in SVG and CSS instead'
+  return `Images: ${who}. Use it fully, from the start of design work, not as decoration at the end:
+  - Early, a moodboard: several clearly different directions as images (style, colour, feel of the type, composition), shown to the user with full paths.
+  - For the build, real assets at the sizes and aspect ratios the layout needs (hero, illustrations, product shots, icons, textures), saved in the project and used in the page or app. No placeholder boxes, no stock clichés.
+  - Brief each image as an art director would: subject, composition, lighting, the palette from the design system, the style in words, aspect ratio, what to avoid. Make variations, pick one, refine it.
+  - Builders on other models get the images as files and as references; critics judge the rendered screen with them in place, against the strongest references.
+  - Say that a picture is generated, and never let one stand in for a real product screenshot or a real person's photo.`
+}
+
 /** For every agent, in every way of working: what finished work looks like, by kind. */
-const QUALITY = `
+const quality = (ctx: BriefingContext): string => `
 
 ## What good work looks like
 Whatever the way of working, hold the work to this bar before calling it done:
 - Design, and anything with a screen: look at strong references first. Use real content, not lorem ipsum. Render it and look at a screenshot before calling it done, and fix what looks off: spacing, alignment, hierarchy, contrast. Check light and dark mode and a small and a large screen. Nothing should read as a template.
+- ${imageLine(draws(ctx), ctx.self.provider === 'chatgpt')}
 - Code: read the code around the change first and follow its conventions. Make it run, and test what could break. No placeholders, stubs or TODOs passed off as finished. Say what you ran and what it printed.
 - Research: as in "Checking facts on the web".
 - Writing: know who it is for, put the point first, prefer a concrete example to an abstract claim, and cut what does not earn its place.
@@ -218,9 +243,18 @@ The app can keep work going without the user typing again. It does this on the u
  * `models` lists, per provider, the accounts that can take work with their strongest and fastest
  * model (one line each); `cap` is how many more agents the lead may start.
  */
-function ultraText(crazy: boolean, ctx: { team: boolean; spawn: boolean; cap?: number; models?: string; depth?: number }): string {
+/** How Go crazy organises a team: like a brain, in regions that talk to each other. Sent with every Go crazy message, so kept short. */
+const BRAIN = `Organise the team like a brain, in regions. Start 3 to 5 region leads on a strong model, each running a team of its own and told its job, the rubric and who leads the other regions: research (the scouts), building (the builders' cells), critique and verification (judges, and verifiers who check scores against the evidence), and memory (keeps the board current: rubric, findings with sources, decisions, each version's latest scores). You, or an integrator who built none of it, bring the winning work together and run the whole. Line the regions up with \`after\`. The numbers in this note are floors, not ceilings: a substantial request starts at least 8 agents in your first reply, usually many more, and the only limit is the room the app gives you.
+- Lateral links: agents in different regions talk directly with message and ask (a critic asks a scout for a source; a builder tells memory a decision), not through you.
+- Feedback loops: a critic and its builder go back and forth until nothing that matters is left; a low score goes back to its builder with what to fix.
+- Attention: after each judging or review round, read the scores per criterion and put more agents where they are weakest.
+The shapes below say what the regions do.`
+
+function ultraText(crazy: boolean, ctx: { team: boolean; spawn: boolean; cap?: number; models?: string; depth?: number; draw?: boolean }): string {
   const name = crazy ? 'Go crazy' : 'Ultra'
-  const spend = `First, scale this to the message. Ultra stays on for the whole chat, so a thank-you, a short reply, a choice clicked in an earlier answer, a question about work under way or a small follow-up change also arrives this way: answer those yourself, directly, with no rubric and no new agents. The stages below are for a new, substantial request.
+  // Who can make pictures: told by the caller, or read off the team's models; unknown when neither says.
+  const draw = ctx.draw ?? (ctx.models?.trim() ? /ChatGPT/.test(ctx.models) : undefined)
+  const spend = `First, scale this to the message. Ultra stays on for the whole chat, so a thank-you, a short reply, a choice clicked in an earlier answer, a question about work under way or a small follow-up change also arrives this way: answer those yourself, directly, with no rubric and no new agents. The stages below are for a new, substantial request: anything that asks for something to be made, researched, fixed or changed is one, however briefly it is put.
 
 The user chose ${name} for this message: they want the best result this team can produce and chose to spend allowance heavily to get it. Do not economise on agents, models or effort, and do not stop early because the work is costly. Still, start an agent only when it has a distinct, useful job: an idle or duplicate agent adds cost and nothing else.`
   if (!ctx.team && !ctx.spawn) {
@@ -235,17 +269,19 @@ You have nobody to hand work to and cannot start agents, so run the same stages 
 6. Review the result against the rubric, fix what falls short, and repeat ${crazy ? 'twice' : 'once'}.
 7. Check it: run it, open it or look at it. Do not call anything done that you have not checked.
 When the request is too large for whole versions (an app, a long report), build it part by part to a written plan instead, checking each part as you go; for a question or a diagnosis, try to refute your own strongest findings at the primary source before you write.
-For a design request, hold it to the bar of the best design studios: references first, clearly different directions, a rendered look at each, then light and dark mode and several screen sizes.
+For a design request, hold it to the bar of the best design studios: references first, clearly different directions, a rendered look at each with its images made as "What good work looks like" says, then light and dark mode and several screen sizes.
 In your answer: the result, why this version won, what was checked and how, and what could not be checked. Show the versions as a \`compare\` block and offer the next step as \`choices\`.`
   }
-  const room = ctx.cap !== undefined ? `You can start up to ${ctx.cap} more agents in this chat.` : ''
+  const room = ctx.cap !== undefined ? `You can start up to ${ctx.cap} more agents in this chat${crazy ? ', as many as this machine and the accounts can carry right now' : ''}.` : ''
   const team = ctx.models?.trim()
     ? `The accounts that can take work right now, with the strongest and the fastest model each offers:\n${ctx.models.trim()}\n${room ? `${room} ` : ''}Agents you start can run on any of these accounts (the \`account\` field of spawn_agent): spread them out so no single account runs dry first, and put more on the accounts \`roster\` marks as having plenty to use.`
     : `Call \`roster\` first to see the accounts, their models and their allowance.${room ? ` ${room}` : ''}`
-  const depth = ctx.depth ?? (crazy ? 4 : 3)
+  const depth = ctx.depth ?? (crazy ? 8 : 3)
+  const word = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][depth] || String(depth)
+  const nth = ['', 'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'][depth] || `${depth}th`
   const levels =
     depth >= 4
-      ? 'Agents you start can start helpers of their own, and those helpers can start theirs, down to four levels below you; agents at the fourth level cannot start more.'
+      ? `Agents you start can start helpers of their own, and those helpers can start theirs, down to ${word} levels below you; agents at the ${nth} level cannot start more.`
       : depth === 3
         ? 'Agents you start can start helpers of their own, and those helpers can start one more level; agents at the third level below you cannot start more.'
         : 'Agents you start can start a few helpers of their own; those helpers cannot start more.'
@@ -263,7 +299,7 @@ ${team}
 Pick models by stage, from what the team really has: the fastest model each account offers for scouting (for example Luna on ChatGPT, Haiku on Claude), and the strongest model at its highest effort for building, judging and the final review (for example Fable or Opus at max on Claude, Astra at xhigh or max on ChatGPT). A team with only one provider uses that provider's fast and strong models for every stage: four ChatGPT accounts, say, means Luna scouts spread over all four and an Astra builder on each. Name the model and the effort in every spawn_agent and assign_task call; do not leave them to the default. When \`roster\` shows a model's own allowance used up (Fable, for example), use the next strongest model on that account instead of letting the task fail.
 
 ${levels} In each brief, say whether that agent may start helpers and what for. Helpers report to whoever started them, and that agent reports to you once theirs are in.
-
+${crazy ? `\n${BRAIN}\n` : ''}
 Start with a rubric: 4 to 8 criteria the best possible result would meet, each concrete enough to score from 1 to 10 (what the user asked for in their own words, correctness, completeness, craft, and whatever this kind of work is judged by). Pin it with board_post so every agent works to the same bar. Then choose the shape that fits the request, or combine them, and say in a line which you chose:
 
 Tournament, for work one agent can make whole (a design, a page, a piece of writing, an algorithm, a plan):
@@ -293,6 +329,11 @@ In every shape:
 For a design request (an interface, a page, a brand, a layout, an illustration, a deck), the bar is the work of the best design studios:
 - The scouts collect references first: the strongest work in that field, with links or screenshots, and what makes each one good.
 - The builders make ${crazy ? 'four or more' : 'three or more'} clearly different directions, not variants of one idea, each rendered and looked at as a screenshot.
+- ${
+    draw === false
+      ? 'Nobody on the team can generate pictures: the builders draw illustrations and icons in SVG and CSS.'
+      : `${draw ? 'Images: start' : 'Images: if the team has a ChatGPT account, start'} an image agent on a ChatGPT account${crazy ? ' (a region of its own)' : ''} that serves the builders from the start: the moodboard of directions first, then every asset the builders need, several variations each, briefed as "What good work looks like" says. The builders wait for it with \`after\` or ask it directly, and the judges see the screens with the images in place.${draw ? '' : ' Without one, the builders draw in SVG and CSS.'}`
+  }
 - The judges critique each direction as a top studio's creative director would: typography, spacing and rhythm, hierarchy, colour and contrast, imagery, motion, and the small details. Generic, template-like work scores low.
 - The chosen direction is refined until nothing in the critique remains, then checked in light and dark mode and at phone, laptop and wide-screen sizes.
 - Show the user the rendered directions with their full paths, and say which was chosen and why.
@@ -306,7 +347,7 @@ In your answer: the result first, then briefly which shape you used and which ve
  * For Ultra and Go crazy, `cap` is how many more agents may be started, `models` lists the team's models,
  * and `depth` is how many levels below the lead the chat allows.
  */
-export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; team: boolean; spawn: boolean; cap?: number; models?: string; depth?: number }): string {
+export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; team: boolean; spawn: boolean; cap?: number; models?: string; depth?: number; draw?: boolean }): string {
   const hands = ctx.team || ctx.spawn
   const who = ctx.team && ctx.spawn ? 'teammates, and agents you start,' : ctx.team ? 'teammates' : 'agents you start'
   let text: string
@@ -319,8 +360,8 @@ export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; 
       break
     case 'thorough':
       text = hands
-        ? `The user chose Thorough for this message: quality over speed and allowance. Use the team from the start. Split the work into parts that do not depend on each other, hand them to ${who} in one go with full briefs, keep the part that ties them together, and line up a review by someone who did not do the work, told what to look for, before you answer. Run or open the result yourself. In your answer say what was checked and how, and what could not be checked.`
-        : 'The user chose Thorough for this message: quality over speed and allowance. Work in passes: do it, then go back over the whole result as a reviewer who has not seen it would, looking for what is wrong or missing, and fix what you find. Run or open the result yourself. In your answer say what was checked and how, and what could not be checked.'
+        ? `The user chose Thorough for this message: quality over speed and allowance. Use the team from the start. Split the work into parts that do not depend on each other, hand them to ${who} in one go with full briefs, keep the part that ties them together, and line up a review by someone who did not do the work, told what to look for, before you answer. Run or open the result yourself. When a design is asked, make its images as "What good work looks like" says. In your answer say what was checked and how, and what could not be checked.`
+        : 'The user chose Thorough for this message: quality over speed and allowance. Work in passes: do it, then go back over the whole result as a reviewer who has not seen it would, looking for what is wrong or missing, and fix what you find. Run or open the result yourself. When a design is asked, make its images as "What good work looks like" says. In your answer say what was checked and how, and what could not be checked.'
       break
     case 'council':
       text = hands
@@ -329,8 +370,8 @@ export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; 
       break
     case 'research':
       text = hands
-        ? `The user chose Deep research for this message. Follow "Researching something properly" and "Checking facts on the web": split the question into angles that do not overlap, give ${who} one angle each with a request for sources (a link and a date for every claim that matters), for what is uncertain or disputed and for what could not be found, have the claims the answer leans on checked at the primary source by someone who did not do that research, then write the answer yourself: what is well supported, what is disputed, what nobody knows, with the links. Leave out what could not be backed up. Put the sources or the key figures in a \`table\` block.`
-        : 'The user chose Deep research for this message. Follow "Checking facts on the web". Split the question into angles that do not overlap and search each several ways: read the primary sources, keep a link and a date for every claim that matters, note what is uncertain or disputed, and check the claims the answer leans on against an independent source. Then write: what is well supported, what is disputed, what nobody knows or could not be found, with the links. Leave out what could not be backed up. Put the sources or the key figures in a `table` block.'
+        ? `The user chose Deep research for this message. Follow "Researching something properly" and "Checking facts on the web": split the question into angles that do not overlap, give ${who} one angle each with a request for sources (a link and a date for every claim that matters), for what is uncertain or disputed and for what could not be found, have the claims the answer leans on checked at the primary source by someone who did not do that research, then write the answer yourself: what is well supported, what is disputed, what nobody knows, with the links. Leave out what could not be backed up. Put the sources or the key figures in a \`table\` block. When the research is for a design, collect visual references too and, where the team can generate images, turn them into a moodboard of directions; a generated image is never evidence.`
+        : 'The user chose Deep research for this message. Follow "Checking facts on the web". Split the question into angles that do not overlap and search each several ways: read the primary sources, keep a link and a date for every claim that matters, note what is uncertain or disputed, and check the claims the answer leans on against an independent source. Then write: what is well supported, what is disputed, what nobody knows or could not be found, with the links. Leave out what could not be backed up. Put the sources or the key figures in a `table` block. When the research is for a design, collect visual references too and, where you can generate images, turn them into a moodboard of directions; a generated image is never evidence.'
       break
     case 'ultra':
     case 'gocrazy':
@@ -338,6 +379,28 @@ export function modeNote(mode: Exclude<WorkMode, 'chat'>, ctx: { lead: boolean; 
       break
   }
   return `<way-of-working mode="${mode}">\n${text}\n</way-of-working>\n\n`
+}
+
+/**
+ * Sent once when the lead's first reply to a substantial Go crazy request started too few agents:
+ * the room and depth it really has, and a nudge to start the regions now.
+ */
+export function crazyFollowUp(ctx: { started: number; floor: number; room: number; depth: number }): string {
+  return `<way-of-working mode="gocrazy">
+You are in Go crazy, and this is a substantial request, but your reply started ${ctx.started === 0 ? 'no agents' : ctx.started === 1 ? 'only 1 agent' : `only ${ctx.started} agents`}. Start the regions now, in this reply: 3 to 5 region leads, each told to start its own team at once, for at least ${ctx.floor} agents in all. You can start up to ${ctx.room} more agents in this chat right now, down to ${ctx.depth} levels below you, so the numbers in the note are a floor. Use the team's spawn_agent (mcp__team__spawn_agent for a ChatGPT agent), never a helper tool of your own program. If a spawn was refused, its answer says why: change the account, model or effort it names and try again. If the request really is small, say so in one line instead.
+</way-of-working>`
+}
+
+/**
+ * Ahead of each later round of a goal set in Ultra or Go crazy: a short reminder of the note the
+ * first message carried (the lead has that in its conversation), with the room and depth in force now.
+ */
+export function modeReminder(mode: 'ultra' | 'gocrazy', ctx: { cap: number; depth: number; total: number }): string {
+  const how =
+    mode === 'gocrazy'
+      ? 'regions with leads of their own, lateral links between them, critics and builders going back and forth, and the memory region keeping the board current'
+      : 'the rubric on the board, builders as small cells with their own critics, judges who did none of the work, and a final check by you'
+  return `<way-of-working mode="${mode}">\nThis goal runs in ${mode === 'gocrazy' ? 'Go crazy' : 'Ultra'}, as the user chose when setting it: keep working as the first message of the goal described (${how}). Aim this round at what the check found missing, and put more agents where it and the rubric scores are weakest; fix small things yourself. You can start up to ${ctx.cap} more agents (${ctx.total} in the chat at most), down to ${ctx.depth} levels below you. Send home agents whose part is done. The goal's limits still hold: its rounds, its time, and the user's Stop.\n</way-of-working>`
 }
 
 export const ENHANCE_SYSTEM = `You improve a message that a person is about to send to a team of AI agents. The agents can read and write files, run commands, browse the web, research, and hand work to each other. Rewrite the message so the team can act on it well, and output only the rewritten message.
@@ -494,11 +557,11 @@ ${solo ? 'Every agent you start is a full agent working on your account and shar
   // What handing off buys beyond speed and fresh eyes depends on who is on the team.
   const third = gptLead ? 'and, where a teammate runs a different model, a different way of looking at it' : gptMate ? 'and abilities you lack (images come from a ChatGPT teammate)' : 'and, where a teammate runs a different model, a different way of looking at it'
   const pictures = gptLead
-    ? ' When a picture is wanted, make it yourself with your built-in image generation ($imagegen), or hand it to a teammate with a brief of a few sentences and where to save it; either way give the full path in your answer.'
+    ? ' Make images yourself with your built-in image generation ($imagegen), or hand them to a ChatGPT teammate; either way brief each as "What good work looks like" says, with its size and where in the project it goes, and give the full paths in your answer.'
     : gptMate
-      ? ' Keep briefs for a ChatGPT teammate short and lead with the outcome; for a picture, describe it in a few sentences and say where to save it (pictures use up their allowance quickly, so ask for one unless more are needed).'
+      ? ' Keep briefs for a ChatGPT teammate short and lead with the outcome. For images, give it the image brief "What good work looks like" describes, the sizes and where in the project to save them, and ask for several variations of each asset the design rests on.'
       : ''
-  const tail = FACTS + QUALITY + LIVE + autoSection(ctx) + ownToolsSection(ctx) + handsSection(ctx, true) + connectorSection(ctx) + vaultSection(ctx, true) + SPEAKERS + memorySection(ctx)
+  const tail = FACTS + quality(ctx) + LIVE + autoSection(ctx) + ownToolsSection(ctx) + handsSection(ctx, true) + connectorSection(ctx) + vaultSection(ctx, true) + SPEAKERS + memorySection(ctx)
   if (!ctx.hasTools) return base + tail
   // Alone and unable to start agents, there is nobody to hand work to. With agents it can start
   // on its own account, a lead on one account works exactly like one with several.
@@ -528,7 +591,7 @@ A teammate starts from nothing, so the brief is everything they know. Say:
 - constraints, and what you have already found out or ruled out
 - how to check the result
 - what you want reported back
-- for research: the question, what a good answer contains, which sources count and how recent they must be, and a link and a date with every claim
+- for research: the question, what a good answer contains, which sources count and how recent they must be, and a link and a date with every claim${draws(ctx) ? '\n- for design: the rubric, the references, and the paths of the generated images to build with' : ''}
 
 Give tasks that run at the same time different files, so nobody overwrites anybody, and give reviewers different things to look for, so they do not repeat each other. Reading, exploring and testing run side by side safely; be more careful with parallel tasks that write. If two tasks cannot avoid the same files in a git repository, have each teammate work on its own branch in a separate git worktree and report the branch name, then merge them yourself.${pictures}` +
     spawnSection(ctx) +
@@ -589,7 +652,7 @@ export function memberBriefing(ctx: BriefingContext): string {
   const images =
     ctx.self.provider === 'chatgpt'
       ? `
-- When a task asks for a picture, make it with your built-in image generation ($imagegen), save the file where the task says (the working folder if it does not say), and give the full path in your report.`
+- When a task asks for pictures, make them with your built-in image generation ($imagegen), briefed as "What good work looks like" says, with several variations where the choice matters. The generator saves them outside the project, so copy each one where the task says (the working folder if it does not say), and give the full paths in your report.`
       : ''
   return (
     `# Ensemble
@@ -611,7 +674,7 @@ Keep the report short. If you produced something long, save it to a file and giv
 - Finish the work rather than ending on a plan. Work through ordinary problems, such as a failing command or a missing file, before reporting. If you are blocked by something only the sender or the user can settle, say exactly what you need in your report instead of waiting.
 - The team shares this folder (${ctx.cwd}) and others may be editing other files right now. Keep to the files your task covers, and leave changes you did not make as they are.${images}${tools}` +
     FACTS +
-    QUALITY +
+    quality(ctx) +
     LIVE +
     projectSection(ctx) +
     spawnSection(ctx) +

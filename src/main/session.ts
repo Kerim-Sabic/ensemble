@@ -1,6 +1,7 @@
 import path from 'node:path'
 import type { Account, AgentState, Chat, HubEvent, Item, PermissionDecision, PermissionLevel, QuestionSpec, RewindPreview } from '@shared/types'
 import fs from 'node:fs'
+import { createHash } from 'node:crypto'
 import { describeTool, HIDDEN_TEAM_TOOLS, isHandsTool, mediaKind, mediaPathsIn, MEDIA_EXT, toolLine } from '@shared/tools'
 import { readJson, Saver, uid } from './util'
 import type { AgentRuntime, PermissionAsk, RuntimeEvent, RuntimeHost, TurnInput } from './providers/types'
@@ -67,7 +68,10 @@ export interface SessionHost {
   onUsage(accountId: string, usage: Extract<RuntimeEvent, { type: 'usage' }>['usage']): void
   /** A one-click way out of a failed turn, when there is one. */
   remedyFor(session: AgentSession, pending: Pending, ev: TurnEnd): Extract<Item, { kind: 'notice' }>['action']
-  /** What to say instead of an error when the app is about to give the same work another go. */
+  /**
+   * What to say instead of an error when the app is about to give the same work another go.
+   * An empty string: the app is moving the work on and says so elsewhere, so no row here.
+   */
   retryNote(session: AgentSession, pending: Pending, ev: TurnEnd): string | null
   onAttention(session: AgentSession, what: string): void
   registerAsk(requestId: string, ask: OpenAsk): void
@@ -124,6 +128,26 @@ export class AgentSession implements RuntimeHost {
   private openAsks = new Set<string>()
   /** Media already put on show, by path and when it was written, so a file is shown once per version. */
   private shown = new Set<string>()
+  /** What those files hold, so one picture saved in two places (the generator's folder and the project) is shown once. */
+  private shownContent = new Set<string>()
+
+  /** True the first time a media file's content is seen in this session; false for a second copy of the same thing. */
+  private fresh(p: string): boolean {
+    try {
+      const st = fs.statSync(p)
+      const fd = fs.openSync(p, 'r')
+      const head = Buffer.alloc(Math.min(st.size, 65536))
+      fs.readSync(fd, head, 0, head.length, 0)
+      fs.closeSync(fd)
+      const key = `${st.size}:${createHash('sha1').update(head).digest('hex')}`
+      if (this.shownContent.has(key)) return false
+      this.shownContent.add(key)
+      return true
+    } catch {
+      // Not readable just now: show it rather than lose it.
+      return true
+    }
+  }
   /** The process no longer matches the team (new role, model or lead): replace it before the next turn. */
   private stale = false
   /** The model and effort the running process was started with. */
@@ -320,6 +344,23 @@ export class AgentSession implements RuntimeHost {
     }
   }
 
+  /**
+   * Words from the person for the turn under way. The runtime takes them into the turn itself;
+   * they also join the turn's own text, so a retry of the turn carries them. False when no turn is
+   * running or the runtime cannot take words mid-turn: the caller lines them up instead.
+   */
+  steer(text: string, images: string[] | undefined, itemId: string): boolean {
+    const cur = this.current
+    if (this.ended || !cur || !this.runtime?.steer) return false
+    const words = `(Sent while you were working. Take it into account now; if it changes what you should do, change course.)\n\n${text}`
+    if (!this.runtime.steer({ text: words, images, origin: { kind: 'human' } })) return false
+    cur.itemIds.push(itemId)
+    cur.text += `\n\n${words}`
+    if (images?.length) cur.images = [...(cur.images || []), ...images]
+    if (cur.parts) cur.parts.push({ text: words, itemIds: [itemId], user: true, images })
+    return true
+  }
+
   /** A line under the agent's name while it waits on something that is not its own work. */
   note(activity: string): void {
     if (this.current) this.setState({ phase: 'tool', activity })
@@ -334,6 +375,14 @@ export class AgentSession implements RuntimeHost {
    * Stops the reply under way and what is lined up behind it. Reports and notes from the team
    * that were waiting are not thrown away: they stay unread and come with the agent's next turn.
    */
+  /** Takes everything lined up behind the current turn out of the queue, unstarted, for someone else to run. */
+  drain(): Pending[] {
+    const out = this.queue
+    this.queue = []
+    if (out.length) this.setState({})
+    return out
+  }
+
   async stop(): Promise<void> {
     const queue = this.queue
     this.queue = []
@@ -531,7 +580,7 @@ export class AgentSession implements RuntimeHost {
       }
 
       case 'image':
-        this.add({ id: uid('i'), kind: 'image', ts: Date.now(), path: ev.path })
+        if (this.fresh(ev.path)) this.add({ id: uid('i'), kind: 'image', ts: Date.now(), path: ev.path })
         return
 
       case 'usage':
@@ -572,14 +621,14 @@ export class AgentSession implements RuntimeHost {
         const retry = ev.status === 'error' && pending ? this.host.retryNote(this, pending, ev) : null
         if (retry) {
           this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: retry })
-        } else if (ev.status === 'error') {
+        } else if (ev.status === 'error' && retry === null) {
           const action = pending ? this.host.remedyFor(this, pending, ev) : undefined
           this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'error', text: this.explain(ev), action })
         }
-        const failed = ev.status === 'error' && !retry
+        const failed = ev.status === 'error' && retry === null
         // The tool steps counted during the turn, kept before the state below forgets them.
         ev.tools = this.state.steps || 0
-        this.add({ id: uid('e'), kind: 'turn', ts: Date.now(), status: retry ? 'interrupted' : ev.status, durationMs: ev.durationMs, steps: ev.steps, tokens: ev.tokens, checkpoint: ev.checkpoint, model: this.state.model })
+        this.add({ id: uid('e'), kind: 'turn', ts: Date.now(), status: retry !== null ? 'interrupted' : ev.status, durationMs: ev.durationMs, steps: ev.steps, tokens: ev.tokens, checkpoint: ev.checkpoint, model: this.state.model })
         // A finished reply is the moment to be fully on disk.
         this.unfinished = null
         this.saver.now()
@@ -629,6 +678,9 @@ export class AgentSession implements RuntimeHost {
     if (typeof inp.command === 'string') for (const m of inp.command.matchAll(/[^\s"'`|;&<>]+\.(?:png|jpe?g|gif|webp|svg|mp3|wav|ogg|m4a|aac|flac|opus|mp4|webm|mov)\b/gi)) add(m[0])
     for (const p of mediaPathsIn(output || '')) add(p)
     if (!found.length) return
+    // When one picture is named twice (a generator's own folder and a copy in the project), the
+    // copy is the one wanted: it goes first, so the content check drops the generator's.
+    found.sort((a, b) => Number(/[\\/]generated_images[\\/]/i.test(a)) - Number(/[\\/]generated_images[\\/]/i.test(b)))
     let n = 0
     for (const p of found) {
       if (n >= 8) break
@@ -638,6 +690,7 @@ export class AgentSession implements RuntimeHost {
         const key = `${p.toLowerCase()}|${Math.round(st.mtimeMs)}`
         if (this.shown.has(key)) continue
         this.shown.add(key)
+        if (!this.fresh(p)) continue
         const k = mediaKind(p)
         this.add({ id: uid('i'), kind: 'image', ts: Date.now(), path: p, media: k === 'audio' || k === 'video' ? k : undefined })
         n++

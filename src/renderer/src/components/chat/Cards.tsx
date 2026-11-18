@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowUpRight, Ban, Check, ChevronDown, CircleCheck, Hand, Repeat, Square, Target, CircleAlert, Clock, CornerDownRight, FileText, FolderOpen, Gauge, Hourglass, Info, MessageCircleQuestion, MousePointerClick, Pause, Play, RotateCcw, Globe, KeyRound, ShieldCheck, ShieldQuestion, Undo2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, ArrowUpRight, Ban, Check, ChevronDown, CircleCheck, Hand, Repeat, Square, Target, CircleAlert, Clock, CornerDownRight, FileText, FolderOpen, Gauge, Hourglass, Info, MessageCircleQuestion, MousePointerClick, Pause, Play, RotateCcw, Globe, KeyRound, ShieldCheck, ShieldQuestion, Undo2, UserPlus, X } from 'lucide-react'
 import { compactNumber } from '@/lib/derive'
 import type { Account, AgentState, Item, Task } from '@shared/types'
 import { describeTool, mediaPathsIn } from '@shared/tools'
@@ -773,7 +773,55 @@ function useRetry(item: { id: string }, chatId: string, accountId?: string): Of<
   })
 }
 
+/**
+ * The lead ran out of usage (or was about to) and a teammate took over by itself: one calm row saying
+ * who, why and when the old lead is back. Once it is back, the same row offers to hand back.
+ */
+function HandoverRow({ item, chatId }: { item: Of<'notice'>; chatId: string }) {
+  const h = item.handover!
+  const from = useAccountOf(h.from)
+  const to = useAccountOf(h.to)
+  const back = useStore((s) => {
+    const c = s.chats.find((x) => x.id === chatId)?.cover
+    return !!c && c.itemId === item.id && !!c.back
+  })
+  const run = useStore((s) => s.run)
+  const setFocus = useStore((s) => s.setFocus)
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="my-2.5 flex animate-rise flex-wrap items-center gap-x-2.5 gap-y-2 rounded-[12px] bg-surface-2 px-3 py-2 text-[12.5px] shadow-[inset_0_0_0_1px_var(--line)]">
+      <span className="flex shrink-0 items-center gap-1" aria-hidden>
+        <Orb account={from} size={14} off />
+        <ArrowLeftRight className="size-3 text-ink-3" strokeWidth={2} />
+        <Orb account={to} size={14} />
+      </span>
+      <span className="selectable min-w-0 flex-1 leading-snug text-ink-2">{item.text}</span>
+      {back && from && (
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            void run(api.setChatLead(chatId, from.id)).then((c) => {
+              setBusy(false)
+              if (c) setFocus(from.id)
+            })
+          }}
+        >
+          <Orb account={from} size={12} /> Hand back to {from.name}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export const NoticeRow = memo(function NoticeRow({ item, chatId, accountId }: { item: Of<'notice'>; chatId: string; accountId?: string }) {
+  if (item.handover) return <HandoverRow item={item} chatId={chatId} />
+  return <PlainNotice item={item} chatId={chatId} accountId={accountId} />
+})
+
+function PlainNotice({ item, chatId, accountId }: { item: Of<'notice'>; chatId: string; accountId?: string }) {
   const next = useAccountOf(item.action?.kind === 'switch-lead' ? item.action.to : '')
   const run = useStore((s) => s.run)
   const send = useStore((s) => s.send)
@@ -872,7 +920,7 @@ export const NoticeRow = memo(function NoticeRow({ item, chatId, accountId }: { 
       <span className="selectable">{item.text}</span>
     </div>
   )
-})
+}
 
 export const ImageCard = memo(function ImageCard({ item }: { item: Of<'image'> }) {
   if (item.media) {

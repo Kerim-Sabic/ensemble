@@ -39,8 +39,11 @@ import {
   type SetupStatus,
   type VaultNote,
 } from '@shared/types'
-import { GOCRAZY_NEEDS_ULTRA, MAX_DEPTH_GOCRAZY, MAX_DEPTH_ULTRA, MAX_DEPTH_USUAL, SPAWN_CAP_GOCRAZY, SPAWN_CAP_ULTRA, everyLabel, namesLine, parseCommand, span } from '@shared/auto'
+import { AGENT_MB, AGENTS_PER_CORE, CRAZY_FLOOR, GOCRAZY_NEEDS_ULTRA, isSmallTalk, MAX_DEPTH_GOCRAZY, REGION_TEAM, MAX_DEPTH_ULTRA, MAX_DEPTH_USUAL, SPAWN_CAP_GOCRAZY, SPAWN_CAP_ULTRA, everyLabel, namesLine, parseCommand, span } from '@shared/auto'
 import { Autopilot } from './autopilot'
+import { Failover } from './failover'
+import { describeTool } from '@shared/tools'
+import { handoverLine } from '@shared/failover'
 import { adviseModel, budgetLine, budgetOf, isTopModel, modelForTier, spendScore, TIER_ORDER, tierOfModel, type Tier } from '@shared/budget'
 import { familyOf, kindLabel, kindOf, Learning, type Verdict } from './learning'
 import { ConnectorStore, findConnectors, ownConnectors, type Sealer } from './connectors'
@@ -53,7 +56,7 @@ import { ClaudeRuntime, askClaudeOnce } from './providers/claude'
 import { CodexRuntime, askCodexOnce } from './providers/codex'
 import { DemoRuntime, demoChanges, demoDiff } from './providers/demo'
 import type { AgentRuntime, RuntimeEvent, TeamTool } from './providers/types'
-import { ENHANCE_SYSTEM, leadBriefing, memberBriefing, modeNote, TITLE_SYSTEM, type BriefingContext } from './prompts'
+import { ENHANCE_SYSTEM, leadBriefing, memberBriefing, modeNote, modeReminder, crazyFollowUp, TITLE_SYSTEM, type BriefingContext } from './prompts'
 import { Hands } from './hands/hands'
 import type { HandsDrivers } from './hands/types'
 import { Vault, detectVaults } from './vault'
@@ -156,7 +159,11 @@ const DEFAULTS: Settings = {
   chatNotes: true,
   goalRounds: 12,
   goalCheck: 'fresh',
+  handover: true,
 }
+
+/** How many times one task may move on because its owner ran out of usage. */
+const MAX_MOVES = 3
 
 /** A few notes for the scripted demo team to find, so the vault can be shown without touching a real one. */
 function demoVault(dir: string): string {
@@ -246,6 +253,8 @@ export class Hub implements SessionHost {
   private toolServer = new ToolServer()
   /** Goals and loops: what keeps a chat working without the user typing again. */
   readonly auto: Autopilot
+  /** Watches each account's usage and moves work on before it runs out, or as soon as it has. */
+  readonly failover: Failover
   readonly hands: Hands
   private vault: Vault | null = null
   private saveChats: ReturnType<typeof debounce<[]>>
@@ -276,7 +285,11 @@ export class Hub implements SessionHost {
     this.accounts = new AccountManager({
       dataDir: this.dataDir,
       demo: host.demo,
-      emit: (ev) => this.emit(ev),
+      emit: (ev) => {
+        this.emit(ev)
+        // Every change in an account's usage is a chance to move work on before it fails.
+        if (ev.type === 'account-usage') this.failover?.observe(ev.usage.accountId)
+      },
       claudePath: () => this.settings.claudePath,
       leadId: () => this.settings?.leadId ?? null,
     })
@@ -301,9 +314,12 @@ export class Hub implements SessionHost {
       session: (chat, a) => this.session(chat, a),
       out: (chat, a) => this.outFrom(chat, a).length,
       changed: (chat) => {
+        // A goal that kept Go crazy going and is now over takes it with it.
+        this.syncCrazy(chat)
         this.saveChats()
         this.emit({ type: 'chat', chat })
       },
+      goalWay: (chat) => this.goalWay(chat),
       preface: (chat, a) => {
         const pre = this.takeWaiting(chat, a)
         return { text: this.catchUp(chat, a) + pre.text, itemIds: pre.itemIds }
@@ -313,6 +329,28 @@ export class Hub implements SessionHost {
       // A wrong verdict costs a whole round of the lead's work, so the check gets a model that can judge.
       judge: (system, prompt, cwd, signal) => this.askLight(system, prompt, { model: 'sonnet', cwd, signal }),
       loopRun: (a, model) => this.loopRun(a, model),
+    })
+    this.failover = new Failover({
+      settings: () => this.settings,
+      chats: () => this.chats.values(),
+      lead: (chat) => this.lead(chat),
+      supply: (id) => this.accounts.supply(id),
+      recheck: (id) => this.accounts.recheck(id),
+      busy: (chat, a) => !!this.sessions.get(`${chat.id}:${a.id}`)?.busy,
+      underWay: (chat, a) => {
+        const s = this.sessions.get(`${chat.id}:${a.id}`)
+        return this.outFrom(chat, a).length > 0 || (this.waiting.get(`${chat.id}:${a.id}`) || []).length > 0 || (s?.state.queued || 0) > 0 || chat.goal?.status === 'active'
+      },
+      successor: (chat, lead, strict) => this.successor(chat, lead, strict),
+      handOver: (chat, from, to, why, until) => this.handOverDry(chat, from, to, why, until),
+      allOut: (chat, lead) => this.allOut(chat, lead),
+      coverBack: (chat) => {
+        if (!chat.cover) return
+        chat.cover.back = true
+        this.saveChats()
+        this.emit({ type: 'chat', chat })
+      },
+      wait: (ms) => this.wait(ms),
     })
   }
 
@@ -362,11 +400,14 @@ export class Hub implements SessionHost {
     if (this.host.trial && this.host.demo) await this.setUpTrial()
     void this.accounts.refresh()
     // Keep plan usage fresh without spending any of it.
+    this.failover.sweep(this.accounts.accounts.map((a) => a.id))
     this.timer = setInterval(() => {
       for (const a of this.accounts.accounts) {
         const u = this.accounts.usage.get(a.id)
         if (!u || Date.now() - u.updatedAt > 4 * 60 * 1000) void this.accounts.refresh(a.id)
       }
+      // Windows refill with nothing reported: look at every account again.
+      this.failover.sweep(this.accounts.accounts.map((a) => a.id))
     }, 5 * 60 * 1000)
     // Connector sign-ins are renewed before they run out; agents pick up the new token with their next turn.
     const renewSignIns = (): void =>
@@ -776,18 +817,56 @@ export class Hub implements SessionHost {
   /** The way the chat's lead is working right now when it is Ultra or Go crazy; null otherwise. */
   private ultraOf(chat: Chat): 'ultra' | 'gocrazy' | null {
     const run = this.ultraRun.get(chat.id)
-    if (run === 'gocrazy') return 'gocrazy'
-    return run || chat.ultra ? 'ultra' : null
+    const kept = this.goalMode(chat)
+    if (run === 'gocrazy' || kept === 'gocrazy') return 'gocrazy'
+    return run || kept || chat.ultra ? 'ultra' : null
   }
 
   /**
-   * How many extra agents this chat may hold: the usual cap, raised to 16 while the chat is in
-   * Ultra and to 24 while it is going crazy. The user chose to spend allowance there.
+   * The way of working an open goal keeps for all its rounds: the mode it was set in, while it is
+   * not over (active, paused or waiting on the user). Go crazy holds only while Ultra is on.
+   */
+  private goalMode(chat: Chat): 'ultra' | 'gocrazy' | null {
+    const g = chat.goal
+    if (!g || (g.status !== 'active' && g.status !== 'paused' && g.status !== 'blocked')) return null
+    if (g.mode === 'gocrazy') return chat.ultra ? 'gocrazy' : null
+    return g.mode === 'ultra' ? 'ultra' : null
+  }
+
+  /** What the machine has, for the Go crazy cap. Replaced in tests. */
+  machine = { free: (): number => os.freemem(), total: (): number => os.totalmem(), cores: (): number => os.availableParallelism?.() || os.cpus().length || 4 }
+
+  /**
+   * How many agents this machine can hold in a chat that is going crazy. Every agent is a CLI
+   * process of its own: a Claude Code process measured 185 MB on average and up to 560 MB on a long
+   * run (2026-11-18, 20 live processes), plus the connector servers it starts, so each is reckoned
+   * at AGENT_MB. The agents already running are in what is used, so they count in full; new ones
+   * must fit in what is free after a reserve of 15% of the memory (2 GB at least) for everything else.
+   */
+  memoryCap(chat: Chat): number {
+    const live = (chat.agents || []).filter((x) => !x.spawned?.gone).length
+    // Accounts with no allowance left carry nobody: with none that can take work, there is no room.
+    const able = this.accounts.accounts.some((a) => a.enabled && this.accounts.statuses.get(a.id)?.state === 'ready' && !this.accounts.limitedUntil(a.id))
+    if (!able) return live
+    const reserve = Math.max(2 * 1024 ** 3, 0.15 * this.machine.total())
+    const room = Math.floor(Math.max(0, this.machine.free() - reserve) / (AGENT_MB * 1024 ** 2))
+    return live + room
+  }
+
+  /** What this machine can carry going crazy, right now: the lower of what memory and the processor cores allow. */
+  machineCap(chat: Chat): number {
+    return Math.min(this.memoryCap(chat), this.machine.cores() * AGENTS_PER_CORE)
+  }
+
+  /**
+   * How many extra agents this chat may hold: the usual cap, raised in Ultra, and while it is going
+   * crazy as many as this machine can carry right now (worked out again at every spawn), up to a
+   * safety stop far above that. The user chose to spend allowance there.
    */
   agentCap(chat: Chat): number {
     const usual = this.maxAgents()
     const ultra = this.ultraOf(chat)
-    return ultra === 'gocrazy' ? Math.max(usual, SPAWN_CAP_GOCRAZY) : ultra ? Math.max(usual, SPAWN_CAP_ULTRA) : usual
+    return ultra === 'gocrazy' ? Math.max(usual, Math.min(SPAWN_CAP_GOCRAZY, this.machineCap(chat))) : ultra ? Math.max(usual, SPAWN_CAP_ULTRA) : usual
   }
 
   /**
@@ -806,7 +885,12 @@ export class Hub implements SessionHost {
 
   /** How many agents `a` may start of its own: the whole cap for a lead in Ultra, a few for everyone else. */
   private perAgent(chat: Chat, a: Account): number {
-    return this.ultraOf(chat) && this.depthOf(chat, a) === 0 ? this.agentCap(chat) : Math.max(1, this.settings.maxPerAgent || 4)
+    const ultra = this.ultraOf(chat)
+    const depth = this.depthOf(chat, a)
+    if (ultra && depth === 0) return this.agentCap(chat)
+    const usual = Math.max(1, this.settings.maxPerAgent || 4)
+    // Going crazy, the lead's first level are the leads of regions, each running a team of its own.
+    return ultra === 'gocrazy' && depth === 1 ? Math.max(usual, REGION_TEAM) : usual
   }
 
   /** How many more agents `a` may start in the chat. 0 when it may not start any. */
@@ -839,6 +923,57 @@ export class Hub implements SessionHost {
     else this.ultraRun.delete(chat.id)
     const lead = this.lead(chat)
     if (lead && before !== this.ultraOf(chat) && this.sessions.has(`${chat.id}:${lead.id}`)) this.session(chat, lead).recycle()
+    this.syncCrazy(chat)
+  }
+
+  /**
+   * Keeps `chat.crazy` true exactly while the lead works in Go crazy (a run under way, or a goal
+   * set in Go crazy that is not over), and tells the window when that changes. When a goal ends and
+   * takes Go crazy with it, the lead starts fresh on the model plain Ultra gives it.
+   */
+  private syncCrazy(chat: Chat): void {
+    const on = this.ultraOf(chat) === 'gocrazy'
+    if (!!chat.crazy === on) return
+    if (on) chat.crazy = true
+    else delete chat.crazy
+    const lead = this.lead(chat)
+    if (lead && this.sessions.has(`${chat.id}:${lead.id}`)) this.session(chat, lead).recycle()
+    this.saveChats()
+    this.emit({ type: 'chat', chat })
+  }
+
+  /** Substantial Go crazy requests whose first reply is still to be looked at, by chat: the message and when it was sent. */
+  private floors = new Map<string, { itemId: string; at: number }>()
+
+  /**
+   * The lead's first reply to a substantial Go crazy request has ended. When it started fewer
+   * agents than CRAZY_FLOOR (or than there is room for), it is sent back once with the room it
+   * really has. Once per message; never after Stop, a failed reply, or for a small follow-up.
+   */
+  private crazyFloor(session: AgentSession, pending: Pending, ev: TurnEnd): void {
+    const chat = session.chat
+    const f = this.floors.get(chat.id)
+    if (!f || this.lead(chat)?.id !== session.account.id || !pending.itemIds.includes(f.itemId)) return
+    this.floors.delete(chat.id)
+    if (ev.status !== 'done' || this.quiet.has(chat.id) || this.ultraOf(chat) !== 'gocrazy') return
+    const started = (chat.agents || []).filter((a) => a.spawned && a.spawned.at >= f.at).length
+    const room = this.spawnRoom(chat, session.account)
+    const floor = Math.min(CRAZY_FLOOR, started + room)
+    if (started >= floor) return
+    session.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: `Go crazy, but ${started === 1 ? 'only 1 agent was' : `${started} agents were`} started, so ${session.account.name} was asked once to start the regions.` })
+    session.enqueue({ kind: 'auto', text: crazyFollowUp({ started, floor, room, depth: this.maxDepth(chat) }), origin: { kind: 'human' }, itemIds: [] })
+  }
+
+  /**
+   * What goes ahead of each round of a goal that keeps a way of working: a short reminder of the
+   * Ultra or Go crazy note the first message carried, with the room and depth in force now.
+   */
+  goalWay(chat: Chat): string {
+    const mode = this.goalMode(chat)
+    const lead = this.lead(chat)
+    if (!mode || !lead) return ''
+    this.syncCrazy(chat)
+    return modeReminder(mode, { cap: this.spawnRoom(chat, lead), depth: this.maxDepth(chat), total: this.agentCap(chat) })
   }
 
   /**
@@ -970,6 +1105,8 @@ export class Hub implements SessionHost {
       toolsUrl,
       // Only the lead is the one you normally type to next.
       suggestions: this.settings.suggestions && isLead,
+      // The scripted team fails a turn on an account with nothing left, as a real one does.
+      outUntil: this.host.demo ? () => this.accounts.limitedUntil(account.id) : undefined,
       host: session,
     }
     if (this.host.demo) return new DemoRuntime(options, isLead)
@@ -1223,11 +1360,23 @@ export class Hub implements SessionHost {
     if (e && !/^(default|usual|same)$/.test(e)) {
       const current = chosen || list.find((x) => x.value === a.model) || list.find((x) => x.isDefault) || list.find((x) => x.efforts?.length)
       const allowed = current?.efforts || []
-      if (allowed.length && !allowed.includes(e)) return `"${effort}" is not an effort level ${a.name} has. Use one of: ${allowed.filter((x) => x !== 'ultra').join(', ')}.`
-      run.effort = e
+      // A known level the model lacks ("max" on a model that stops at "xhigh") runs at the nearest one it has
+      // below, rather than refusing the work; only a word that is no level at all is refused.
+      const LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+      const usable = allowed.filter((x) => x !== 'ultra')
+      const near = LEVELS.includes(e) ? [...usable].filter((x) => LEVELS.includes(x) && LEVELS.indexOf(x) <= LEVELS.indexOf(e)).sort((x, y) => LEVELS.indexOf(y) - LEVELS.indexOf(x))[0] : undefined
+      if (allowed.length && !allowed.includes(e) && !near) return `"${effort}" is not an effort level ${a.name} has. Use one of: ${usable.join(', ')}.`
+      run.effort = allowed.length && !allowed.includes(e) ? near : e
     }
     const label = [chosen?.label || (run.model ? run.model : ''), run.effort ? `${run.effort} effort` : ''].filter(Boolean).join(', ')
     return { run, label: label || undefined }
+  }
+
+  /** The model and effort a task was given, for its owner's later turns on it; undefined when it named none. */
+  private runOfTask(a: Account, task: Task): RunSpec | undefined {
+    if (!task.model && !task.effort) return undefined
+    const how = this.runFor(a, task.model, task.effort)
+    return typeof how === 'string' ? undefined : { ...how.run, why: task.modelWhy }
   }
 
   /** How much is already running on an account's sign-in: its own work and that of agents started on it. */
@@ -1245,13 +1394,17 @@ export class Hub implements SessionHost {
    * busy, and then whichever has the most allowance that would otherwise go unused (a lot
    * left, and a refill coming soon).
    */
-  private pick(chat: Chat, opts: { exclude: string[]; provider?: Account['provider']; wantsTop?: boolean }): Account | null {
+  private pick(chat: Chat, opts: { exclude: string[]; provider?: Account['provider']; wantsTop?: boolean; roomy?: boolean }): Account | null {
     const scored = this.accounts.accounts
       .filter((a) => a.enabled && !opts.exclude.includes(a.id) && (!opts.provider || a.provider === opts.provider))
       .filter((a) => this.accounts.statuses.get(a.id)?.state === 'ready' && !this.accounts.limitedUntil(a.id))
+      // roomy: only accounts that are not running low.
+      .filter((a) => !opts.roomy || this.accounts.supply(a.id).state === 'ok')
       .map((a) => {
         const noTop = opts.wantsTop && a.provider === 'claude' && this.topOut(a) ? 0.6 : 0
-        return { a, score: this.loadOf(chat, a.id) * 10 + spendScore(budgetOf(this.accounts.usage.get(a.id))) + noTop }
+        // An account close to the end of its window takes new work only when nobody fine can.
+        const low = this.settings.handover && this.accounts.supply(a.id).state === 'low' ? 40 : 0
+        return { a, score: this.loadOf(chat, a.id) * 10 + spendScore(budgetOf(this.accounts.usage.get(a.id))) + noTop + low }
       })
       .sort((x, y) => x.score - y.score)
     return scored[0]?.a || null
@@ -1260,16 +1413,86 @@ export class Hub implements SessionHost {
   remedyFor(session: AgentSession, pending: Pending, ev: TurnEnd): Extract<Item, { kind: 'notice' }>['action'] {
     void pending
     // The lead ran dry, whatever it was doing: offer the teammate best placed to take over. Once per dry spell.
-    if (ev.reason !== 'limit' || this.lead(session.chat)?.id !== session.account.id) return undefined
+    // With handover on, there is nothing to offer: it happens by itself.
+    if (ev.reason !== 'limit' || this.settings.handover || this.lead(session.chat)?.id !== session.account.id) return undefined
     if (this.dryOffer.get(session.chat.id) === session.account.id) return undefined
     const next = this.successor(session.chat, session.account)
     if (next) this.dryOffer.set(session.chat.id, session.account.id)
     return next ? { kind: 'switch-lead', to: next.id } : undefined
   }
 
-  /** Who is best placed to take over from a lead: a Claude account with allowance first. */
-  private successor(chat: Chat, lead: Account): Account | null {
-    return this.pick(chat, { exclude: [lead.id], provider: 'claude' }) || this.pick(chat, { exclude: [lead.id] })
+  /**
+   * Who is best placed to take over from a lead: signed in and not out; then fine before running
+   * low (`strict` allows only fine); then the same provider, an account that can run its strongest
+   * model, the most allowance left, and one not already busy with work in this chat.
+   */
+  private successor(chat: Chat, lead: Account, strict = false): Account | null {
+    const open = this.tasksOf(chat.id).filter((t) => t.status === 'running' || t.status === 'queued')
+    const scored = this.accounts.accounts
+      .filter((a) => a.enabled && a.id !== lead.id && this.accounts.isReady(a.id))
+      .map((a) => ({ a, supply: this.accounts.supply(a.id) }))
+      .filter(({ supply }) => supply.state !== 'out' && (!strict || supply.state === 'ok'))
+      .map(({ a, supply }) => {
+        const b = budgetOf(this.accounts.usage.get(a.id))
+        const left = Math.min(b.session?.left ?? 1, b.weekly?.left ?? 1)
+        const top = this.modelAt(a, 'top')
+        const strongest = !top || (a.provider === 'claude' && this.topOut(a)) ? 0.4 : 0
+        const score =
+          (supply.state === 'low' ? 10 : 0) +
+          (a.provider !== lead.provider ? 0.6 : 0) +
+          strongest +
+          spendScore(b) * 0.5 -
+          left +
+          (open.some((t) => t.to === a.id) ? 0.8 : 0) +
+          (this.sessions.get(`${chat.id}:${a.id}`)?.busy ? 0.5 : 0)
+        return { a, score }
+      })
+      .sort((x, y) => x.score - y.score)
+    return scored[0]?.a || null
+  }
+
+  /**
+   * A lead that ran out (or is about to) hands the chat to `to`, by itself. What was waiting for the
+   * old lead and anything queued behind its last reply goes to the new one, which is caught up on
+   * the chat first. The chat shows one line for it.
+   */
+  private handOverDry(chat: Chat, from: Account, to: Account, why: 'out' | 'low', until: number | null): void {
+    const old = this.sessions.get(`${chat.id}:${from.id}`)
+    // Messages lined up behind the old lead's last reply would run on an account with nothing left.
+    const queued = old?.drain() || []
+    // Runs to the end at once: the old lead is between replies, so nothing has to be stopped first.
+    void this.setChatLead(chat.id, to.id, false, { why, until }).catch(() => undefined)
+    if (this.lead(chat)?.id !== to.id) {
+      // It did not take: what was drained waits for the old lead after all.
+      for (const p of queued) if (p.kind === 'user' || p.kind === 'team') this.hold(chat, from, { text: p.text, itemIds: p.itemIds, user: p.kind === 'user' }, false)
+      return
+    }
+    const target = this.session(chat, to)
+    for (const p of queued) {
+      for (const id of p.itemIds) old?.patch(id, { queued: false })
+      if (old && p.kind === 'user') this.carryAsked(old, target, p.itemIds)
+      target.enqueue({ ...p, text: this.catchUp(chat, to) + p.text, itemIds: [], run: undefined })
+    }
+  }
+
+  /** The user's own messages that a new lead takes over are shown in its transcript too, so the chat reads on. */
+  private carryAsked(from: AgentSession, to: AgentSession, itemIds: string[]): void {
+    for (const id of itemIds) {
+      const it = from.items.find((i) => i.id === id)
+      if (it?.kind === 'user') to.add({ ...it, id: uid('u'), ts: Date.now(), queued: false })
+    }
+  }
+
+  /** Everyone is out of usage: one line in the chat, saying when the work goes on by itself. */
+  private allOut(chat: Chat, lead: Account): void {
+    let first: { at: number; who: Account } | null = null
+    for (const a of this.accounts.accounts) {
+      if (!a.enabled || !this.accounts.isReady(a.id)) continue
+      const at = this.accounts.supply(a.id).until
+      if (at && (!first || at < first.at)) first = { at, who: a }
+    }
+    const when = first ? ` The work waits and goes on by itself at ${clock(first.at)}, when ${first.who.name} refills.` : ' The work waits until an account refills.'
+    this.session(chat, lead).add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'warn', text: `Every account on the team is out of usage right now.${when}` })
   }
 
   /**
@@ -1310,7 +1533,20 @@ export class Hub implements SessionHost {
   retryNote(session: AgentSession, pending: Pending, ev: TurnEnd): string | null {
     if (ev.reason !== 'limit' || !this.chats.has(session.chat.id) || this.quiet.has(session.chat.id)) return null
     const next = this.stepDown(session, pending)
-    if (!next) return null
+    if (!next) {
+      // The work moves on by itself (a new lead, a task moved, an agent moved): that is what the
+      // chat says, in one line of its own, rather than an error here.
+      if (!this.settings.handover) return null
+      const chat = session.chat
+      const a = session.account
+      if (this.lead(chat)?.id === a.id) return ''
+      if (pending.taskId) {
+        const t = this.findTask(chat.id, pending.taskId)
+        const room = a.spawned ? this.pick(chat, { exclude: [this.accounts.baseId(a.id)] }) : this.pick(chat, { exclude: [a.id, t?.from || ''] })
+        if (t && (t.moves || 0) < MAX_MOVES && room) return ''
+      }
+      return null
+    }
     pending.stepTo = next
     const label = this.choices(session.account).find((m) => m.value === next)?.label || next
     return `${session.account.name}'s account has used up its allowance for the strongest model. Carrying on with ${label}.`
@@ -1348,6 +1584,35 @@ export class Hub implements SessionHost {
   }
 
   // ----- talking to agents -----
+
+  /**
+   * A message for an agent at work reaches the work under way, between its steps (or, where the
+   * provider takes no input mid-turn, by stopping at a safe point and carrying on at once with it).
+   * Anything else (the agent is idle, a command, a goal, a loop, a way of working, a control's
+   * click) goes the usual way through send().
+   */
+  steer(req: SendRequest): 'steered' | 'sent' {
+    const chat = this.need(req.chatId)
+    const account = this.accounts.get(req.to)
+    const text = req.text.trim()
+    const attachments = req.attachments || []
+    const plain = !!account && !account.spawned?.gone && (!!text || attachments.length > 0) && !text.startsWith('/') && !req.mode && !req.goal && !req.loop && !req.fromControl
+    const session = plain && account ? this.session(chat, account) : null
+    if (!session?.busy) {
+      this.send(req)
+      return 'sent'
+    }
+    const files = attachments.length ? `\n\nAttached files:\n${attachments.map((a) => `- ${a.path}`).join('\n')}` : ''
+    const images = attachments.filter((a) => a.kind === 'image').map((a) => a.path)
+    const item: Item = { id: uid('u'), kind: 'user', ts: Date.now(), text, attachments: attachments.length ? attachments : undefined, steered: true }
+    if (!session.steer(text + files, images, item.id)) {
+      this.send(req)
+      return 'sent'
+    }
+    session.add(item)
+    this.touch(chat, text)
+    return 'steered'
+  }
 
   send(req: SendRequest): void {
     const chat = this.need(req.chatId)
@@ -1424,6 +1689,9 @@ export class Hub implements SessionHost {
     }
     // While Ultra is on, a message sent with no other way of working goes in Ultra.
     if (!mode && chat.ultra && !loopIn) mode = 'ultra'
+    // A goal that runs in Ultra or Go crazy keeps that way of working for what is said while it is open, unless another was chosen.
+    const goalWay = !goalIn && !loopIn ? this.goalMode(chat) : null
+    if (goalWay && (!mode || mode === 'ultra')) mode = goalWay
     const files = attachments.length ? `\n\nAttached files:\n${attachments.map((a) => `- ${a.path}`).join('\n')}` : ''
     if (loopIn) {
       const prompt = (loopIn.prompt?.trim() || text) + files
@@ -1431,6 +1699,11 @@ export class Hub implements SessionHost {
       this.nameChat(chat, text)
       this.touch(chat, text)
       return
+    }
+    // The lead has run out, or is about to: the best placed teammate takes over first and gets the message.
+    if (this.lead(chat)?.id === account.id) {
+      const next = this.failover.beforeSend(chat, account)
+      if (next && next.id !== account.id) return this.send({ ...req, to: next.id, text, mode, goal: goalIn })
     }
     // A goal is the lead's to carry, whoever the message box happened to point at.
     const goalLead = goalIn ? this.lead(chat) : null
@@ -1461,6 +1734,9 @@ export class Hub implements SessionHost {
     if (toLead) {
       if (mode === 'ultra' || mode === 'gocrazy') this.markUltra(chat, mode)
       else if (!this.tasksOf(chat.id).some((t) => t.status === 'running' || t.status === 'queued')) this.markUltra(chat, null)
+      // A substantial Go crazy request is looked at once the lead's first reply ends: too few agents, and it is asked once more.
+      if (mode === 'gocrazy' && !goalIn && !this.goalMode(chat) && !isSmallTalk(text)) this.floors.set(chat.id, { itemId: item.id, at: Date.now() })
+      else this.floors.delete(chat.id)
     }
     // How the user wants this one handled comes right before their words.
     if (mode && (toLead || mode === 'quick' || mode === 'plan')) {
@@ -1475,7 +1751,8 @@ export class Hub implements SessionHost {
           depth: ultra ? this.maxDepth(chat) : undefined,
         }) + body
     }
-    if (goalIn && toLead) body = this.auto.setGoal(chat, { ...goalIn, text: goalIn.text?.trim() || text + files }).intro + body
+    // A goal set in Ultra or Go crazy keeps that way of working for every round (Goal.mode).
+    if (goalIn && toLead) body = this.auto.setGoal(chat, { ...goalIn, text: goalIn.text?.trim() || text + files, mode: mode === 'ultra' || mode === 'gocrazy' ? mode : undefined }).intro + body
     // A goal that was waiting on the user has its answer now.
     else if (toLead) body = this.auto.userSpoke(chat) + body
     if (cut && toLead && !cut.told) {
@@ -1595,7 +1872,12 @@ export class Hub implements SessionHost {
   async goalAction(chatId: string, action: GoalAction | 'clear'): Promise<Chat> {
     const chat = this.need(chatId)
     if (!chat.goal) this.emit({ type: 'toast', level: 'info', text: 'This chat has no goal.' })
-    else await this.auto.goalAction(chat, action)
+    else {
+      const kept = chat.goal.mode
+      await this.auto.goalAction(chat, action)
+      // A goal stopped by hand ends the Ultra or Go crazy run it kept going.
+      if ((action === 'stop' || action === 'clear') && (kept === 'ultra' || kept === 'gocrazy')) this.markUltra(chat, null)
+    }
     return chat
   }
 
@@ -1611,6 +1893,7 @@ export class Hub implements SessionHost {
     // The lead's model and effort follow: full power in Ultra, the usual choice out of it.
     const lead = this.lead(chat)
     if (lead && before !== this.ultraOf(chat) && this.sessions.has(`${chat.id}:${lead.id}`)) this.session(chat, lead).recycle()
+    this.syncCrazy(chat)
     this.saveChats()
     this.emit({ type: 'chat', chat })
     return chat
@@ -1684,6 +1967,8 @@ export class Hub implements SessionHost {
   async stop(chatId: string, accountId?: string): Promise<void> {
     const targets = this.sessionsOf(chatId).filter((s) => !accountId || s.account.id === accountId)
     if (!accountId) this.quiet.add(chatId)
+    // A Go crazy follow-up that was still due is not sent after Stop.
+    if (!accountId || this.lead(this.chats.get(chatId))?.id === accountId) this.floors.delete(chatId)
     const stopped = this.chats.get(chatId)
     // The goal is paused here, whatever the lead is doing, and a stop of the whole chat holds its loops too.
     if (stopped) this.auto.userStopped(stopped, accountId)
@@ -1960,8 +2245,23 @@ export class Hub implements SessionHost {
   private begin(task: Task, note?: string): void {
     const chat = this.chats.get(task.chatId)
     const from = this.accounts.get(task.from)
-    const to = this.accounts.get(task.to)
+    let to = this.accounts.get(task.to)
     if (!chat || !from || !to) return
+    // Its owner ran out while it waited (on other tasks, or for a refill): the next best teammate takes it.
+    // A started agent moves itself instead, when its turn starts.
+    const until = !to.spawned && this.settings.handover ? this.accounts.limitedUntil(to.id) : null
+    const next = until && (task.moves || 0) < MAX_MOVES ? this.pick(chat, { exclude: [to.id, task.from], provider: to.provider }) || this.pick(chat, { exclude: [to.id, task.from] }) : null
+    if (until && next) {
+      task.movedFrom = to.id
+      task.moves = (task.moves || 0) + 1
+      task.to = next.id
+      if (task.model && typeof this.runFor(next, task.model, task.effort) === 'string') task.model = task.modelLabel = task.effort = task.modelWhy = undefined
+      const owner = this.session(chat, from)
+      const card = owner.items.find((i) => i.kind === 'delegate' && i.taskId === task.id)
+      if (card) owner.patch(card.id, { to: next.id })
+      owner.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: `${to.name} is out of usage until ${clock(until)}, so ${next.name} takes "${task.title}".` })
+      to = next
+    }
     task.waitingOn = undefined
     task.waitingFor = undefined
     const name = (id: string): string => this.accounts.get(id)?.name || 'a teammate'
@@ -2082,11 +2382,17 @@ export class Hub implements SessionHost {
    * The agent has no allowance left: what reaches it waits for the refill instead of failing, and
    * a lead's chat gets one offer to hand over to someone who has allowance.
    */
-  private holdDry(chat: Chat, account: Account, entry: Waiting, until: number | null): void {
+  private holdDry(chat: Chat, account: Account, entry: Waiting, until: number | null, decide = true): void {
     this.hold(chat, account, entry, false)
     if (!this.waitTimers.has(`${chat.id}:${account.id}`)) this.wakeIn(chat, account, until ? until - Date.now() + 30_000 : this.wait(HOLD_MS))
     const lead = this.lead(chat)
-    if (lead?.id !== account.id || this.dryOffer.get(chat.id) === lead.id) return
+    if (!decide || lead?.id !== account.id) return
+    // The best placed teammate takes over by itself and gets all of it, or the chat is told once that everyone is out.
+    if (this.settings.handover) {
+      this.failover.considerLead(chat, { hit: true, need: true })
+      return
+    }
+    if (this.dryOffer.get(chat.id) === lead.id) return
     this.dryOffer.set(chat.id, lead.id)
     const next = this.successor(chat, lead)
     const when = until ? `until ${clock(until)}` : 'for now'
@@ -2156,6 +2462,16 @@ export class Hub implements SessionHost {
     set.add(session.account.id)
     this.running.set(session.chat.id, set)
     this.saveRunning()
+    // An agent started in the chat whose account has run out moves to one with room before this turn
+    // runs, whatever brought the turn about, and is told what it had done so far.
+    const a = session.account
+    if (a.spawned && this.settings.handover && this.accounts.limitedUntil(a.id)) {
+      const moved = this.rehome(session.chat, a)
+      if (moved) {
+        pending.text = `<recovery>\n${this.movedNote(moved)}\n</recovery>\n\n${pending.text}`
+        if (pending.run?.model && typeof this.runFor(a, pending.run.model) === 'string') pending.run = undefined
+      }
+    }
     if (!pending.taskId) return
     const task = this.findTask(session.chat.id, pending.taskId)
     if (!task) return
@@ -2233,8 +2549,23 @@ export class Hub implements SessionHost {
       // Kept piece by piece, so a message among them can still be taken back on its own.
       const pieces = pending.parts?.length ? pending.parts : [{ text: pending.text, itemIds: pending.itemIds, user: pending.kind === 'user' }]
       const until = this.accounts.limitedUntil(session.account.id)
-      for (const x of pieces) if (x.text.trim()) this.holdDry(chat, session.account, { text: x.text, itemIds: x.itemIds, user: x.user }, until)
+      const kept = pieces.filter((x) => x.text.trim())
+      // Everything is held first, then it is decided once whether someone else takes it all.
+      kept.forEach((x, i) => this.holdDry(chat, session.account, { text: x.text, itemIds: x.itemIds, user: x.user }, until, i === kept.length - 1))
+      // A started agent moves to an account with room and reads it there now, rather than waiting for the refill.
+      if (session.account.spawned && this.settings.handover && kept.length) {
+        const moved = this.rehome(chat, session.account)
+        if (moved) {
+          const list = this.waiting.get(session.key) || []
+          list.unshift({ text: `<recovery>\n${this.movedNote(moved)}\n</recovery>`, itemIds: [] })
+          this.waiting.set(session.key, list)
+          this.deliverWaiting(chat, session.account)
+        }
+      }
     }
+    // The lead's reply ended on the limit with nothing to hold (it was answering a question): it still hands over.
+    else if (ev.status === 'error' && ev.reason === 'limit' && this.settings.handover && this.lead(chat)?.id === session.account.id) this.failover.considerLead(chat, { hit: true })
+    const handed = ev.reason === 'limit' && this.lead(chat)?.id !== session.account.id && chat.cover?.from === session.account.id
     pending.onDone?.(ev)
     if (!this.chats.has(chat.id)) return
     if (pending.taskId) {
@@ -2259,7 +2590,7 @@ export class Hub implements SessionHost {
           this.setTask(task, 'cancelled', by ? `Stopped by ${by} before it finished.` : 'Stopped by the user before it finished.')
           // Whoever stopped it knows already.
           if (!by && !this.quiet.has(chat.id)) this.reportBack(task)
-        } else if (ev.reason === 'limit' && !task.movedFrom && this.moveTask(task, session.account)) {
+        } else if (ev.reason === 'limit' && this.moveTask(task, session.account, pending)) {
           // Someone with allowance left has picked it up; the assigner need not be woken.
         } else if (ev.reason === 'other' && task.modelWhy && !task.escalated && this.escalate(task, session)) {
           // The cheaper model the app picked could not finish it: one more go, a step up.
@@ -2282,14 +2613,18 @@ export class Hub implements SessionHost {
 
     const lead = this.lead(chat)
     if (ev.status === 'done' && session.account.id === lead?.id) this.noteSoon(chat)
+    // A lead close to the end of its window hands over at the end of a reply, while work goes on.
+    if (ev.status === 'done' && session.account.id === lead?.id) this.failover.considerLead(chat)
     // In Ultra, agents whose stage is over are sent home once they have sat idle a while.
     if (session.account.id === lead?.id && this.ultraOf(chat)) this.sweepSoon(chat)
     // A run in Ultra or Go crazy is over when the lead has answered and nothing is out or waiting:
     // from then on the chat is back to what it is set to (Ultra if it is switched on, else ordinary).
-    if (session.account.id === lead?.id && ev.status === 'done' && this.ultraRun.has(chat.id) && !session.state.queued && !this.tasksOf(chat.id).some((t) => t.status === 'running' || t.status === 'queued')) this.markUltra(chat, null)
+    // Going crazy, a first reply that started too few agents is sent back once (before the run could end).
+    this.crazyFloor(session, pending, ev)
+    if (session.account.id === lead?.id && ev.status === 'done' && this.ultraRun.has(chat.id) && !session.busy && !session.state.queued && !this.tasksOf(chat.id).some((t) => t.status === 'running' || t.status === 'queued')) this.markUltra(chat, null)
     // A goal in play, or a loop's run, brings its own news: the check's verdict, the loop ending.
     const ownNews = this.auto.afterTurn(session, pending, ev) || pending.auto?.of === 'loop'
-    const worthTelling = !ownNews && (pending.kind === 'user' || session.account.id === lead?.id)
+    const worthTelling = !ownNews && !handed && (pending.kind === 'user' || session.account.id === lead?.id)
     if (worthTelling && ev.status !== 'interrupted' && this.settings.notifications && !this.host.isFocused()) {
       this.host.notify(
         ev.status === 'done' ? `${session.account.name} finished` : `${session.account.name} stopped with a problem`,
@@ -2352,6 +2687,8 @@ export class Hub implements SessionHost {
       origin: { kind: 'peer', name: to.name },
       itemIds: [...pre.itemIds, item.id],
       taskId: held?.id,
+      // The turn belongs to that task, so it runs on the model and effort the task was given, not on the agent's default.
+      run: held ? this.runOfTask(from, held) : undefined,
     })
   }
 
@@ -2372,20 +2709,30 @@ export class Hub implements SessionHost {
     return true
   }
 
-  /** Hands a task whose owner ran out of allowance to the next best teammate. */
-  private moveTask(task: Task, from: Account): boolean {
+  /**
+   * Hands a task whose owner ran out of allowance to the next best teammate. With handover on, a
+   * task may move up to MAX_MOVES times and to the other provider when its own has nobody, and an
+   * agent started in the chat keeps its task and moves to an account with room instead.
+   */
+  private moveTask(task: Task, from: Account, pending?: Pending): boolean {
     const chat = this.chats.get(task.chatId)
     const assigner = this.accounts.get(task.from)
     if (!chat || !assigner) return false
-    const next = this.pick(chat, { exclude: [from.id, task.from], provider: from.provider })
+    const auto = this.settings.handover
+    if (auto ? (task.moves || 0) >= MAX_MOVES : !!task.movedFrom) return false
+    if (auto && from.spawned) return this.rehomeTask(task, from, pending)
+    const next = this.pick(chat, { exclude: [from.id, task.from], provider: from.provider }) || (auto ? this.pick(chat, { exclude: [from.id, task.from] }) : null)
     if (!next) return false
+    const memory = this.memoryOf(chat, from, 2500)
     task.movedFrom = from.id
+    task.moves = (task.moves || 0) + 1
     task.to = next.id
     task.startedAt = undefined
     // The same model and effort, when the new owner has them.
     const kept = this.runFor(next, task.model, task.effort)
     const run = typeof kept === 'string' ? undefined : kept.run
-    if (!run) task.model = task.modelLabel = task.effort = undefined
+    if (!run) task.model = task.modelLabel = task.effort = task.modelWhy = undefined
+    task.holding = false
     this.setTask(task, 'queued')
     const owner = this.session(chat, assigner)
     const card = owner.items.find((i) => i.kind === 'delegate' && i.taskId === task.id)
@@ -2396,13 +2743,106 @@ export class Hub implements SessionHost {
     target.add(item)
     target.enqueue({
       kind: 'task',
-      text: `<task id="${task.id}" from="${esc(assigner.name)}" title="${esc(task.title)}">\n${task.brief}\n\nNote from the app: ${from.name} started this task and ran out of usage allowance partway. Some of it may already be done on disk. Check what exists before redoing anything.\n</task>`,
+      text: `<task id="${task.id}" from="${esc(assigner.name)}" title="${esc(task.title)}">\n${task.brief}\n\nNote from the app: ${from.name} started this task and ran out of usage allowance partway. Some of it may already be done on disk. Check what exists before redoing anything.${memory.replace('What you had done so far', `What ${from.name} had done so far`)}\n</task>`,
       origin: { kind: 'peer', name: assigner.name },
       itemIds: [item.id],
       taskId: task.id,
       run,
     })
     return true
+  }
+
+  /**
+   * An agent started in the chat whose account ran out: it moves to the account with the most room
+   * (the same provider first) for its next turn. A conversation cannot cross accounts, so it starts a
+   * fresh one there and is given a short account of what it did so far. Returns null when no account has room.
+   */
+  private rehome(chat: Chat, agent: Account): { from: Account; to: Account; memory: string } | null {
+    const sp = agent.spawned
+    if (!sp || sp.gone) return null
+    const from = this.accounts.get(sp.base)
+    if (!from) return null
+    const to = this.pick(chat, { exclude: [from.id], provider: agent.provider }) || this.pick(chat, { exclude: [from.id] })
+    if (!to) return null
+    const memory = this.memoryOf(chat, agent)
+    sp.base = to.id
+    agent.provider = to.provider
+    agent.configDir = to.configDir
+    // The conversation lives with the old account; the next turn starts a new one on the new account.
+    delete chat.sessions[agent.id]
+    this.sessions.get(`${chat.id}:${agent.id}`)?.recycle()
+    this.saveChats()
+    this.emit({ type: 'chat', chat })
+    const by = this.accounts.get(sp.by)
+    if (by) this.session(chat, by).add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: `${agent.name} moved from ${from.name}'s account to ${to.name}'s: ${from.name} ran out of usage. It carries on with a summary of its work so far.` })
+    return { from, to, memory }
+  }
+
+  /** What an agent that moved accounts is told before anything else on its new account. */
+  private movedNote(m: { from: Account; to: Account; memory: string }): string {
+    return `You were moved from ${m.from.name}'s account to ${m.to.name}'s because ${m.from.name} ran out of usage. Your earlier conversation stayed behind, so this is a fresh one. Files you wrote are still on disk: look at what exists before redoing anything.${m.memory || '\n\n(No record of earlier work in this chat.)'}`
+  }
+
+  /** A started agent's task, after its account ran out partway: the agent moves to an account with room and starts the task again there. */
+  private rehomeTask(task: Task, agent: Account, pending?: Pending): boolean {
+    const chat = this.chats.get(task.chatId)
+    if (!chat) return false
+    const moved = this.rehome(chat, agent)
+    if (!moved) return false
+    task.movedFrom = moved.from.id
+    task.moves = (task.moves || 0) + 1
+    task.holding = false
+    // A model the old account had and the new one lacks is dropped; the app picks again.
+    if (task.model && typeof this.runFor(agent, task.model, task.effort) === 'string') task.model = task.modelLabel = task.effort = task.modelWhy = undefined
+    this.setTask(task, 'queued')
+    const reading = pending?.kind === 'team' && pending.text.trim() ? `\n\nWhat you were reading when it stopped:\n${truncate(pending.text.trim(), 6000)}` : ''
+    this.begin(task, `${this.movedNote(moved)}${reading}`)
+    return true
+  }
+
+  /**
+   * A short account of an agent's work in this chat so far, from what the app recorded: the tasks
+   * it was given, what it did, what it said. Empty when there is nothing.
+   */
+  private memoryOf(chat: Chat, agent: Account, max = 5000): string {
+    const s = this.sessions.get(`${chat.id}:${agent.id}`)
+    if (!s) return ''
+    const name = (id: string): string => this.accounts.get(id)?.name || 'a teammate'
+    const lines: string[] = []
+    let did: string[] = []
+    const flush = (): void => {
+      if (did.length) lines.push(`Steps: ${[...new Set(did)].slice(-12).join('; ')}.`)
+      did = []
+    }
+    for (const it of s.items) {
+      if (it.kind === 'tool') {
+        if (it.status !== 'done' || it.name.startsWith('mcp__team__')) continue
+        const d = describeTool(it.name, it.input)
+        did.push(`${d.done}${d.target ? ` ${d.target}` : ''}`)
+        continue
+      }
+      if (it.kind === 'peer' && it.tag === 'task') {
+        flush()
+        lines.push(`Task from ${name(it.from)}, "${it.title || 'a task'}": ${truncate(it.text.trim(), 600)}`)
+      } else if (it.kind === 'peer' && it.tag === 'result') {
+        flush()
+        lines.push(`Report from ${name(it.from)} on "${it.title || 'a task'}": ${truncate(it.text.trim(), 500)}`)
+      } else if (it.kind === 'user' && it.text.trim()) {
+        flush()
+        lines.push(`The user said: ${truncate(it.text.trim(), 600)}`)
+      } else if (it.kind === 'assistant' && it.text.trim()) {
+        flush()
+        lines.push(`You said: ${truncate(it.text.trim(), 800)}`)
+      }
+    }
+    flush()
+    const kept: string[] = []
+    let used = 0
+    for (let i = lines.length - 1; i >= 0 && used + lines[i].length < max; i--) {
+      kept.unshift(lines[i])
+      used += lines[i].length
+    }
+    return kept.length ? `\n\nWhat you had done so far, oldest first:\n${kept.join('\n')}` : ''
   }
 
   /** The agents someone started in a chat and that are still here. */
@@ -2426,7 +2866,12 @@ export class Hub implements SessionHost {
       // A model named for the task decides which kind of teammate can take it.
       const provider = this.providerOfModel(args.model)
       const wantsTop = this.isTop(args.model)
-      to = this.pick(chat, { exclude: [from.id], provider: provider || 'claude', wantsTop }) || (provider ? null : this.pick(chat, { exclude: [from.id] }))
+      // An account with room comes first, of either provider, before one that is running low.
+      to =
+        this.pick(chat, { exclude: [from.id], provider: provider || 'claude', wantsTop, roomy: true }) ||
+        (provider ? null : this.pick(chat, { exclude: [from.id], roomy: true })) ||
+        this.pick(chat, { exclude: [from.id], provider: provider || 'claude', wantsTop }) ||
+        (provider ? null : this.pick(chat, { exclude: [from.id] }))
       if (!to) return this.spawnRoom(chat, from) > 0 ? 'No other account can take work right now. Start an agent for it with spawn_agent (it works on your account), or do it yourself.' : 'Nobody on the team can take work right now (signed out or out of allowance). Do this yourself, or tell the user.'
     } else {
       to = this.accounts.byName(asked, chat.id)
@@ -2438,7 +2883,8 @@ export class Hub implements SessionHost {
       const st = this.accounts.statuses.get(to.id)
       if (st?.state !== 'ready') return `${to.name} is not available right now (${st?.state === 'signed-out' ? 'signed out' : 'not ready'}). Pick someone else or pass "auto".`
       const until = this.accounts.limitedUntil(to.id)
-      if (until) return `${to.name} has no usage allowance left until ${clock(until)}. Pick someone else, pass "auto", or do it yourself.`
+      // A started agent moves to an account with room when its next turn starts; a whole account cannot.
+      if (until && !(to.spawned && this.settings.handover && this.pick(chat, { exclude: [this.accounts.baseId(to.id)] }))) return `${to.name} has no usage allowance left until ${clock(until)}. Pick someone else, pass "auto", or do it yourself.`
     }
 
     const how = this.runFor(to, args.model, args.effort)
@@ -2528,7 +2974,11 @@ export class Hub implements SessionHost {
       const m = (args.model || '').trim()
       const provider = this.providerOfModel(m)
       // Claude accounts do the building; with none to spare (a ChatGPT-only team), any account will do.
-      base = this.pick(chat, { exclude: [], provider: provider || 'claude', wantsTop: this.isTop(m) }) || (provider ? null : this.pick(chat, { exclude: [] }))
+      base =
+        this.pick(chat, { exclude: [], provider: provider || 'claude', wantsTop: this.isTop(m), roomy: true }) ||
+        (provider ? null : this.pick(chat, { exclude: [], roomy: true })) ||
+        this.pick(chat, { exclude: [], provider: provider || 'claude', wantsTop: this.isTop(m) }) ||
+        (provider ? null : this.pick(chat, { exclude: [] }))
       if (!base && provider) {
         const has = this.accounts.accounts.some((a) => a.enabled && a.provider === provider)
         return has
@@ -3052,7 +3502,12 @@ export class Hub implements SessionHost {
     return `<handoff from="${esc(from.name)}">\nYou now lead this chat. ${why}. This is what happened so far, oldest first, so you can carry on without asking the user to repeat anything. File changes already made are on disk in the working folder.\n\n${kept.join('\n\n') || '(nothing was said yet)'}${tasks}\n</handoff>\n\n`
   }
 
-  async setChatLead(id: string, accountId: string, retry = false): Promise<Chat> {
+  /**
+   * `auto`: the app is doing this by itself because the old lead ran out of usage (or is about to).
+   * A goal under way then carries on with the new lead, loops move with it, and the chat gets one
+   * handover line instead of the usual notes.
+   */
+  async setChatLead(id: string, accountId: string, retry = false, auto?: { why: 'out' | 'low'; until: number | null }): Promise<Chat> {
     const chat = this.need(id)
     const next = this.accounts.get(accountId)
     if (!next || !next.enabled) throw new Error('That teammate is not on the team.')
@@ -3063,8 +3518,9 @@ export class Hub implements SessionHost {
     let moved: Waiting[] = []
 
     if (prev) {
-      // A goal under way waits for the user rather than going on with a lead in the middle of changing.
-      this.auto.leadChanged(chat, next)
+      // A goal under way waits for the user rather than going on with a lead in the middle of changing,
+      // unless the app is the one changing it: then the goal and loops carry on with the new lead.
+      this.auto.leadChanged(chat, next, auto ? prev : undefined)
       const old = this.sessions.get(`${id}:${prev.id}`)
       if (old?.busy) await old.stop()
       moved = this.takeEntries(chat, prev)
@@ -3081,21 +3537,27 @@ export class Hub implements SessionHost {
         }
       }
       const talked = (old?.items.length || 0) > 0
-      chat.handoff = talked ? { from: prev.id, reason: retry ? 'limit' : 'manual' } : null
+      chat.handoff = talked ? { from: prev.id, reason: retry || auto ? 'limit' : 'manual' } : null
     }
     chat.leadId = next.id === this.lead()?.id ? null : next.id
     this.dryOffer.delete(id)
+    const row = auto && prev ? uid('n') : null
+    chat.cover = row && prev && auto ? { from: prev.id, to: next.id, at: Date.now(), why: auto.why, until: auto.until, itemId: row } : null
     // Roles and tools differ between lead and teammate, so everyone restarts in their new one.
     for (const s of this.sessionsOf(id)) s.recycle()
     this.saveChats()
     this.emit({ type: 'chat', chat })
 
     const s = this.session(chat, next)
-    s.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: prev ? `${next.name} now leads this chat, taking over from ${prev.name}.` : `${next.name} now leads this chat.` })
+    if (row && prev && auto) {
+      s.add({ id: row, kind: 'notice', ts: Date.now(), level: 'info', text: handoverLine(next.name, prev.name, auto.why, auto.until, clock), handover: { from: prev.id, to: next.id, why: auto.why, until: auto.until } })
+    } else s.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: prev ? `${next.name} now leads this chat, taking over from ${prev.name}.` : `${next.name} now leads this chat.` })
     if (moved.length) {
       const user = moved.some((w) => w.user)
       const n = moved.reduce((k, w) => k + Math.max(1, w.itemIds.length), 0)
-      s.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: `Passed on what was waiting for ${prev?.name || 'the old lead'}: ${n} ${n === 1 ? 'message or report' : 'messages and reports'}.` })
+      const was = auto && prev ? this.sessions.get(`${id}:${prev.id}`) : undefined
+      if (was) for (const w of moved) if (w.user) this.carryAsked(was, s, w.itemIds)
+      if (!auto) s.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: `Passed on what was waiting for ${prev?.name || 'the old lead'}: ${n} ${n === 1 ? 'message or report' : 'messages and reports'}.` })
       s.enqueue({
         kind: user ? 'user' : 'team',
         text: `${this.catchUp(chat, next)}${moved.map((w) => w.text).join('\n\n')}`,
@@ -3282,6 +3744,7 @@ export class Hub implements SessionHost {
         if (!a.spawned) {
           const budget = budgetLine(budgetOf(this.accounts.usage.get(a.id)))
           if (budget) status += ` · ${budget}`
+          if (!until && this.accounts.supply(a.id).state === 'low') status += ' · close to its usage limit: give it only small work, the app moves work off it when it runs out'
         }
       }
       ;(a.spawned ? agents : accounts).push(`- ${a.name} (${kind}${role}${origin}): ${status}`)
@@ -3514,7 +3977,7 @@ export class Hub implements SessionHost {
           run: async (a) => {
             const text = String(a.goal || '').trim()
             if (!text) return 'Say what the goal is.'
-            const { goal } = this.auto.setGoal(chat, { text, doneWhen: a.done_when ? String(a.done_when) : undefined, maxRounds: typeof a.max_rounds === 'number' ? a.max_rounds : undefined, minutes: typeof a.minutes === 'number' ? a.minutes : undefined }, true)
+            const { goal } = this.auto.setGoal(chat, { text, doneWhen: a.done_when ? String(a.done_when) : undefined, maxRounds: typeof a.max_rounds === 'number' ? a.max_rounds : undefined, minutes: typeof a.minutes === 'number' ? a.minutes : undefined, mode: this.ultraRun.get(chat.id) }, true)
             return `The goal is set (up to ${goal.maxRounds} rounds). Tell the user in a line, then work on it now and keep going until it is done. End each reply with what is done, the evidence, and what is left of the goal (say 'nothing' when it is done); call goal_report with "met" and the evidence when it is, or with "blocked" if only the user can unblock it.`
           },
         },
@@ -3885,6 +4348,7 @@ export class Hub implements SessionHost {
 
   async dispose(): Promise<void> {
     this.auto.dispose()
+    this.failover.dispose()
     if (this.renewTimer) clearInterval(this.renewTimer)
     this.connectors.cancelSignIn()
     if (this.timer) clearInterval(this.timer)

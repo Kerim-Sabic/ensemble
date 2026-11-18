@@ -163,7 +163,7 @@ export function cardHeight(net: Net): number {
 
 // ───────────── drawing ─────────────
 
-const WORD: Record<NeuronState, string> = {
+export const WORD: Record<NeuronState, string> = {
   working: 'Working',
   asking: 'Needs your OK',
   waiting: 'Waiting',
@@ -182,9 +182,9 @@ interface Pulse {
 }
 
 /** A neuron at work is drawn larger than one at rest, so the eye goes to where the work is. */
-const SCALE: Record<NeuronState, number> = { working: 1.28, asking: 1.2, trouble: 1.05, waiting: 0.95, idle: 0.85, done: 0.86, gone: 0.72 }
+export const SCALE: Record<NeuronState, number> = { working: 1.28, asking: 1.2, trouble: 1.05, waiting: 0.95, idle: 0.85, done: 0.86, gone: 0.72 }
 
-function NeuronGlyph({ n, p, st, dark, born, delay }: { n: Neuron; p: { x: number; y: number; r: number }; st: NeuronState; dark: boolean; born: boolean; delay: number }) {
+export function NeuronGlyph({ n, p, st, dark, born, delay }: { n: Neuron; p: { x: number; y: number; r: number }; st: NeuronState; dark: boolean; born: boolean; delay: number }) {
   const acc = ACCENT[n.account.accent || 'slate']
   const r = p.r * (n.lead ? Math.max(1, SCALE[st]) : SCALE[st])
   const g = `nn-core-${n.account.accent || 'slate'}`
@@ -235,12 +235,15 @@ function linkStyle(l: Link, active: string, target: string, ultra: boolean): { s
 }
 
 /** Work under way along a line: a short bright comet with a soft tail, visible in a still too. */
-function Comet({ d, stroke, width }: { d: string; stroke: string; width: number }) {
+export function Comet({ d, stroke, width, on = true }: { d: string; stroke: string; width: number; on?: boolean }) {
+  // Kept on the line while it is quiet (hidden and paused), so it glides with the line when the
+  // network re-centres instead of appearing at the line's new place ahead of the neurons.
+  const run = on ? undefined : ('paused' as const)
   return (
-    <>
-      <path className="nn-flow" d={d} pathLength={100} fill="none" strokeWidth={width + 5} strokeLinecap="round" strokeDasharray="16 84" strokeOpacity={0.18} style={{ d: `path('${d}')`, stroke }} />
-      <path className="nn-flow" d={d} pathLength={100} fill="none" strokeWidth={width + 1.1} strokeLinecap="round" strokeDasharray="8 92" strokeOpacity={1} style={{ d: `path('${d}')`, stroke }} />
-    </>
+    <g className="nn-glow" style={{ opacity: on ? 1 : 0 }}>
+      <path className="nn-flow" d={d} pathLength={100} fill="none" strokeWidth={width + 5} strokeLinecap="round" strokeDasharray="16 84" strokeOpacity={0.18} style={{ d: `path('${d}')`, stroke, animationPlayState: run }} />
+      <path className="nn-flow" d={d} pathLength={100} fill="none" strokeWidth={width + 1.1} strokeLinecap="round" strokeDasharray="8 92" strokeOpacity={1} style={{ d: `path('${d}')`, stroke, animationPlayState: run }} />
+    </g>
   )
 }
 
@@ -428,7 +431,49 @@ export const NeuralNetwork = memo(function NeuralNetwork({
   }, [focus, net.links])
 
   const byId = useMemo(() => new Map(net.neurons.map((n) => [n.id, n])), [net.neurons])
-  const routes = useMemo(() => route(net, layout), [net, layout])
+  const fresh = useMemo(() => route(net, layout), [net, layout])
+  // A line that appears while the network re-centres starts where its neurons are now, not where
+  // they are going: drawn first from the old places, then, a frame later, glided to the new ones
+  // with the same timing as the neurons, so no line ever sticks out past a neuron mid-move.
+  const prevLayout = useRef<Layout | null>(null)
+  const seen = useRef<Set<string>>(new Set())
+  const [settled, nudge] = useState(0)
+  const routes = useMemo(() => {
+    const prev = prevLayout.current
+    if (!prev || !seen.current.size) return fresh
+    const pos = new Map(layout.pos)
+    let moved = false
+    for (const [id, p] of prev.pos) {
+      const now = pos.get(id)
+      if (now && (now.x !== p.x || now.y !== p.y)) {
+        pos.set(id, p)
+        moved = true
+      }
+    }
+    if (!moved) return fresh
+    const old = route(net, { ...layout, pos })
+    const oldTrunk = new Map(old.trunks.map((t) => [t.key, t.d]))
+    const oldLine = new Map(old.lines.map((x) => [`${x.l.key}${x.branch ? ':b' : ''}`, x.d]))
+    return {
+      ...fresh,
+      trunks: fresh.trunks.map((t) => (seen.current.has(t.key) ? t : { ...t, d: oldTrunk.get(t.key) ?? t.d })),
+      lines: fresh.lines.map((x) => {
+        const k = `${x.l.key}${x.branch ? ':b' : ''}`
+        return seen.current.has(k) ? x : { ...x, d: oldLine.get(k) ?? x.d }
+      }),
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh, net, layout, settled])
+  useEffect(() => {
+    prevLayout.current = layout
+    const keys = [...fresh.trunks.map((t) => t.key), ...fresh.lines.map((x) => `${x.l.key}${x.branch ? ':b' : ''}`)]
+    if (keys.every((k) => seen.current.has(k))) return
+    const raf = requestAnimationFrame(() => {
+      for (const k of keys) seen.current.add(k)
+      nudge((n) => n + 1)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [fresh, layout])
 
   // Names are written where they fit: the lead first, then those at work, then the rest.
   const { labelled, titles } = useMemo(() => {
@@ -551,7 +596,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({
             const grow = t.links.every((l) => born.has(l.to))
             return (
               <g key={t.key} className="nn-link" data-near={isNear ? '' : undefined}>
-                {live && variant !== 'mini' && !grow && <path d={t.d} fill="none" strokeWidth={width * 3.2} strokeOpacity={0.1} strokeLinecap="round" style={{ d: `path('${t.d}')`, stroke }} />}
+                {variant !== 'mini' && <path className="nn-glow" d={t.d} fill="none" strokeWidth={width * 3.2} strokeOpacity={0.1} strokeLinecap="round" style={{ d: `path('${t.d}')`, stroke, opacity: live && !grow ? 1 : 0 }} />}
                 <path
                   className={grow ? 'nn-grow' : undefined}
                   d={t.d}
@@ -563,7 +608,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({
                   strokeLinecap="round"
                   style={{ d: `path('${t.d}')`, stroke }}
                 />
-                {live && variant !== 'mini' && !grow && <Comet d={t.d} stroke={stroke} width={width} />}
+                {variant !== 'mini' && <Comet d={t.d} stroke={stroke} width={width} on={live && !grow} />}
               </g>
             )
           })}
@@ -577,8 +622,8 @@ export const NeuralNetwork = memo(function NeuralNetwork({
             const grow = born.has(l.to)
             return (
               <g key={`${l.key}${branch ? ':b' : ''}`} className="nn-link" data-near={isNear ? '' : undefined}>
-                {l.kind === 'handoff' && l.live > 0 && variant !== 'mini' && !grow && (
-                  <path d={d} fill="none" strokeWidth={st.width * 3} strokeOpacity={0.1} strokeLinecap="round" style={{ d: `path('${d}')`, stroke: st.stroke }} />
+                {l.kind === 'handoff' && variant !== 'mini' && (
+                  <path className="nn-glow" d={d} fill="none" strokeWidth={st.width * 3} strokeOpacity={0.1} strokeLinecap="round" style={{ d: `path('${d}')`, stroke: st.stroke, opacity: l.live > 0 && !grow ? 1 : 0 }} />
                 )}
                 <path
                   className={grow ? 'nn-grow' : undefined}
@@ -591,7 +636,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({
                   strokeDasharray={grow ? '100 100' : st.dash}
                   strokeLinecap="round"
                 />
-                {l.kind === 'handoff' && l.live > 0 && variant !== 'mini' && !grow && <Comet d={d} stroke={st.stroke} width={st.width} />}
+                {l.kind === 'handoff' && variant !== 'mini' && <Comet d={d} stroke={st.stroke} width={st.width} on={l.live > 0 && !grow} />}
               </g>
             )
           })}
@@ -710,7 +755,7 @@ export const NeuralNetwork = memo(function NeuralNetwork({
 
 const NO_TASK: Task[] = []
 
-function NeuronCard({ chatId, n, st, x, y, r, w, h, by }: { chatId: string; n: Neuron; st: NeuronState; x: number; y: number; r: number; w: number; h: number; by?: string }) {
+export function NeuronCard({ chatId, n, st, x, y, r, w, h, by }: { chatId: string; n: Neuron; st: NeuronState; x: number; y: number; r: number; w: number; h: number; by?: string }) {
   const agent = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, n.id)])
   const tasks = useStore((s) => s.tasks[chatId] ?? NO_TASK)
   const mine = tasks.filter((t) => t.to === n.id)

@@ -4,7 +4,7 @@ import { Dialog } from 'radix-ui'
 import { Activity, Plug, BookOpen, Check, CircleAlert, Download, FolderInput, Images, Info, Keyboard, LayoutGrid, MessageSquare, Moon, MousePointerClick, PanelRight, Pin, PinOff, Repeat, Search, Settings2, Square, SquarePen, Sun, Target, UserPlus, Users, Waypoints, X } from 'lucide-react'
 import type { GoalCheck, ModelRecord, PermissionLevel, SearchHit, Settings, VaultInfo } from '@shared/types'
 import { ROUND_PRESETS } from '@shared/auto'
-import { leadOf, useStore } from '@/store'
+import { isBusy, leadOf, useStore } from '@/store'
 import { api, baseName, cn, PERMISSIONS, relative, tildify } from '@/lib/util'
 import { Button, Kbd, Modal, Row, Segmented, Tip, Toggle, inputClass } from './ui'
 import { Orb } from './Orb'
@@ -15,6 +15,23 @@ import { plain } from './auto/plain'
 import { UltraGlyph } from './ultra/Ultra'
 
 /** Which folder of notes the team treats as its library. */
+/** Restarts into the demo team. The restart stops whatever the team is doing, so it asks first while anyone works. */
+function tryDemo(): void {
+  const s = useStore.getState()
+  const working = Object.values(s.agents).filter((st) => isBusy(st)).length
+  if (!working) {
+    void api.switchDemo(true)
+    return
+  }
+  s.setModal({
+    kind: 'confirm',
+    title: 'Restart into the demo team?',
+    body: `${working} ${working === 1 ? 'agent is' : 'agents are'} working. Restarting stops them; you can pick the work up again when you come back.`,
+    action: 'Restart',
+    run: () => void api.switchDemo(true),
+  })
+}
+
 function VaultPicker() {
   const vault = useStore((s) => s.vault)
   const path = useStore((s) => s.settings.vaultPath)
@@ -225,7 +242,7 @@ export function SettingsDialog() {
               onChange={(v) => set({ maxAgents: Number(v) })}
             />
           </Row>
-          <Row label="Agents one agent may start" hint="Keeps any single agent from fanning out too far. Sub-agents never start agents of their own.">
+          <Row label="Agents one agent may start" hint="Keeps any single agent below the lead from fanning out too far. How many levels deep a team may go depends on the way of working: two as a rule, more in Ultra and Go crazy.">
             <Picker<string>
               value={String(settings.maxPerAgent)}
               width={170}
@@ -248,6 +265,12 @@ export function SettingsDialog() {
             hint="Each account runs the strongest model it can afford: the top model while there is allowance to spare before it refills, a step down when it is running short or the top model's own allowance is used up. An account with a model picked by hand keeps it."
           >
             <Toggle checked={settings.smartModels} onChange={(smartModels) => set({ smartModels })} label="Choose models by allowance" />
+          </Row>
+          <Row
+            label="Hand over when an account runs out"
+            hint="When an account is about to run out of usage, or has, the work moves on by itself: the best placed teammate takes over as lead and is caught up, tasks move to someone with room, and agents move to an account that has some. Off: you are offered the switch instead."
+          >
+            <Toggle checked={settings.handover !== false} onChange={(handover) => set({ handover })} label="Hand over when an account runs out" />
           </Row>
           <Row
             label="Saving allowance"
@@ -354,7 +377,7 @@ export function SettingsDialog() {
           <span className="flex-1" />
           {!env.trial && (
             <Tip label="A scripted team to show someone: restarts the app; your chats stay as they are" side="top">
-              <button onClick={() => void api.switchDemo(true)} className="flex items-center gap-1.5 font-medium hover:text-ink">
+              <button onClick={tryDemo} className="flex items-center gap-1.5 font-medium hover:text-ink">
                 <Users className="size-3.5" /> Try the demo team
               </button>
             </Tip>
@@ -636,7 +659,7 @@ export function Palette() {
             {dark ? <Sun /> : <Moon />} Switch to {dark ? 'light' : 'dark'} appearance
           </Command.Item>
           {!env.trial && (
-            <Command.Item className={itemClass} value="try the demo team scripted show someone" onSelect={go(() => void api.switchDemo(true))}>
+            <Command.Item className={itemClass} value="try the demo team scripted show someone" onSelect={go(tryDemo)}>
               <Users />
               <span className="min-w-0 flex-1">
                 <span className="block">Try the demo team</span>

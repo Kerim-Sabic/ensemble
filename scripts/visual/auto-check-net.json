@@ -1,0 +1,13 @@
+[
+  { "size": [1400, 900], "theme": "light", "wait": 2400 },
+  { "js": "const click = (re) => { const b = [...document.querySelectorAll('button')].find(x => re.test(x.textContent || '') && !x.disabled); if (b) b.click(); return !!b }; click(/^\\s*Continue/); await new Promise(r => setTimeout(r, 1200)); click(/^\\s*Continue/); await new Promise(r => setTimeout(r, 1200)); click(/Start using Ensemble/); await new Promise(r => setTimeout(r, 1500)); const s = window.__ensemble.getState(); window.__lead = s.settings.leadId || s.accounts[0].id; window.__click = click; return 'onboarded ' + window.__ensemble.getState().settings.onboarded", "wait": 500 },
+  { "js": "const c = await window.ensemble.createChat({ cwd: null }); window.__m = c.id; await window.__ensemble.getState().openChat(c.id); await window.ensemble.send({ chatId: c.id, to: window.__lead, text: 'Add a pricing page', mode: 'plan' }); return 'plan'", "wait": 5000 },
+  { "js": "const a = window.__click(/^\\s*Leave it/); await new Promise(r => setTimeout(r, 300)); const b = window.__click(/^\\s*Send answer/); return 'leave ' + a + ' send ' + b", "wait": 2500, "shot": "checknet-01-plan-left.png" },
+  { "js": "await window.ensemble.send({ chatId: window.__m, to: window.__lead, text: 'What should the annual discount be?', mode: 'council' }); return 'council'", "wait": 8000, "shot": "checknet-02-council.png" },
+  { "js": "const c = await window.ensemble.createChat({ cwd: null }); window.__u = c.id; await window.__ensemble.getState().openChat(c.id); await window.ensemble.setUltra(c.id, true); await window.ensemble.send({ chatId: c.id, to: window.__lead, text: '/gocrazy design the landing page' }); window.__ensemble.getState().setView('flow'); return 'go crazy in Team view'", "wait": 5000, "shot": "checknet-03-network-early.png" },
+  { "wait": 12000, "shot": "checknet-04-network-mid.png" },
+  { "wait": 30000, "js": "const c = window.__ensemble.getState().chats.find(c => c.id === window.__u); return 'agents ' + (c?.agents || []).length + ' crazy ' + c?.crazy", "shot": "checknet-05-network-done.png" },
+  { "theme": "dark", "wait": 1200, "shot": "checknet-06-network-done-dark.png" },
+  { "size": [960, 800], "wait": 1200, "shot": "checknet-07-network-960-dark.png" },
+  { "size": [1400, 900], "theme": "light", "js": "window.__ensemble.getState().setModal({ kind: 'palette' }); return 'palette'", "wait": 900, "shot": "checknet-08-palette.png" }
+]

@@ -14,12 +14,6 @@ Free · open source · no Ensemble account
 
 [![Latest release](https://img.shields.io/github/v/release/Kerim-Sabic/ensemble?label=release)](https://github.com/Kerim-Sabic/ensemble/releases/latest) [![Windows 10 and 11](https://img.shields.io/badge/Windows-10%20%7C%2011-2f8cf0)](https://github.com/Kerim-Sabic/ensemble/releases/latest) [![MIT license](https://img.shields.io/badge/license-MIT-12a58a)](LICENSE)
 
-<!-- FILM GOES HERE: the short silent launch loop (MP4, H.264, under 10 MB). On github.com, edit this file,
-     drag the MP4 into the editor, copy the https://github.com/user-attachments/assets/... link it writes, and put
-     it here as:  <video src="LINK" width="100%" controls muted loop playsinline></video>
-     GitHub READMEs are not known to autoplay video, so keep the still network picture below as well.
-     Then delete this comment. -->
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/network-active-dark.png" />
   <img src="docs/screenshots/network-active.png" alt="The network view during one Go crazy request: the lead, 8 scouts, 4 builders with their critics and testers, a fact-checker three levels deep, and the judges" width="100%" />
@@ -35,7 +29,7 @@ Free · open source · no Ensemble account
 
 ---
 
-**Contents:** [What it does](#what-it-does) · [How it works](#how-it-works) · [Get started](#get-started) · [Ways to work](#ways-to-work) · [Live answers](#live-answers) · [Claude, ChatGPT or both](#claude-chatgpt-or-both) · [Cost](#what-it-costs) · [Your data](#where-your-data-goes) · [Limits](#honest-limits) · [FAQ](#faq) · [Roadmap](#roadmap) · [Contributing](#contributing)
+**Contents:** [What it does](#what-it-does) · [How it works](#how-it-works) · [Get started](#get-started) · [Ways to work](#ways-to-work) · [Brain view](#the-brain-view) · [Live answers](#live-answers) · [Claude, ChatGPT or both](#claude-chatgpt-or-both) · [Cost](#what-it-costs) · [When an account runs out](#when-an-account-runs-out) · [Your data](#where-your-data-goes) · [Limits](#honest-limits) · [FAQ](#faq) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 ## What it does
 
@@ -105,6 +99,8 @@ Ensemble never talks to a model itself and never reads a sign-in token. Every ag
 </tr>
 </table>
 
+**Steer while it works.** You don't have to wait for a reply to change course. A message you send while an agent is working reaches that work at its next step, and the agent carries on with it in mind. To wait for the reply instead, press <kbd>Alt</kbd>+<kbd>Enter</kbd>.
+
 ### Ultra, Go crazy and deep teams
 
 <img src="docs/media/network-forming.webp" alt="One /gocrazy request: the network of agents forms, works and settles, sped up" width="100%" />
@@ -112,13 +108,34 @@ Ensemble never talks to a model itself and never reads a sign-in token. Every ag
 <sub>One <code>/gocrazy</code> request with the demo team, about 35 seconds, sped up.</sub>
 
 - **Ultra** (Alt+U, or `/ultra on`) is for when the result matters more than the allowance. The lead writes a rubric first. Scouts on the fastest models research on the web, each on one angle. The strongest models each build their own complete version, without seeing the others. Judges who did none of the work score every version, the best one takes the best ideas of the rest, and it is refined and checked by running it or looking at it. Up to 20 extra agents. A thank-you or a small follow-up is still answered directly.
-- **Go crazy** (`/gocrazy`, in Ultra only) is the same at full scale: up to 32 extra agents, more builders, a round where the versions critique each other, and two rounds of judging.
-- **Deep teams.** Agents start agents. In Ultra each builder gets its own critic on a different model and a tester that runs or renders its draft, and a critic can start a fact-checker. A task stays open until its helpers have reported. Teams go two levels deep in an ordinary chat, three in Ultra and four in Go crazy.
+- **Go crazy** (`/gocrazy`, in Ultra only) is Ultra at full scale, organised like a brain. The lead starts regions for research, building, judging and memory, and each region has a lead of its own with a team under it. More builders, a round where the versions critique each other, and two rounds of judging. There is no fixed number of agents. Before each new agent, Ensemble checks how much this computer can carry (free memory and processor cores) and which accounts still have allowance. A goal set in Go crazy keeps Go crazy for every round.
+- **Deep teams.** Agents start agents. In Ultra each builder gets its own critic on a different model and a tester that runs or renders its draft, and a critic can start a fact-checker. A task stays open until its helpers have reported. Teams go two levels deep in an ordinary chat, three in Ultra and up to eight in Go crazy.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/network-done-dark.png" />
   <img src="docs/screenshots/network-done.png" alt="The network after a Go crazy request: scouts sent home and faded, builders with their critics and testers, a fact-checker three levels deep, a verifier under a judge" width="100%" />
 </picture>
+
+### The brain view
+
+When a chat runs Go crazy with a goal, the chat shows it as a brain. The lead sits in the centre, ringed by the goal's rounds, and the regions cluster around it: research, building, judging and memory, each with its own team. Pulses travel along the handoffs while agents work. Above the view you see the goal, the round, and what the last check said is still missing. When the goal is met, the view says so and points you to the lead's answer.
+
+<img src="docs/screenshots/brain-swarm-dark.png" alt="The brain view during a Go crazy goal with the demo team: the lead in the centre at round 2 of 6, regions for building, research, judging and memory around it, and the last check's verdict above" width="100%" />
+
+<sub>The demo team's own Go crazy run with a goal: 33 agents, four levels deep.</sub>
+
+<table>
+<tr>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/brain-48-dark.png" /><img src="docs/screenshots/brain-48.png" alt="The brain view at larger scale: 51 agents in research, building, critique, verification and memory regions, 31 of them working, with the overall score over rounds" /></picture></td>
+<td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/brain-met-dark.png" /><img src="docs/screenshots/brain-met.png" alt="The brain view when the goal is met: the lead marked Goal met after 2 rounds, the regions settled" /></picture></td>
+</tr>
+<tr>
+<td><b>At scale.</b> Fifty agents stay readable: each region is labelled with how many of its agents are working.</td>
+<td><b>Goal met.</b> The regions settle, and the view tells you where to find the answer.</td>
+</tr>
+</table>
+
+<sub>These two pictures were filled with made-up agents and tasks to show the view at a larger scale.</sub>
 
 ## Live answers
 
@@ -146,13 +163,24 @@ For anything else (a small game, a simulation, a one-off tool) an agent writes a
 
 ## Claude, ChatGPT or both
 
-Any mix is a full team: one account or six, all Claude, all ChatGPT, or both. Every account plans, builds, researches and reviews, and ChatGPT accounts also draw images. On a team of ChatGPT accounts alone nothing is missing: the lead, the goal checker, chat titles and the message improver all run on ChatGPT. Ultra adapts to whatever models the team has.
+Any mix is a full team: one account or six, all Claude, all ChatGPT, or both. Every account plans, builds, researches and reviews, and ChatGPT accounts also draw images. On a team of ChatGPT accounts alone nothing is missing: the lead, the goal checker, chat titles and the message improver all run on ChatGPT. A ChatGPT lead starts its Ultra and Go crazy teams through Ensemble, so every agent shows in the network and works with the rest of the team. Ultra adapts to whatever models the team has.
 
-**One real result, not the demo:** a small Ultra job on a team of ChatGPT accounts alone (2 scouts, 2 builders and a judge) took 569 seconds, and the winning version scored 39/40 against 34/40 in blind judging. One run and one job: an example, not a benchmark.
+**Design work with real images.** When the team has a ChatGPT account, design requests get an image agent of their own. It makes a moodboard of clearly different directions first, then the pictures and assets the builders need. The builders put them in place, and the judges see the screens with the real images.
 
 ## What it costs
 
-Ensemble is free and open source, with no Ensemble account and nothing to buy. It runs on the Claude and ChatGPT plans you already have, so there is nothing extra to pay and no API bill. It never shares, sells or pools accounts: everyone signs in with their own. It is careful with those plans: the lead gets the strongest model the allowance allows and the rest run a step below, every task's model is rated afterwards so cheaper models are trusted with the work they do well, and work waits for an account to refill rather than failing. Ultra is the exception: it spends fast, on purpose.
+Ensemble is free and open source, with no Ensemble account and nothing to buy. It runs on the Claude and ChatGPT plans you already have, so there is nothing extra to pay and no API bill. It never shares, sells or pools accounts: everyone signs in with their own. It is careful with those plans: the lead gets the strongest model the allowance allows and the rest run a step below, every task's model is rated afterwards so cheaper models are trusted with the work they do well, and work moves to an account with allowance left rather than failing. Ultra is the exception: it spends fast, on purpose.
+
+## When an account runs out
+
+You don't have to watch your limits. Ensemble keeps an eye on every account's session and weekly allowance, and the team panel shows each one as fine, **running low**, or **out until 19:32**.
+
+- **The lead runs out.** The teammate best placed takes over as lead by itself: the one with the most allowance left and the strongest model, from the same provider where possible. It is caught up on the chat and carries on with what was under way, including a goal. The chat shows one line: *"Hello took over as lead: Main ran out of usage. Main is back at 19:32."* When Main has allowance again, that line offers **Hand back to Main**. It never switches back on its own, because by then the new lead knows the chat.
+- **The lead is about to run out.** It hands over at the end of its reply, never in the middle of one.
+- **A teammate or an agent runs out.** Its task moves to someone with room. An agent the team started moves to another account and takes a summary of its work with it.
+- **Everyone is out.** The work waits, you are told once when it goes on by itself, and the first account to refill picks it up.
+
+Turn it off in Settings (*Hand over when an account runs out*) and you are offered the switch instead.
 
 ## Where your data goes
 
@@ -166,6 +194,7 @@ Ensemble is free and open source, with no Ensemble account and nothing to buy. I
 - **Windows only, today.** Windows 10 or 11, 64-bit.
 - **Plans have terms.** Ensemble uses each provider's own agent with your own sign-in, but how many accounts you may run, and how, is between you and each provider.
 - **Ultra uses allowance fast.** It is built to spend more for a better result. Leave it off for everyday work.
+- **Go crazy uses your computer too.** Every agent is a process on your computer, and Go crazy starts as many as your free memory, processor and allowance allow. Close heavy programs before a big run.
 - **Agents act in your folders.** You choose per chat how much they may do: ask first, edit freely, auto or full access.
 - **The installer isn't signed yet,** so Windows warns about an unknown publisher.
 
@@ -180,7 +209,7 @@ No. You sign in with your Claude or ChatGPT plan, the same way you would in Clau
 <details>
 <summary><b>Can I try it without signing in to anything?</b></summary>
 
-Yes, from source: run the app with its scripted demo team (see [Build from source](#build-from-source)). The pictures marked "demo team" above were made that way.
+Yes. On the first screen, choose **Try the demo team**: the app restarts with a scripted demo team, uses no account and no allowance, sends nothing anywhere, and says so in a bar at the top. **Sign in and use it for real** brings you back. It is also in the command palette and in Settings. The pictures marked "demo team" above were made with it.
 </details>
 
 <details>
@@ -213,7 +242,7 @@ Ideas, not promises. Tell us what you want most in [Issues](https://github.com/K
 
 - A signed installer, so Windows stops warning.
 - Live answers that keep their state after a restart.
-- Labels for each stage (scouts, builders, judges) in the network view.
+- Labels for each stage (scouts, builders, judges) in the ordinary network view, as the brain view already has for its regions.
 
 ## Everything else
 

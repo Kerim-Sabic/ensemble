@@ -294,10 +294,13 @@ function LoopGroup({ chatId, loops, now }: { chatId: string; loops: Loop[]; now:
 
 const NO_LOOPS: Loop[] = []
 
-/** Shown above the message box while the chat has a goal (until it is taken off) or loops that are not over. */
-export function AutoBar({ chatId }: { chatId: string }) {
+/**
+ * Shown above the message box while the chat has a goal (until it is taken off) or loops that are not over.
+ * `hideGoal`: the brain view shows the goal itself, so only the loops stay here.
+ */
+export function AutoBar({ chatId, hideGoal }: { chatId: string; hideGoal?: boolean }) {
   const chat = useStore((s): Chat | undefined => s.chats.find((c) => c.id === chatId))
-  const goal = chat?.goal || null
+  const goal = hideGoal ? null : chat?.goal || null
   const all = chat?.loops ?? NO_LOOPS
   const loops = all.filter((l) => l.status !== 'done')
   const show = !!goal || loops.length > 0

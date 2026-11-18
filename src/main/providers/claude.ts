@@ -115,6 +115,17 @@ export class ClaudeRuntime implements AgentRuntime {
   /** True once the current turn has touched a file, so there is something to undo. */
   private edited = false
   private turnId: ReturnType<typeof randomUUID> | null = null
+  /**
+   * Messages steered into the turn under way and not yet taken in. The agent program folds a
+   * message sent at priority 'next' into the running turn between its steps, and lists every
+   * message a turn has consumed in `user_message_uuids` on its frames; one it did not get to runs
+   * as a turn of its own straight after, which the app counts as part of the same turn.
+   */
+  private steered = new Set<string>()
+  /** A steered message the person stopped before it was taken in: its turn is let go unseen. */
+  private swallow = 0
+  private swallowUntil = 0
+  private steerWait: ReturnType<typeof setTimeout> | null = null
 
   constructor(private o: RuntimeOptions) {
     this.level = o.permission
@@ -214,6 +225,21 @@ export class ClaudeRuntime implements AgentRuntime {
   }
 
   private onMessage(m: SDKMessage): void {
+    // Steered messages a frame says the turn has taken in.
+    const took = (m as { user_message_uuids?: string[]; user_message_uuid?: string }).user_message_uuids || [(m as { user_message_uuid?: string }).user_message_uuid]
+    for (const u of took) if (u) this.steered.delete(u)
+    if (this.steerWait && m.type !== 'result') {
+      // The turn that carries a steered message has started: it ends with its own result.
+      clearTimeout(this.steerWait)
+      this.steerWait = null
+    }
+    // After a Stop, a steered message the program still held runs as a turn nobody asked for:
+    // it is stopped as soon as it starts and nothing of it is shown.
+    if (this.swallow && !this.inTurn && Date.now() < this.swallowUntil) {
+      if (m.type === 'result') this.swallow--
+      else if ((m.type === 'stream_event' || m.type === 'assistant') && this.q) void this.q.interrupt().catch(() => {})
+      if (m.type !== 'system') return
+    }
     switch (m.type) {
       case 'stream_event': {
         if (m.parent_tool_use_id) return
@@ -308,6 +334,11 @@ export class ClaudeRuntime implements AgentRuntime {
 
       case 'result': {
         if (!this.inTurn) return
+        // A steered message the turn did not get to runs next, as part of this same piece of work.
+        if (this.steered.size && !this.interrupted) {
+          this.awaitSteered()
+          return
+        }
         this.inTurn = false
         const failed = m.is_error || m.subtype !== 'success'
         const text = m.subtype === 'success' ? m.result : (m.errors || []).join('\n')
@@ -420,6 +451,47 @@ export class ClaudeRuntime implements AgentRuntime {
     })
   }
 
+  steer(input: TurnInput): boolean {
+    if (this.disposed || !this.q || !this.inTurn || this.interrupted) return false
+    const content: unknown[] = []
+    for (const p of input.images || []) {
+      try {
+        content.push({ type: 'image', source: { type: 'base64', media_type: mimeOf(p), data: fs.readFileSync(p).toString('base64') } })
+      } catch {
+        /* unreadable attachment: skip it */
+      }
+    }
+    content.push({ type: 'text', text: input.text })
+    const id = randomUUID()
+    this.steered.add(id)
+    this.input.push({
+      type: 'user',
+      uuid: id,
+      // 'next': taken into the turn under way at its next step, not after it ends ('later').
+      priority: 'next',
+      message: { role: 'user', content: (content.length === 1 ? input.text : content) as never },
+      parent_tool_use_id: null,
+      origin: { kind: 'human' },
+    })
+    return true
+  }
+
+  /**
+   * The turn ended with a steered message still waiting: the program runs it as its next turn at
+   * once. Should that turn not come (an older program that reports nothing), the work ends after a
+   * short wait rather than hanging.
+   */
+  private awaitSteered(): void {
+    if (this.steerWait) clearTimeout(this.steerWait)
+    this.steerWait = setTimeout(() => {
+      this.steerWait = null
+      if (!this.inTurn) return
+      this.steered.clear()
+      this.inTurn = false
+      this.emit({ type: 'turn-end', status: 'done', resultText: '', durationMs: Date.now() - this.turnStart })
+    }, 20_000)
+  }
+
   private restart(): void {
     this.input = new AsyncQueue<SDKUserMessage>()
     this.start()
@@ -428,6 +500,16 @@ export class ClaudeRuntime implements AgentRuntime {
   async interrupt(): Promise<void> {
     if (!this.q || !this.inTurn) return
     this.interrupted = true
+    // A steered message not yet taken in would otherwise run on its own after the Stop.
+    if (this.steered.size) {
+      this.swallow = this.steered.size
+      this.swallowUntil = Date.now() + 8000
+    }
+    this.steered.clear()
+    if (this.steerWait) {
+      clearTimeout(this.steerWait)
+      this.steerWait = null
+    }
     try {
       await this.q.interrupt()
     } catch {

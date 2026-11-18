@@ -7,7 +7,14 @@ export interface TurnInput {
   images?: string[]
   /** Who is speaking. Agents treat a person and a teammate differently. */
   origin: { kind: 'human' } | { kind: 'peer'; name: string }
+  /** For a message steered into a turn under way: the transcript row it belongs to. */
+  ref?: string
 }
+
+/** Said with a message the user sends into a turn under way, where the model reads it between steps. */
+export const STEER_NOTE = '(I sent this while you were working. Take it into account from here on.)'
+/** Said when the work had to be paused to take the message in, and goes on in a fresh turn. */
+export const STEER_RESUME = '(I sent this while you were working, so your work was paused for a moment. Carry on from where you were, taking this into account.)'
 
 export interface PermissionAsk {
   toolName: string
@@ -53,7 +60,11 @@ export type RuntimeEvent =
       /** Why it failed, when we can tell. */
       reason?: 'limit' | 'auth' | 'other'
       error?: string
+      /** Messages steered into this turn that never reached the agent (it was stopped, or failed, first): their refs. */
+      missed?: string[]
     }
+  /** A message steered into the turn under way has reached the agent. */
+  | { type: 'steered'; ref: string }
   | { type: 'exit'; error?: string }
 
 export interface RuntimeHost {
@@ -119,12 +130,27 @@ export interface RuntimeOptions {
   toolsUrl?: string
   /** Ask the provider to predict the person's next message after each reply. */
   suggestions?: boolean
+  /** Demo only: when the account's allowance is used up, so a scripted turn fails as a real one would. */
+  outUntil?: () => number | null
   host: RuntimeHost
 }
 
 export interface AgentRuntime {
   /** Begin a turn. The caller guarantees the previous turn has ended. */
   send(input: TurnInput): void
+  /**
+   * Hands the turn under way a message from the user. True when the runtime took it: it reaches
+   * the agent within this turn (reported by a 'steered' event), or is listed as missed when the
+   * turn ends. False when no turn is under way or the runtime cannot: the caller queues it instead.
+   */
+  steer?(input: TurnInput): boolean
+  /**
+   * Words for the turn under way, from the person, while the agent works. The runtime gets them
+   * into this same turn (between its steps, or by stopping at a safe point and carrying on at once
+   * with them) and ends the turn only once they have been taken in. Returns false when no turn is
+   * running, so the caller can line the message up for the next turn instead.
+   */
+  steer?(input: TurnInput): boolean
   interrupt(): Promise<void>
   setPermission(level: PermissionLevel): Promise<void>
   /** Puts files back to how they were before the turn a checkpoint belongs to. */

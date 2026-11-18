@@ -18,7 +18,7 @@ export const IUI_SCHEME = 'ensemble-app'
 export const IUI_PRIVILEGES = { scheme: IUI_SCHEME, privileges: { standard: true, secure: true } }
 
 /** The whole policy of a mini app. Nothing may be loaded from anywhere. */
-export const APP_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:"
+export const APP_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; form-action 'none'; base-uri 'none'"
 
 const pages = new Map<string, string>()
 const MAX_PAGES = 120
@@ -143,6 +143,8 @@ export function appPage(html: string, theme: unknown, dark: boolean): string {
 export function holdApp(req: unknown): string {
   const r = (req && typeof req === 'object' ? req : {}) as { html?: unknown; theme?: unknown; dark?: unknown }
   if (typeof r.html !== 'string' || !r.html.trim()) throw new Error('A mini app needs HTML')
+  // The window keeps mini apps small; the same limit holds here, whoever is asking.
+  if (r.html.length > 400_000) throw new Error('That mini app is too large')
   const id = randomBytes(12).toString('hex')
   pages.set(id, appPage(r.html, r.theme, r.dark === true))
   while (pages.size > MAX_PAGES) pages.delete(pages.keys().next().value as string)

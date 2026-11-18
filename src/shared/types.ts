@@ -91,6 +91,36 @@ export interface AccountUsage {
   weekly?: UsageWindow
   scoped?: { label: string; utilization: number; resetsAt: number | null }[]
   updatedAt: number
+  /** Where the account stands, worked out by the app from the windows above (see shared/failover.ts). */
+  supply?: Supply
+}
+
+/**
+ * Whether an account can take work: 'ok', 'low' (close to the end of its session or weekly
+ * window, so new work goes elsewhere while others have room) or 'out' (used up until `until`).
+ */
+export interface Supply {
+  state: 'ok' | 'low' | 'out'
+  /** When the window that decides this refills, when known. */
+  until: number | null
+  window?: 'session' | 'weekly'
+}
+
+/**
+ * A lead that ran out (or was about to) and the teammate who took over by itself. Kept on the
+ * chat until the lead changes again, so the window can say "covered by" and offer to hand back.
+ */
+export interface Cover {
+  from: string
+  to: string
+  at: number
+  why: 'out' | 'low'
+  /** When the old lead's allowance refills, when known. */
+  until: number | null
+  /** The old lead has allowance again: the handover row offers to hand back. */
+  back?: boolean
+  /** The handover row in the new lead's transcript. */
+  itemId: string
 }
 
 export interface Settings {
@@ -151,6 +181,12 @@ export interface Settings {
   goalRounds: number
   /** Who says a goal is met: a fresh checker that did not do the work, or the lead's own word. */
   goalCheck: GoalCheck
+  /**
+   * When an account runs out of usage (or is about to), the work moves on by itself: the best
+   * placed teammate takes over as lead, tasks move, started agents move to an account with room.
+   * Off: the lead is only offered a switch, as before.
+   */
+  handover: boolean
 }
 
 /** What the team has learned about one model family. */
@@ -194,6 +230,8 @@ export interface Chat {
   leadId?: string | null
   /** Set when the lead changed mid-chat. The new lead is caught up with its next message. */
   handoff?: { from: string; reason: 'limit' | 'manual' } | null
+  /** Set when a teammate took over as lead by itself because the lead ran out of usage. */
+  cover?: Cover | null
   /**
    * Set when the app was closed, or crashed, while this chat's team was working: what was cut
    * short, so it can be picked up again. `told` means the lead has already been told.
@@ -225,6 +263,11 @@ export interface Chat {
    * the strongest models, full effort). It stays on until it is turned off. '/gocrazy' needs it.
    */
   ultra?: boolean
+  /**
+   * True while the lead works in Go crazy: a Go crazy run under way, or a goal set in Go crazy that
+   * is not over yet. Set by the app; arrives with the usual `chat` event.
+   */
+  crazy?: boolean
 }
 
 // ───────────── goals, loops and ways of working ─────────────
@@ -273,6 +316,11 @@ export interface Goal {
   log: { round: number; ts: number; met: boolean; note: string }[]
   /** A check is being made right now. */
   checking?: boolean
+  /**
+   * The way of working the goal was set in, when it was Ultra or Go crazy: every round runs that
+   * way (its note, its cap and depth) until the goal ends.
+   */
+  mode?: WorkMode
 }
 
 export interface GoalInput {
@@ -282,6 +330,8 @@ export interface GoalInput {
   /** A time limit, in minutes from now. */
   minutes?: number | null
   check?: GoalCheck
+  /** Set by the app: the way of working the goal keeps for every round (only 'ultra' or 'gocrazy' are kept). */
+  mode?: WorkMode
 }
 
 /** 'more' gives a goal that ran out of rounds or time another batch and carries on. */
@@ -375,7 +425,7 @@ interface ItemBase {
 
 export type Item =
   /** withdrawn: the user took it back before it started; it is not shown and was never sent. */
-  | (ItemBase & { kind: 'user'; text: string; attachments?: Attachment[]; queued?: boolean; withdrawn?: boolean })
+  | (ItemBase & { kind: 'user'; text: string; attachments?: Attachment[]; queued?: boolean; withdrawn?: boolean; steered?: boolean })
   | (ItemBase & {
       kind: 'peer'
       from: string
@@ -443,6 +493,8 @@ export type Item =
       text: string
       /** A one-click way out of the problem the notice describes. */
       action?: { kind: 'switch-lead'; to: string; done?: boolean } | { kind: 'resume'; done?: boolean }
+      /** The app moved the lead by itself because the old one ran out of usage: drawn as a handover row. */
+      handover?: { from: string; to: string; why: 'out' | 'low'; until: number | null }
     })
   | (ItemBase & {
       /**
@@ -514,6 +566,8 @@ export interface Task {
   result?: string
   /** Who had this first, when it was moved to someone else. */
   movedFrom?: string
+  /** How many times it moved because its owner ran out of usage. */
+  moves?: number
   /** The model and effort the lead asked for, when it chose them for this task. */
   model?: string
   modelLabel?: string
@@ -878,6 +932,12 @@ export interface EnsembleApi {
   setChatLead(id: string, accountId: string, retry?: boolean): Promise<Chat>
   /** Takes back a message of yours that is waiting and has not started. False when it already started or is gone. */
   dequeue(chatId: string, accountId: string, itemId: string): Promise<boolean>
+  /**
+   * A message for an agent that is working: it reaches the work under way instead of waiting for
+   * it to end. 'steered' when it did; 'sent' when the agent was not working, or the message is a
+   * command, a goal, a loop or a way of working, so it went the usual way.
+   */
+  steer(req: SendRequest): Promise<'steered' | 'sent'>
   /** Picks up what was cut short when the app closed: interrupted tasks start again and the lead is told. */
   resumeChat(id: string): Promise<void>
   /** Leaves what was cut short as it is. */

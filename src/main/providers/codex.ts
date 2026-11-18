@@ -29,6 +29,19 @@ export function codexOwnModel(configDir: string | null): string | undefined {
   }
 }
 
+/**
+ * What every ChatGPT agent's program is started with: the team's tool server and connectors, and
+ * none of the program's own agent tools. Codex has helpers of its own (`collaboration.spawn_agent`
+ * and the rest, its "multi_agent" feature) that a model reaches for before the team's
+ * `spawn_agent`: agents started that way are invisible to the app, so a ChatGPT lead in Go crazy
+ * looked as if it had started only one or two. `[agents].enabled = false` takes those tools away
+ * (as the program's own config docs say), and the old `[features].multi_agent` switch covers its
+ * fallback. The sleep tool goes too: reports are handed over between turns, so waiting holds them back.
+ */
+export function codexConfig(servers: Record<string, unknown>): Record<string, unknown> {
+  return { ...(Object.keys(servers).length ? { mcp_servers: servers } : {}), features: { sleep_tool: false, multi_agent: false }, agents: { enabled: false } }
+}
+
 function threadOptions(o: RuntimeOptions, level: PermissionLevel): ThreadOptions {
   // Codex has no way to ask for approval when driven from another app, so the
   // permission level is expressed purely as how tight the sandbox is.
@@ -64,6 +77,14 @@ export class CodexRuntime implements AgentRuntime {
   private abort: AbortController | null = null
   private disposed = false
   private interrupted = false
+  /**
+   * Words the person sent while a turn ran. A ChatGPT turn takes no input once it has started, so
+   * the run is stopped at the next safe point and the same conversation carries on at once with
+   * them: one piece of work for the app, two runs underneath.
+   */
+  private steerQueue: TurnInput[] = []
+  /** The run under way was stopped to take in steered words, not by the person. */
+  private steering = false
   private briefed: boolean
   private level: PermissionLevel
   private threadId: string | null
@@ -79,7 +100,7 @@ export class CodexRuntime implements AgentRuntime {
     const servers: Record<string, unknown> = { ...(o.connectors || {}), ...(o.toolsUrl ? { team: { url: o.toolsUrl, default_tools_approval_mode: 'approve', tool_timeout_sec: 900 } } : {}) }
     // Codex gives its models a sleep tool, and they use it to wait for a teammate's report. Reports
     // are only handed over between turns, so that waiting holds back the very thing it waits for.
-    const config = { ...(Object.keys(servers).length ? { mcp_servers: servers } : {}), features: { sleep_tool: false } } as unknown as CodexOptions['config']
+    const config = codexConfig(servers) as unknown as CodexOptions['config']
     this.codex = new Codex({
       env: codexEnv(o.configDir),
       ...(o.executable ? { codexPathOverride: o.executable } : {}),
@@ -101,10 +122,12 @@ export class CodexRuntime implements AgentRuntime {
     void this.run(input)
   }
 
-  private async run(input: TurnInput): Promise<void> {
+  private async run(first: TurnInput): Promise<void> {
     const started = Date.now()
     this.interrupted = false
+    this.steering = false
     this.abort = new AbortController()
+    let input: TurnInput = first
     const ids = new Map<string, string>()
     const idFor = (raw: string): string => {
       let id = ids.get(raw)
@@ -118,110 +141,127 @@ export class CodexRuntime implements AgentRuntime {
     let ended = false
     let tokens: number | undefined
 
-    let text = input.text
-    if (!this.briefed) {
-      const again = this.threadId ? 'Your role or the team has changed. This briefing replaces the one you were given earlier.\n\n' : ''
-      text = `<team-briefing>\n${again}${this.o.briefing}\n</team-briefing>\n\n${text}`
-      this.briefed = true
-    }
-    const payload: Input = input.images?.length
-      ? [{ type: 'text', text }, ...input.images.map((p) => ({ type: 'local_image' as const, path: p }))]
-      : text
+    for (;;) {
+      let text = input.text
+      if (!this.briefed) {
+        const again = this.threadId ? 'Your role or the team has changed. This briefing replaces the one you were given earlier.\n\n' : ''
+        text = `<team-briefing>\n${again}${this.o.briefing}\n</team-briefing>\n\n${text}`
+        this.briefed = true
+      }
+      const payload: Input = input.images?.length
+        ? [{ type: 'text', text }, ...input.images.map((p) => ({ type: 'local_image' as const, path: p }))]
+        : text
 
-    const onItem = (phase: 'started' | 'updated' | 'completed', item: ThreadItem): void => {
-      const id = idFor(item.id)
-      const begin = (name: string, inp: unknown): void => {
-        if (open.has(id)) this.emit({ type: 'tool-input', id, input: inp })
-        else {
-          open.add(id)
-          steps++
-          this.emit({ type: 'tool-start', id, name, input: inp })
-        }
-      }
-      const finish = (output: string, isError: boolean): void => {
-        if (!open.has(id)) return
-        open.delete(id)
-        this.emit({ type: 'tool-end', id, output: clip(output, 16000), isError })
-      }
-      switch (item.type) {
-        case 'agent_message':
-          if (phase !== 'completed') return
-          last = item.text
-          this.emit({ type: 'text-start', id })
-          this.emit({ type: 'text-end', id, text: item.text })
-          return
-        case 'reasoning':
-          if (phase !== 'completed') return
-          this.emit({ type: 'thinking-start', id })
-          this.emit({ type: 'thinking-end', id, text: item.text })
-          return
-        case 'command_execution':
-          begin('Shell', { command: prettyCommand(item.command) })
-          if (phase === 'completed') finish(item.aggregated_output || '', item.status === 'failed' || (item.exit_code ?? 0) !== 0)
-          return
-        case 'file_change': {
-          const names = item.changes.map((c) => path.basename(c.path))
-          const summary = names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(', ')
-          begin('FileChange', { summary, changes: item.changes })
-          finish(item.changes.map((c) => `${c.kind}  ${c.path}`).join('\n'), item.status === 'failed')
-          return
-        }
-        case 'mcp_tool_call':
-          begin(`mcp__${item.server}__${item.tool}`, item.arguments)
-          if (phase === 'completed') {
-            const out = item.error
-              ? item.error.message
-              : (item.result?.content || []).map((c) => ('text' in c && typeof c.text === 'string' ? c.text : '')).join('\n')
-            finish(out, item.status === 'failed')
+      const onItem = (phase: 'started' | 'updated' | 'completed', item: ThreadItem): void => {
+        const id = idFor(item.id)
+        const begin = (name: string, inp: unknown): void => {
+          if (open.has(id)) this.emit({ type: 'tool-input', id, input: inp })
+          else {
+            open.add(id)
+            steps++
+            this.emit({ type: 'tool-start', id, name, input: inp })
           }
-          return
-        case 'web_search':
-          begin('WebSearch', { query: item.query })
-          if (phase === 'completed') finish('', false)
-          return
-        case 'todo_list':
-          begin('Todo', { todos: item.items.map((t) => ({ content: t.text, status: t.completed ? 'completed' : 'pending' })) })
-          if (phase === 'completed') finish('', false)
-          return
-        case 'error':
-          // A task may ask for another model than the one before it: that is the app's doing, not a problem to report.
-          if (phase === 'completed' && !/recorded with model .+ but is resuming with/i.test(item.message)) this.emit({ type: 'notice', level: 'warn', text: item.message })
-          return
-      }
-    }
-
-    try {
-      const { events } = await this.thread.runStreamed(payload, { signal: this.abort.signal })
-      for await (const ev of events) {
-        if (ev.type === 'thread.started') {
-          this.threadId = ev.thread_id
-          this.emit({ type: 'session', sessionId: ev.thread_id, model: this.o.model || this.o.defaultModel || undefined })
-        } else if (ev.type === 'item.started') onItem('started', ev.item)
-        else if (ev.type === 'item.updated') onItem('updated', ev.item)
-        else if (ev.type === 'item.completed') onItem('completed', ev.item)
-        else if (ev.type === 'turn.failed') {
-          error = ev.error.message
-          ended = true
-          break
-        } else if (ev.type === 'error') {
-          error = ev.message
-        } else if (ev.type === 'turn.completed') {
-          ended = true
-          tokens = ev.usage?.output_tokens || undefined
-          // The process can linger after the turn (it does after image
-          // generation), so the event is the signal, not the exit.
-          break
+        }
+        const finish = (output: string, isError: boolean): void => {
+          if (!open.has(id)) return
+          open.delete(id)
+          this.emit({ type: 'tool-end', id, output: clip(output, 16000), isError })
+        }
+        switch (item.type) {
+          case 'agent_message':
+            if (phase !== 'completed') return
+            last = item.text
+            this.emit({ type: 'text-start', id })
+            this.emit({ type: 'text-end', id, text: item.text })
+            return
+          case 'reasoning':
+            if (phase !== 'completed') return
+            this.emit({ type: 'thinking-start', id })
+            this.emit({ type: 'thinking-end', id, text: item.text })
+            return
+          case 'command_execution':
+            begin('Shell', { command: prettyCommand(item.command) })
+            if (phase === 'completed') finish(item.aggregated_output || '', item.status === 'failed' || (item.exit_code ?? 0) !== 0)
+            return
+          case 'file_change': {
+            const names = item.changes.map((c) => path.basename(c.path))
+            const summary = names.length > 2 ? `${names.slice(0, 2).join(', ')} and ${names.length - 2} more` : names.join(', ')
+            begin('FileChange', { summary, changes: item.changes })
+            finish(item.changes.map((c) => `${c.kind}  ${c.path}`).join('\n'), item.status === 'failed')
+            return
+          }
+          case 'mcp_tool_call':
+            begin(`mcp__${item.server}__${item.tool}`, item.arguments)
+            if (phase === 'completed') {
+              const out = item.error
+                ? item.error.message
+                : (item.result?.content || []).map((c) => ('text' in c && typeof c.text === 'string' ? c.text : '')).join('\n')
+              finish(out, item.status === 'failed')
+            }
+            return
+          case 'web_search':
+            begin('WebSearch', { query: item.query })
+            if (phase === 'completed') finish('', false)
+            return
+          case 'todo_list':
+            begin('Todo', { todos: item.items.map((t) => ({ content: t.text, status: t.completed ? 'completed' : 'pending' })) })
+            if (phase === 'completed') finish('', false)
+            return
+          case 'error':
+            // A task may ask for another model than the one before it: that is the app's doing, not a problem to report.
+            if (phase === 'completed' && !/recorded with model .+ but is resuming with/i.test(item.message)) this.emit({ type: 'notice', level: 'warn', text: item.message })
+            return
         }
       }
-    } catch (e) {
-      if (!this.interrupted) error = (e as Error).message
-    } finally {
+
       try {
-        this.abort?.abort()
-      } catch {
-        /* nothing left to stop */
+        const { events } = await this.thread.runStreamed(payload, { signal: this.abort.signal })
+        for await (const ev of events) {
+          if (ev.type === 'thread.started') {
+            this.threadId = ev.thread_id
+            this.emit({ type: 'session', sessionId: ev.thread_id, model: this.o.model || this.o.defaultModel || undefined })
+          } else if (ev.type === 'item.started') onItem('started', ev.item)
+          else if (ev.type === 'item.updated') onItem('updated', ev.item)
+          else if (ev.type === 'item.completed') onItem('completed', ev.item)
+          else if (ev.type === 'turn.failed') {
+            error = ev.error.message
+            ended = true
+            break
+          } else if (ev.type === 'error') {
+            error = ev.message
+          } else if (ev.type === 'turn.completed') {
+            ended = true
+            tokens = ev.usage?.output_tokens || undefined
+            // The process can linger after the turn (it does after image
+            // generation), so the event is the signal, not the exit.
+            break
+          }
+        }
+      } catch (e) {
+        if (!this.interrupted && !this.steering) error = (e as Error).message
+      } finally {
+        try {
+          this.abort?.abort()
+        } catch {
+          /* nothing left to stop */
+        }
+        this.abort = null
       }
-      this.abort = null
+      if (this.disposed) return
+      // Stopped to take in what the person just said: the same conversation carries on at once.
+      const more = this.steerQueue.splice(0)
+      if (!more.length || this.interrupted || (error && !this.steering)) break
+      for (const id of open) this.emit({ type: 'tool-end', id, output: 'Stopped here to read your new message.', isError: false })
+      open.clear()
+      error = undefined
+      ended = false
+      this.steering = false
+      this.abort = new AbortController()
+      input = {
+        text: `${more.map((m) => m.text).join('\n\n')}\n\n(The person sent this while you were working, so your last step was stopped to let you read it. Carry on from where you were, taking it into account.)`,
+        images: more.flatMap((m) => m.images || []),
+        origin: { kind: 'human' },
+      }
     }
     if (this.disposed) return
 
@@ -257,9 +297,23 @@ export class CodexRuntime implements AgentRuntime {
     }
   }
 
+  steer(input: TurnInput): boolean {
+    if (this.disposed || !this.abort || this.interrupted) return false
+    this.steerQueue.push(input)
+    // A ChatGPT run takes no input once started: stop it where it is (a command or search is cut
+    // short; files already written stay written) and carry on with the new words.
+    if (!this.steering) {
+      this.steering = true
+      this.abort.abort()
+    }
+    return true
+  }
+
   async interrupt(): Promise<void> {
     if (!this.abort) return
     this.interrupted = true
+    // What was steered in and not yet read goes with the stopped work.
+    this.steerQueue = []
     this.abort.abort()
   }
 

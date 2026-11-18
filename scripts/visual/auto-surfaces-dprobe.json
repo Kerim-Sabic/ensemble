@@ -1,0 +1,34 @@
+[
+{
+"size": [
+1920,
+1080
+],
+"theme": "dark",
+"wait": 1800
+},
+{
+"js": "document.documentElement.style.zoom = '1'; \nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'onboarded=' + window.__ensemble.getState().settings.onboarded + ' size=' + innerWidth + 'x' + innerHeight + ' dpr=' + devicePixelRatio;\n",
+"wait": 1000
+},
+{
+"js": "\nconst s = window.__ensemble.getState();\nconst ren = { 'Claude 3': 'Nova', 'Hello': 'Juno', 'ChatGPT': 'Atlas' };\nfor (const a of s.accounts) if (ren[a.name]) await window.ensemble.updateAccount(a.id, { name: ren[a.name] });\nawait window.ensemble.updateSettings({ sidebarCollapsed: true, inspector: false });\nawait new Promise(r => setTimeout(r, 300));\nreturn window.__ensemble.getState().accounts.map(a => a.name).join(', ');\n",
+"wait": 300
+},
+{
+"js": "\nwindow.__R = 1;\nconst keep = () => { if (document.documentElement.dataset.away !== 'false') document.documentElement.dataset.away = 'false'; };\nnew MutationObserver(keep).observe(document.documentElement, { attributes: true, attributeFilter: ['data-away'] }); keep();\nsetInterval(() => { for (const a of document.getAnimations()) if (a.playbackRate !== window.__R) a.playbackRate = window.__R; }, 10);\nreturn 'slowed to ' + window.__R;\n",
+"wait": 50
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__scroller = () => document.querySelector('[data-view-scope]')?.parentElement;\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); if (!c) return 'no chat'; const ag = c.agents || []; const t = s.tasks[c.id] || []; const busy = Object.values(s.agents).filter(a => a.chatId === c.id && a.phase !== 'idle' && a.phase !== 'error').length; return 'ag ' + ag.length + ' gone ' + ag.filter(a => a.spawned?.gone).length + ' tasks ' + t.filter(x => x.status === 'done').length + '/' + t.length + ' busy ' + busy + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "\nconst st = window.__ensemble; const api = window.ensemble;\nconst chat = await api.createChat({});\nawait st.getState().openChat(chat.id);\nawait api.setUltra(chat.id, true);\nawait api.updateChat(chat.id, { title: 'Design the landing page' });\nlocalStorage.setItem('ensemble.flow.feed', '0');\nst.getState().setView('flow');\nawait new Promise(r => setTimeout(r, 800));\nreturn document.querySelectorAll('.nn-node').length + ' neurons before start, view ' + st.getState().view;\n",
+"wait": 300
+},
+{
+"js": "window.__ensemble.getState().send('/gocrazy design the landing page'); \nconst t0 = Date.now(); let n0 = window.__S().chats.find(c => c.id === window.__S().chatId).agents?.length || 0;\nwhile (Date.now() - t0 < 60000) { const n = window.__S().chats.find(c => c.id === window.__S().chatId).agents?.length || 0; if (n >= 9) break; await window.__sleep(20); }\nawait window.__sleep(30);\nconst an = document.getAnimations().filter(a => a.transitionProperty).map(a => a.transitionProperty);\nconst count = {}; for (const p of an) count[p] = (count[p] || 0) + 1;\nconst p = document.querySelector('.nn-link path');\nreturn 'transitions running: ' + JSON.stringify(count) + ' | computed d sample: ' + (p ? getComputedStyle(p).d.slice(0, 40) : 'none') + ' | transition css: ' + (p ? getComputedStyle(p).transition.slice(0, 80) : '');\n",
+"wait": 100
+}
+]

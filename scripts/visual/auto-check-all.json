@@ -1,0 +1,44 @@
+[
+  { "size": [1400, 900], "theme": "light", "wait": 2600, "shot": "check-01-firstrun.png" },
+  { "js": "window.__c = { click(re) { const b = [...document.querySelectorAll('button')].find(x => re.test(x.textContent || '') && !x.disabled); if (b) b.click(); return !!b }, s() { return window.__ensemble.getState() }, lead() { const s = window.__ensemble.getState(); return s.settings.leadId || s.accounts[0].id }, async fresh(title) { const c = await window.ensemble.createChat({ cwd: null }); await window.__ensemble.getState().openChat(c.id); window.__ensemble.getState().setView('chat'); return c.id } }; return 'continue: ' + window.__c.click(/^\\s*Continue/)", "wait": 1500 },
+  { "js": "const a = window.__c.click(/^\\s*Continue/); return 'memory continue: ' + a + ' | buttons: ' + [...document.querySelectorAll('button')].map(b => (b.textContent||'').trim()).filter(Boolean).slice(0, 12).join(' / ')", "wait": 1500, "shot": "check-02-onboarding-memory.png" },
+  { "js": "const a = window.__c.click(/Start using Ensemble/); return 'start: ' + a", "wait": 2000 },
+  { "js": "const s = window.__c.s(); return 'onboarded: ' + s.settings.onboarded + ' | accounts: ' + s.accounts.map(a => a.name).join(', ') + ' | lead: ' + window.__c.lead()", "wait": 300, "shot": "check-03-after-onboarding.png" },
+
+  { "js": "const id = await window.__c.fresh(); window.__c.normal = id; await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: 'Add a pricing page with a monthly and yearly toggle' }); return 'normal chat ' + id", "wait": 9000, "shot": "check-04-normal-mid.png" },
+  { "wait": 22000, "shot": "check-05-normal-done.png" },
+  { "js": "const tables = [...document.querySelectorAll('table')]; const t = tables[tables.length - 1]; if (!t) return 'no table on screen'; t.scrollIntoView({ block: 'center' }); const ths = [...t.querySelectorAll('th')]; const h = ths.find(x => /discount|tiers|price/i.test(x.textContent || '')) || ths[1]; (h?.querySelector('button') || h)?.click(); return 'tables: ' + tables.length + ' | headers: ' + ths.map(x => (x.textContent||'').trim()).join(' / ')", "wait": 800, "shot": "check-06-table-sorted.png" },
+  { "js": "const b = [...document.querySelectorAll('button')].find(x => /chart/i.test((x.getAttribute('aria-label') || '') + (x.title || '') + (x.textContent || ''))); if (b) { b.scrollIntoView({ block: 'center' }); b.click() } return 'chart button: ' + !!b + (b ? ' (' + ((b.getAttribute('aria-label') || b.title || b.textContent || '').trim()) + ')' : '')", "wait": 1200, "shot": "check-07-table-chart.png" },
+
+  { "js": "const id = await window.__c.fresh(); await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: 'Add a pricing page', goal: { doneWhen: 'the tests pass and the page was opened' } }); return 'goal chat'", "wait": 6000, "shot": "check-08-goal-mid.png" },
+  { "wait": 14000, "js": "const c = window.__c.s().chats.find(c => c.id === window.__c.s().chatId); return 'goal: ' + c?.goal?.status + ' round ' + c?.goal?.round", "shot": "check-09-goal-met.png" },
+
+  { "js": "const id = await window.__c.fresh(); window.__c.loopChat = id; await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: 'Check whether the deploy is live', loop: { every: 600000, until: 'the deploy is live' } }); return 'loop chat'", "wait": 4000, "shot": "check-10-loop-run1.png" },
+  { "js": "const c = window.__c.s().chats.find(c => c.id === window.__c.loopChat); const l = c?.loops?.[0]; if (l) await window.ensemble.runLoop(c.id, l.id); return 'loop ' + l?.status + ' runs ' + l?.runs", "wait": 4000 },
+  { "js": "const c = window.__c.s().chats.find(c => c.id === window.__c.loopChat); const l = c?.loops?.[0]; if (l && l.status === 'active') await window.ensemble.runLoop(c.id, l.id); return 'loop ' + l?.status + ' runs ' + l?.runs", "wait": 5000 },
+  { "js": "const c = window.__c.s().chats.find(c => c.id === window.__c.loopChat); const l = c?.loops?.[0]; return 'loop ' + l?.status + ' runs ' + l?.runs + ' note ' + l?.note", "wait": 300, "shot": "check-11-loop-done.png" },
+
+  { "js": "const id = await window.__c.fresh(); window.__c.modes = id; await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: 'What should the annual discount be?', mode: 'quick' }); return 'quick'", "wait": 4000, "shot": "check-12-quick.png" },
+  { "js": "await window.ensemble.send({ chatId: window.__c.modes, to: window.__c.lead(), text: 'Add a pricing page', mode: 'plan' }); return 'plan'", "wait": 5000, "shot": "check-13-plan.png" },
+  { "js": "const ok = window.__c.click(/^\\s*Leave it/); return 'left plan: ' + ok", "wait": 2500 },
+  { "js": "await window.ensemble.send({ chatId: window.__c.modes, to: window.__c.lead(), text: 'What should the annual discount be?', mode: 'council' }); return 'council'", "wait": 7000, "shot": "check-14-council.png" },
+  { "js": "const id = await window.__c.fresh(); await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: 'Add a pricing page with a monthly and yearly toggle', mode: 'thorough' }); return 'thorough'", "wait": 12000, "shot": "check-15-thorough.png" },
+  { "js": "const id = await window.__c.fresh(); await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: 'How do SaaS products price annual plans?', mode: 'research' }); return 'research'", "wait": 12000, "shot": "check-16-research.png" },
+
+  { "js": "const id = await window.__c.fresh(); window.__c.ultra = id; await window.ensemble.setUltra(id, true); await window.ensemble.send({ chatId: id, to: window.__c.lead(), text: '/gocrazy design the landing page' }); window.__ensemble.getState().setView('team'); return 'go crazy'", "wait": 5000, "shot": "check-17-network-early.png" },
+  { "js": "const c = window.__c.s().chats.find(c => c.id === window.__c.ultra); return 'agents ' + (c?.agents || []).length + ' crazy ' + c?.crazy", "wait": 14000, "shot": "check-18-network-mid.png" },
+  { "wait": 26000, "js": "const c = window.__c.s().chats.find(c => c.id === window.__c.ultra); return 'agents ' + (c?.agents || []).length + ' crazy ' + c?.crazy", "shot": "check-19-network-done.png" },
+  { "js": "window.__ensemble.getState().setView('chat'); return 'chat view'", "wait": 1500, "shot": "check-20-ultra-answer.png" },
+  { "js": "const b = [...document.querySelectorAll('button')].filter(x => /Use version B/.test(x.textContent || '')).pop(); if (b) { b.scrollIntoView({ block: 'center' }); b.click() } return 'clicked Use version B: ' + !!b", "wait": 5000, "shot": "check-21-chose-B.png" },
+
+  { "js": "window.__ensemble.getState().setView('now'); return 'mission control'", "wait": 1500, "shot": "check-22-mission.png" },
+  { "js": "window.__ensemble.getState().setModal({ kind: 'settings' }); return 'settings'", "wait": 1200, "shot": "check-23-settings.png" },
+  { "js": "window.__ensemble.getState().setModal({ kind: 'palette' }); return 'palette'", "wait": 900, "shot": "check-24-palette.png" },
+  { "js": "window.__ensemble.getState().setModal(null); await window.__ensemble.getState().openChat(window.__c.ultra); window.__ensemble.getState().setView('chat'); return 'back'", "theme": "dark", "wait": 1500, "shot": "check-25-ultra-answer-dark.png" },
+  { "js": "window.__ensemble.getState().setView('team'); return 'team dark'", "wait": 1500, "shot": "check-26-network-dark.png" },
+  { "js": "window.__ensemble.getState().setView('now'); return 'mission dark'", "wait": 1200, "shot": "check-27-mission-dark.png" },
+  { "js": "await window.__ensemble.getState().openChat(window.__c.normal); window.__ensemble.getState().setView('chat'); return 'normal dark'", "wait": 1500, "shot": "check-28-normal-dark.png" },
+  { "size": [900, 800], "theme": "light", "js": "await window.__ensemble.getState().openChat(window.__c.ultra); window.__ensemble.getState().setView('chat'); return '900'", "wait": 1500, "shot": "check-29-ultra-900-light.png" },
+  { "js": "window.__ensemble.getState().setView('team'); return 'team 900'", "theme": "dark", "wait": 1500, "shot": "check-30-network-900-dark.png" },
+  { "js": "await window.__ensemble.getState().openChat(window.__c.normal); window.__ensemble.getState().setView('chat'); return 'normal 900'", "theme": "light", "wait": 1500, "shot": "check-31-normal-900-light.png" }
+]

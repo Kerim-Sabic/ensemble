@@ -1,0 +1,81 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');",
+  "wait": 1200
+ },
+ {
+  "js": "await window.__ensemble.getState().send('What is on the board right now?', undefined, undefined, { mode: 'quick' }); return 'sent';",
+  "wait": 3500
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; await window.ensemble.setUltra(chatId, true); return 'ultra on';",
+  "wait": 800
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; await window.ensemble.send({ chatId, to: leadId, text: 'Add a pricing page', mode: 'gocrazy', goal: { doneWhen: 'the tests pass' } }); return 'goal sent';",
+  "wait": 2500
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 50,
+  "shot": "brain-real-round1-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 2500,
+  "shot": "brain-real-checking-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 3500,
+  "shot": "brain-real-round2-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 9000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 200,
+  "shot": "brain-real-met-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id;\nconst st = window.__ensemble; const now = Date.now();\nconst goal = { id: 'g-swarm', text: 'Design the landing page, and keep going until the judges score it 45 of 50', doneWhen: 'both judging rounds score the winner 45 of 50 or more', status: 'active', round: 1, maxRounds: 6, check: 'fresh', createdAt: now - 60000, note: 'Round 1 winner scored 41 of 50: hierarchy and the pricing table are weakest.', log: [{ round: 0, ts: now - 30000, met: false, note: 'Round 1 winner scored 41 of 50: hierarchy and the pricing table are weakest.' }], mode: 'gocrazy' };\nwindow.__goal = goal;\nconst put = () => st.setState(x => ({ chats: x.chats.map(k => k.id === chatId ? { ...k, goal: window.__goal } : k) }));\nst.subscribe(x => { const k = x.chats.find(y => y.id === chatId); if (k && k.goal !== window.__goal) setTimeout(put, 0); });\nput();\nawait window.ensemble.send({ chatId, to: leadId, text: '/gocrazy design the landing page' });\nreturn 'swarm sent with a goal over it';",
+  "wait": 9000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 50,
+  "shot": "brain-real-swarm-9s-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 6000,
+  "shot": "brain-real-swarm-15s-dark.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 8000,
+  "shot": "brain-real-swarm-23s-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 9000,
+  "shot": "brain-real-swarm-32s-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const chatId = s.chatId; const c = s.chats.find(x => x.id === chatId); const leadId = c.leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id; const g = c.goal; return 'crazy=' + c.crazy + ' goal=' + (g ? g.status + ' r' + g.round + ' mode=' + g.mode + (g.checking ? ' checking' : '') : 'none') + ' agents=' + (c.agents || []).length + ' brain=' + !!document.querySelector('[data-brain-view]');",
+  "wait": 9000,
+  "shot": "brain-real-swarm-41s-light.png"
+ }
+]

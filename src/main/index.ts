@@ -440,6 +440,7 @@ function registerIpc(): void {
     searchChats: (q: string) => hub.search(q),
     setChatLead: (id: string, accountId: string, retry?: boolean) => hub.setChatLead(id, accountId, !!retry),
     dequeue: async (chatId: string, accountId: string, itemId: string) => hub.dequeue(String(chatId), String(accountId), String(itemId)),
+    steer: async (req: Parameters<typeof hub.steer>[0]) => hub.steer(req),
     resumeChat: (id: string) => hub.resumeChat(id).then(() => undefined),
     dismissRecovery: (id: string) => hub.dismissRecovery(id),
     folderChanges: (id: string) => hub.folderChanges(id),

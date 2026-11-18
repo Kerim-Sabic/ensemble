@@ -164,6 +164,8 @@ export interface SendOptions {
   ultra?: boolean
   /** A Live answers control sent this (a choice, a form, a mini app's offer), not the person typing. */
   fromControl?: boolean
+  /** For an agent at work: reach the work under way now instead of waiting for the reply to end. */
+  steer?: boolean
 }
 
 const key = (chatId: string, accountId: string): string => `${chatId}:${accountId}`
@@ -261,9 +263,14 @@ export const useStore = create<State>((set, get) => {
         return { logins: { ...s.logins, [ev.progress.accountId]: ev.progress } }
       case 'chat': {
         const chats = sortChats([...s.chats.filter((c) => c.id !== ev.chat.id), ev.chat])
+        // The app handed the lead over by itself: whoever was looking at the old lead now follows the new one.
+        const cover = ev.chat.cover
+        const was = s.chats.find((c) => c.id === ev.chat.id)
+        const follow = cover && was?.cover?.itemId !== cover.itemId && s.focus[ev.chat.id] === cover.from
+        const focus = follow ? { ...s.focus, [ev.chat.id]: cover.to } : s.focus
         // Only a chat with agents of its own changes who can be looked up.
-        if (!ev.chat.agents?.length) return { chats }
-        return { chats, members: membersOf(s.accounts, chats), statuses: withAgents(s.statuses, chats), usage: withAgents(s.usage, chats) }
+        if (!ev.chat.agents?.length) return { chats, focus }
+        return { chats, focus, members: membersOf(s.accounts, chats), statuses: withAgents(s.statuses, chats), usage: withAgents(s.usage, chats) }
       }
       case 'chat-removed':
         return { chats: s.chats.filter((c) => c.id !== ev.chatId), chatId: s.chatId === ev.chatId ? null : s.chatId }
@@ -439,6 +446,7 @@ export const useStore = create<State>((set, get) => {
       chatNotes: true,
       goalRounds: 12,
       goalCheck: 'fresh',
+      handover: true,
     },
     accounts: [],
     statuses: {},
@@ -653,7 +661,9 @@ export const useStore = create<State>((set, get) => {
         if (opts?.goal) req.goal = opts.goal
         else if (opts?.loop) req.loop = opts.loop
         if (opts?.fromControl) req.fromControl = true
-        await api.send(req)
+        // Steering goes only as plain words: anything with a way of working, a goal or a loop is sent as usual.
+        if (opts?.steer && !req.mode && !req.goal && !req.loop && !req.fromControl) await api.steer(req)
+        else await api.send(req)
         return true
       } catch (e) {
         s.toast(errorText(e), 'error')

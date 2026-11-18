@@ -3,8 +3,9 @@ import { Activity, BookOpen, ChevronRight, Plug, ScrollText, Download, Ellipsis,
 import { goalLine, goalOpen, liveLoops } from '@shared/auto'
 import type { Account, AgentState, Chat, Folder } from '@shared/types'
 import { adviseModel, budgetOf, hoursLabel, paceWord, type WindowBudget } from '@shared/budget'
+import { supplyNow, supplyWords } from '@shared/failover'
 import { leadOf, useAccounts, useLiveByChat, useStore, useWorkByAccount, useWorkSummary } from '@/store'
-import { accentVars, api, cn, dayBucket, folderLabel, relative, until } from '@/lib/util'
+import { accentVars, api, cn, dayBucket, folderLabel, relative } from '@/lib/util'
 import { IconButton, Kbd, Menu, MenuItem, MenuLabel, MenuSeparator, Tip } from './ui'
 import { BudgetMeter, Orb, OrbStack } from './Orb'
 import { UltraGlyph } from './ultra/Ultra'
@@ -543,6 +544,9 @@ function TeamDock() {
   const setModal = useStore((s) => s.setModal)
   const accounts = useStore((s) => s.accounts)
   const disabled = useMemo(() => accounts.filter((a) => !a.enabled), [accounts])
+  // In the open chat, a lead that ran out may be covered by the teammate who took over.
+  const cover = useStore((s) => s.chats.find((c) => c.id === s.chatId)?.cover)
+  const clock = (ts: number): string => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
   const row = (a: Account) => {
     const st = statuses[a.id]
@@ -553,15 +557,19 @@ function TeamDock() {
     const on = { length: w?.count || 0 }
     const out = st?.state === 'signed-out'
     const failed = st?.state === 'error'
-    const limited = [u?.session, u?.weekly].find((w) => w && (w.status === 'rejected' || w.utilization >= 1) && w.resetsAt && w.resetsAt > Date.now())
+    // Fine, running low, or out until a time; and who covers for it in this chat.
+    const supply = supplyNow(u)
+    const coveredBy = cover && cover.from === a.id ? accounts.find((x) => x.id === cover.to)?.name : undefined
+    const state = supplyWords(supply, clock)
     const budget = budgetOf(u)
     const advice = smart && a.provider === 'claude' && !a.model ? adviseModel(budget, a.id === leadId ? 'lead' : 'worker') : null
     let sub: React.ReactNode
     if (!a.enabled) sub = 'Paused'
     else if (out) sub = <span className="text-warn">Signed out</span>
     else if (failed) sub = <span className="text-bad">Needs attention</span>
-    else if (limited) sub = <span className="text-warn">Back in {until(limited.resetsAt as number)}</span>
-    else if (working) sub = <span className="shimmer-text">{working.phase === 'waiting' ? 'Needs your OK' : on.length > 1 ? `${on.length} agents working` : working.activity || 'Working'}</span>
+    else if (supply.state === 'out') sub = <span className="text-warn">{state}</span>
+    else if (supply.state === 'low' && !working) sub = <span className="text-warn">{state}</span>
+    else if (working) sub = <span className="shimmer-text">{supply.state === 'low' ? 'Running low · ' : ''}{working.phase === 'waiting' ? 'Needs your OK' : on.length > 1 ? `${on.length} agents working` : working.activity || 'Working'}</span>
     else if (st?.state === 'checking' || !st) sub = 'Checking…'
     else sub = a.role?.trim() || (a.provider === 'chatgpt' ? st.plan || 'ChatGPT' : `Claude${st.plan ? ` · ${st.plan}` : ''}`)
     const line = (label: string, w: WindowBudget | undefined) =>
@@ -585,6 +593,7 @@ function TeamDock() {
           <span className="flex items-baseline gap-1.5">
             <span className="truncate text-[13px] font-medium">{a.name}</span>
             {a.id === leadId && <span className="text-[11px] text-ink-3">Lead</span>}
+            {coveredBy && <span className="truncate text-[11px] text-ink-3">covered by {coveredBy}</span>}
           </span>
           <span className="block truncate text-[11.5px] leading-[15px] text-ink-3">{sub}</span>
         </span>

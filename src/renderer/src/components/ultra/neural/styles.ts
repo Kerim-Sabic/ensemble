@@ -20,7 +20,8 @@ const CSS = `
 @keyframes nn-born { from { transform: scale(0.1); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .nn-node { transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s; }
 .nn-link { transition: opacity 0.3s; }
-.nn-link path, .nn-pulse path { transition: d 0.7s cubic-bezier(0.22, 1, 0.36, 1), stroke-width 0.3s; }
+.nn-link path, path.nn-link, .nn-pulse path { transition: d 0.7s cubic-bezier(0.22, 1, 0.36, 1), stroke-width 0.3s, opacity 0.3s; }
+.nn-glow { transition: opacity 0.3s; }
 .nn-label { transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s; }
 [data-nn-focus] .nn-node:not([data-near]) { opacity: 0.22; }
 [data-nn-focus] .nn-link:not([data-near]) { opacity: 0.08; }
@@ -30,7 +31,7 @@ html[data-away='true'] .nn-breathe, html[data-away='true'] .nn-spin, html[data-a
   .nn-breathe, .nn-spin { animation: none; }
   .nn-flow, .nn-out, .nn-back { display: none; }
   .nn-grow, .nn-born { animation: none; }
-  .nn-node, .nn-link, .nn-label, .nn-link path, .nn-pulse path { transition: none; }
+  .nn-node, .nn-link, .nn-label, .nn-link path, path.nn-link, .nn-pulse path, .nn-glow { transition: none; }
 }
 `
 

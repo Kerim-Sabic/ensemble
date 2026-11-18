@@ -203,9 +203,16 @@ export function demoDiff(rel: string): string {
 
 /** Thrown inside a scripted turn once it has been stopped, so the turn ends there and starts nothing more. */
 class Stopped extends Error {}
+class OutOfUsage extends Error {}
+/** The person sent words into the turn under way: the scripted work changes course at its next step. */
+class Steered extends Error {}
 
 export class DemoRuntime implements AgentRuntime {
   private stopped = false
+  /** A turn is being played, so words can be steered into it. */
+  private running = false
+  /** Words steered into the turn under way, taken in at its next step. */
+  private steerIn: TurnInput[] = []
   private disposed = false
   private turn = 0
   private plan: Step[] = PLAN.map((s) => ({ ...s }))
@@ -226,6 +233,33 @@ export class DemoRuntime implements AgentRuntime {
     void this.play(input)
   }
 
+  /** Like Claude, the scripted team takes words sent mid-turn in at its next step. */
+  steer(input: TurnInput): boolean {
+    if (!this.running || this.stopped || this.disposed) return false
+    this.steerIn.push(input)
+    return true
+  }
+
+  /** Reads what was steered in and changes course: "just say X" is honoured to the word. */
+  private async afterSteer(): Promise<string> {
+    for (;;) {
+      // The app's own framing line is for the model; the scripted reply quotes only the person's words.
+      const said = this.steerIn
+        .splice(0)
+        .map((x) => x.text.replace(/^\(Sent while you were working[^)]*\)\s*/, '').trim())
+        .join('\n')
+      try {
+        await this.think(`A new message from you while I was working: "${said.slice(0, 120)}". Changing course.`, 500)
+        const just = /just say\s+["“]?([^"”\n]+?)["”]?\s*$/i.exec(said)?.[1]
+        const reply = just ? just.trim() : `Got your message while I was working, so I changed course: ${said}`
+        await this.say(reply)
+        if (!this.steerIn.length) return reply
+      } catch (e) {
+        if (!(e instanceof Steered)) throw e
+      }
+    }
+  }
+
   /** Waits like the real thing would, but a stop cuts the wait short and ends the turn. */
   private wakers = new Set<() => void>()
   private async pause(ms: number): Promise<void> {
@@ -240,6 +274,7 @@ export class DemoRuntime implements AgentRuntime {
       this.wakers.add(done)
     })
     if (this.stopped) throw new Stopped()
+    if (this.steerIn.length) throw new Steered()
   }
 
   private async say(text: string): Promise<void> {
@@ -256,6 +291,8 @@ export class DemoRuntime implements AgentRuntime {
 
   private async think(text: string, ms = 900): Promise<void> {
     if (this.stopped) throw new Stopped()
+    // The allowance ran out in the middle of the reply: it ends at its next step, as a real one would.
+    if (this.o.outUntil?.()) throw new OutOfUsage()
     const id = uid('r')
     this.emit({ type: 'thinking-start', id })
     await this.pause(ms)
@@ -264,6 +301,7 @@ export class DemoRuntime implements AgentRuntime {
 
   private async tool(name: string, input: unknown, output: string, ms = 700, isError = false): Promise<void> {
     if (this.stopped) throw new Stopped()
+    if (this.o.outUntil?.()) throw new OutOfUsage()
     const id = uid('t')
     this.emit({ type: 'tool-start', id, name, input })
     await this.pause(ms)
@@ -273,6 +311,7 @@ export class DemoRuntime implements AgentRuntime {
   private async call(name: string, args: Record<string, unknown>): Promise<string> {
     // A stopped turn hands out nothing more and starts no more agents.
     if (this.stopped) throw new Stopped()
+    if (this.o.outUntil?.()) throw new OutOfUsage()
     const t = this.o.tools.find((x) => x.name === name)
     if (!t) return ''
     const id = uid('t')
@@ -291,6 +330,16 @@ export class DemoRuntime implements AgentRuntime {
   }
 
   private async play(input: TurnInput): Promise<void> {
+    this.running = true
+    try {
+      await this.playTurn(input)
+    } finally {
+      this.running = false
+      this.steerIn = []
+    }
+  }
+
+  private async playTurn(input: TurnInput): Promise<void> {
     const started = Date.now()
     this.stopped = false
     this.turn++
@@ -299,8 +348,16 @@ export class DemoRuntime implements AgentRuntime {
     let edited = false
     const MODELS: Record<string, string> = { fable: 'claude-fable-5-2', opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5' }
     this.emit({ type: 'session', sessionId: `demo-${this.o.account.id}`, model: this.o.account.provider === 'claude' ? MODELS[this.o.model || ''] || 'claude-fable-5-2' : this.o.model || this.o.defaultModel || 'gpt-6.1-sol' })
+    // An account with nothing left fails the turn a moment in, as a real one does (with the "simulate a limit" lead below, this is what drives the handover paths).
+    if (this.o.outUntil?.()) {
+      await this.pause(300)
+      if (this.stopped) this.emit({ type: 'turn-end', status: 'interrupted', resultText: '', durationMs: Date.now() - started })
+      else this.emit({ type: 'turn-end', status: 'error', resultText: '', durationMs: Date.now() - started, reason: 'limit', error: 'Usage limit reached.' })
+      return
+    }
     // Only the short window moves as it works: the week and the strongest model's allowance stay as the demo set them.
-    this.emit({ type: 'usage', usage: { session: { utilization: Math.min(0.95, 0.12 + this.turn * 0.07), resetsAt: Date.now() + 3.2 * 3600e3 } } })
+    // It stops short of where an account counts as running low, so the scripted team never hands work over by itself.
+    this.emit({ type: 'usage', usage: { session: { utilization: Math.min(0.85, 0.12 + this.turn * 0.07), resetsAt: Date.now() + 3.2 * 3600e3 } } })
     // Lets the "ran out of allowance" path be seen without anyone running out.
     if (this.isLead && this.o.configDir === null && /simulate a limit/i.test(input.text) && input.origin.kind === 'human') {
       await this.think('Starting on this.', 500)
@@ -309,13 +366,21 @@ export class DemoRuntime implements AgentRuntime {
       return
     }
     try {
-      if (this.isLead) last = await this.leadTurn(input)
-      else {
-        last = await this.memberTurn(input)
-        edited = this.wrote
+      try {
+        if (this.isLead) last = await this.leadTurn(input)
+        else {
+          last = await this.memberTurn(input)
+          edited = this.wrote
+        }
+      } catch (e) {
+        if (!(e instanceof Steered)) throw e
+        last = await this.afterSteer()
       }
+      // Words that came in after the last step are still read before the turn ends.
+      if (this.steerIn.length) last = await this.afterSteer()
     } catch (e) {
       if (e instanceof Stopped || this.stopped) this.emit({ type: 'turn-end', status: 'interrupted', resultText: '', durationMs: Date.now() - started })
+      else if (e instanceof OutOfUsage) this.emit({ type: 'turn-end', status: 'error', resultText: '', durationMs: Date.now() - started, reason: 'limit', error: 'Usage limit reached.' })
       else this.emit({ type: 'turn-end', status: 'error', resultText: '', durationMs: Date.now() - started, reason: 'other', error: (e as Error).message })
       return
     }
@@ -462,6 +527,10 @@ export class DemoRuntime implements AgentRuntime {
     }
     const numbered = (base: string): string => free(Array.from({ length: 60 }, (_, i) => `${base} ${i + 1}`))
     const lettered = (): string => free([...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map((l) => `Builder ${l}`))
+    // Pictures come from a ChatGPT agent when the team has one (the note lists the team's accounts).
+    const draw = /^- \d+ ChatGPT accounts? \(/m.test(input.text)
+    const imageBrief = `Request: ${ask}\n\nMake the images the builders will use. First a moodboard: three clearly different directions as images (style, colour, feel of the type, composition), 16:9. Then the hero in the direction that fits the rubric best, at 2560×1097, in three variations: subject, composition, lighting and palette as the rubric and the moodboard set them, no text in the image, no stock clichés. Save them in designs/assets/, note on the board that they are generated, and report the paths.`
+    const useImages = 'Build with the generated images in designs/assets/ (the moodboard and the hero): use them as files and as references.'
     await this.call('board_post', {
       title: 'Rubric',
       text: `What the best result for "${ask}" looks like. Every version is scored 1 to 10 on each:\n1. Does exactly what was asked\n2. Correct: it runs, nothing is broken\n3. Complete: no placeholders, every state handled\n4. Craft: typography, spacing, hierarchy, the details\n5. Fast and accessible\n6. Holds up next to the best reference the scouts find`,
@@ -473,6 +542,7 @@ export class DemoRuntime implements AgentRuntime {
     const fast = told('fastest')
     const strongOf = (i: number, fallback: string): string => (strong.length ? strong[i % strong.length].value : fallback)
     const fastOf = (i: number, fallback: string): string => (fast.length ? fast[i % fast.length].value : fallback)
+    const painter = fast.find((m) => /gpt|luna/i.test(m.value))?.value || 'luna'
     const short = (list: { label: string }[], fallback: string): string => (list.length ? [...new Set(list.map((m) => m.label.replace(/^GPT-[\d.]+-/, '').replace(/ [\d.]+$/, '')))].join(' and ') : fallback)
     const angles = crazy
       ? ['the best work in this field', 'design systems and type', 'what users complain about', 'accessibility rules', 'performance budgets', 'motion and interaction', 'competitors, side by side', 'award-winning examples']
@@ -509,6 +579,42 @@ export class DemoRuntime implements AgentRuntime {
       if (/joined the chat/.test(r)) started.push(String(args.name))
       return /Task (t\d+)/.exec(r)?.[1]
     }
+    // A lead that holds back (as real leads were seen to: two agents for a whole Go crazy request), for the app's one follow-up.
+    if (crazy && /\b(only two|two agents)\b/i.test(ask)) {
+      for (const [i, angle] of angles.slice(0, 2).entries()) await start({ name: numbered('Scout'), role: `scouts ${angle}`, title: `Scout: ${angle}`, model: fastOf(i, i % 2 ? 'luna' : 'haiku'), effort: 'medium', brief: `Request: ${ask}\n\nYour one angle: ${angle}. Report up to six findings, each with a link and a date.` })
+      return this.said(`Two scouts are looking into "${ask}". I will take it from there once they report.`)
+    }
+    if (crazy) {
+      // Go crazy works like a brain: four regions, each led by an agent that runs a team of its own,
+      // lined up so building waits for research and judging for building. Memory keeps the board.
+      const lead = { model: strongOf(0, 'fable'), effort: 'high' }
+      const names = { research: free(['Research lead', 'Research lead 2']), memory: free(['Memory lead', 'Memory lead 2']), build: free(['Build lead', 'Build lead 2']), judging: free(['Judging lead', 'Judging lead 2']) }
+      const others = `Other regions: research ${names.research}; memory ${names.memory}; building ${names.build}; judging ${names.judging}.`
+      const scoutLines = angles.map((a, i) => `- ${numbered('Scout')} on ${fastOf(i, i % 2 ? 'luna' : 'haiku')}: ${a}`)
+      const images = draw ? await start({ name: free(['Image lead', 'Image lead 2']), role: 'leads the image region: the moodboard and the assets for the builders', title: 'Images: moodboard, hero and assets', model: painter, effort: 'high', brief: imageBrief }) : undefined
+      const research = await start({ name: names.research, role: 'leads the research region', title: 'Region: research', ...lead, brief: `Request: ${ask}\n\nYou lead the research region. Start these scouts at once, one angle each, and report what they found once all are in:\n${scoutLines.join('\n')}\n\n${others}` })
+      const after = research ? [research] : []
+      await start({ name: names.memory, role: 'leads the memory region: keeps the board current', title: 'Region: memory', ...lead, after, brief: `Request: ${ask}\n\nYou lead the memory region. Keep the board current: the rubric, the scouts' findings with sources, decisions and why, each version's latest scores. Start an archivist for the decisions.\n\n${others}` })
+      const build = await start({ name: names.build, role: 'leads the building region', title: 'Region: building', ...lead, after: images ? [...after, images] : after, brief: `Request: ${ask}\n\nYou lead the building region. Start these builders at once, each making a complete version of its own as a small cell:\n${builders.map((b) => `- ${b.name} on ${b.model} at ${b.effort}`).join('\n')}${images ? `\n\n${useImages}` : ''}\n\n${others}` })
+      await start({ name: names.judging, role: 'leads the judging region', title: 'Region: judging', ...lead, after: build ? [build] : [], brief: `Request: ${ask}\n\nYou lead the judging region. Start these judges, round two after round one:\n${judges.map((j) => `- ${j.name} on ${j.model} at ${j.effort}, round ${j.round}`).join('\n')}\n\n${others}` })
+      const text =
+        `Going crazy: four regions are working on "${ask}", each led by an agent with a team of its own.\n\n` +
+        `1. **Research** (${names.research}): ${angles.length} scouts on ${short(fast, 'Haiku and Luna')}, one narrow angle each, with sources\n` +
+        `2. **Building** (${names.build}): ${builders.length} builders on ${short(strong, 'Fable and Astra')} at full effort, each with its own critic, once research is in\n` +
+        `3. **Judging** (${names.judging}): ${judges.length} judges in two rounds, with a verifier\n` +
+        `4. **Memory** (${names.memory}): keeps the board current for every region\n` +
+        (images ? '5. **Images** (on ChatGPT): a moodboard of three directions and the hero in three variations, for the builders\n' : '') +
+        '\n' +
+        'I will bring the winner together, refine it, and check it myself before I answer.'
+      await this.say(text)
+      return text
+    }
+    // A design run on a team with a ChatGPT account: an image agent makes the moodboard and the hero assets the builders use.
+    const imageIds: string[] = []
+    if (draw) {
+      const id = await start({ name: free(['Image maker', 'Image maker 2', 'Image maker 3']), role: 'makes the moodboard and the hero images for the builders', title: 'Images: moodboard and hero', model: painter, effort: 'medium', brief: imageBrief })
+      if (id) imageIds.push(id)
+    }
     const scoutIds: string[] = []
     for (const [i, angle] of angles.entries()) {
       const id = await start({
@@ -533,8 +639,8 @@ export class DemoRuntime implements AgentRuntime {
         title: `Build: version ${b.name.slice(-1)}`,
         model: b.model,
         effort: b.effort,
-        after: scoutIds,
-        brief: `Request: ${ask}\n\nMake a complete version of your own, working to the rubric on the board and using the scouts' findings below. Do not look at the other versions. Work in designs/${b.name.slice(-1).toLowerCase()}/ only. Render it and take a screenshot in light and dark mode. ${cell} Report the path and the screenshots.`,
+        after: [...scoutIds, ...imageIds],
+        brief: `Request: ${ask}\n\nMake a complete version of your own, working to the rubric on the board and using the scouts' findings below. Do not look at the other versions. Work in designs/${b.name.slice(-1).toLowerCase()}/ only.${imageIds.length ? ' ' + useImages : ''} Render it and take a screenshot in light and dark mode. ${cell} Report the path and the screenshots.`,
       })
       if (id) buildIds.push(id)
     }
@@ -554,8 +660,10 @@ export class DemoRuntime implements AgentRuntime {
     const text =
       `${crazy ? 'Going crazy' : 'Ultra is under way'}: ${started.length} agents are working on "${ask}".\n\n` +
       `1. **Scouts** (${angles.length}, on ${short(fast, 'Haiku and Luna')}): one narrow angle each, with sources\n` +
-      `2. **Builders** (${builders.length}, on ${short(strong, 'Fable and Astra')} at full effort): each makes a complete version of its own once the scouts are in\n` +
-      `3. **Judges** (${judges.length}${crazy ? ', in two rounds' : ''}): score every version against the rubric on the board\n\n` +
+      `2. **Builders** (${builders.length}, on ${short(strong, 'Fable and Astra')} at full effort): each makes a complete version of its own once the scouts are in${imageIds.length ? ', with the generated images' : ''}\n` +
+      `3. **Judges** (${judges.length}${crazy ? ', in two rounds' : ''}): score every version against the rubric on the board\n` +
+      (imageIds.length ? '4. **Images** (on ChatGPT): a moodboard of three directions and the hero in three variations, for the builders\n' : '') +
+      '\n' +
       'I will merge the best ideas into the winner, refine it, and check it myself before I answer.'
     await this.say(text)
     return text
@@ -563,10 +671,10 @@ export class DemoRuntime implements AgentRuntime {
 
   /** The lead hears from an Ultra stage: waits for the rest, or wraps up once the judges are in. */
   private async ultraReport(status: string): Promise<string> {
-    const tasks = [...status.matchAll(/^(t\d+) · (\w+)[^·\n]* · (.+?) · ((?:Scout|Build|Judge):[^\n]*)$/gm)].map((m) => ({ id: m[1], status: m[2], who: m[3], title: m[4] }))
+    const tasks = [...status.matchAll(/^(t\d+) · (\w+)[^·\n]* · (.+?) · ((?:Scout|Build|Judge|Region|Archive|Images):[^\n]*)$/gm)].map((m) => ({ id: m[1], status: m[2], who: m[3], title: m[4] }))
     const open = tasks.filter((t) => !/^(done|failed|cancelled)$/.test(t.status))
     if (open.length) {
-      const stage = open.some((t) => t.title.startsWith('Scout')) ? 'the scouts' : open.some((t) => t.title.startsWith('Build')) ? 'the builders' : 'the judges'
+      const stage = open.some((t) => t.title.startsWith('Scout')) ? 'the scouts' : open.some((t) => t.title.startsWith('Images')) ? 'the images' : open.some((t) => t.title.startsWith('Build')) ? 'the builders' : 'the judges'
       const text = `Got it. ${tasks.length - open.length} of ${tasks.length} are in; waiting on ${stage}.`
       await this.say(text)
       return text
@@ -665,7 +773,7 @@ export class DemoRuntime implements AgentRuntime {
       const status = await this.call('task_status', {})
       // The latest work handed out was an Ultra stage: that story carries on instead.
       const latest = [...status.matchAll(/^t(\d+) · [^\n]* · ([^·\n]+)$/gm)].sort((a, b) => Number(b[1]) - Number(a[1]))[0]
-      if (latest && /^(Scout|Build|Judge|Critique|Test|Verify|Fact-check):/.test(latest[2])) return this.ultraReport(status)
+      if (latest && /^(Scout|Build|Judge|Critique|Test|Verify|Fact-check|Region|Archive|Images):/.test(latest[2])) return this.ultraReport(status)
       const done =[...status.matchAll(/^t\d+ · done · .+? · (.+)$/gm)].map((m) => m[1])
       const finished: number[] = []
       if (done.some((t) => /pricing/i.test(t))) finished.push(1)
@@ -832,11 +940,16 @@ export class DemoRuntime implements AgentRuntime {
       await this.say(text)
       return text
     }
+    // A note from another part of the team, on its own: read, put on the board when it is a decision, and nothing else.
+    if (/<team-message/.test(input.text) && !/<task[ -]/.test(input.text)) {
+      if (/Decision from/.test(input.text)) await this.call('board_post', { title: 'Decisions', text: (/Decision from [^:]+: ([^\n<]+)/.exec(input.text)?.[1] || '').trim() || 'See the latest note from building.' })
+      return this.said('Noted, and on the board.')
+    }
     // A stage of an Ultra run: scout, builder or judge.
-    const stage = /<task id="[^"]*" from="[^"]*" title="(Scout|Build|Judge|Critique|Test|Verify|Fact-check):\s*([^"]*)"/.exec(input.text)
+    const stage = /<task id="[^"]*" from="[^"]*" title="(Scout|Build|Judge|Critique|Test|Verify|Fact-check|Region|Archive|Images):\s*([^"]*)"/.exec(input.text)
     if (stage) return this.ultraStage(stage[1], stage[2], input.text)
     // A helper this agent started inside an Ultra run has reported.
-    if (/^\s*<task-result/.test(input.text) && /title="(Critique|Test|Verify|Fact-check):/.test(input.text)) return this.ultraHelped()
+    if (/<task-result[^>]*title="(Critique|Test|Verify|Fact-check|Scout|Build|Judge|Archive):/.test(input.text)) return this.ultraHelped()
     // A sub-agent this teammate started has reported: check it and write the report on the whole task.
     if (/^\s*<task-result/.test(input.text)) {
       await this.think('The tests are in. Running everything together before reporting.', 600)
@@ -879,7 +992,7 @@ export class DemoRuntime implements AgentRuntime {
       await this.say(text)
       return text
     }
-    const isTask = input.text.startsWith('<task')
+    const isTask = /<task id="/.test(input.text)
     const api = /title="[^"]*checkout/i.test(input.text)
     const file = api ? 'src\\api\\checkout.ts' : 'src\\pages\\Pricing.tsx'
     await this.think('Reading the existing code first so the new file matches its conventions.', 700)
@@ -920,6 +1033,13 @@ export class DemoRuntime implements AgentRuntime {
 
   /** One agent's part in an Ultra run: a scout, a builder, a judge, or a helper one of them started. */
   private async ultraStage(kind: string, what: string, text: string): Promise<string> {
+    if (kind === 'Region') return this.region(what, text)
+    if (kind === 'Images') return this.imageWork(what)
+    if (kind === 'Archive') {
+      await this.call('board_read', {})
+      await this.call('board_post', { title: 'Decisions', text: 'Four versions, A to D, in designs/a to designs/d. Body text at least 4.5:1 contrast. Small motion under 300 ms. Judges see versions by letter, never by author.' })
+      return this.said('Done: the decisions so far are on the board under "Decisions", each with why.')
+    }
     if (kind === 'Scout') {
       await this.think(`One angle only: ${what}. Sources for everything.`, 500)
       await this.tool('WebSearch', { query: what }, '10 results', 700)
@@ -931,7 +1051,9 @@ export class DemoRuntime implements AgentRuntime {
     if (kind === 'Build') {
       const v = (/version (\w)/i.exec(what)?.[1] || 'A').toLowerCase()
       this.wrote = this.o.account.provider === 'claude'
-      await this.think('Working to the rubric on the board, with the scouts\' findings. My own version, start to finish.', 700)
+      const assets = /designs\/assets\//.test(text)
+      await this.think(assets ? 'Working to the rubric on the board, with the scouts\' findings and the generated images. My own version, start to finish.' : 'Working to the rubric on the board, with the scouts\' findings. My own version, start to finish.', assets ? 400 : 700)
+      if (assets) await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\assets\\hero-2.png` }, 'Read the image (2560×1097)', 300)
       await this.call('board_read', {})
       await this.tool('Write', { file_path: `${this.o.cwd}\\designs\\${v}\\index.html`, content: '<section class="hero">…</section>' }, 'File created', 900)
       await this.tool('Bash', { command: `npx playwright screenshot designs/${v}/index.html --color-scheme light,dark`, description: 'Render the version in light and dark' }, `2 screenshots saved to designs/${v}/shots/`, 800)
@@ -1011,11 +1133,84 @@ export class DemoRuntime implements AgentRuntime {
         title: `Verify: ${what}`,
         model: 'sonnet',
         effort: 'high',
-        brief: 'Draft scores (of 50): A 43, B 46, C 42, D 42. Check each against the screenshots in designs/*/shots/, not against my words, and say where a score is wrong and why.',
+        brief: 'Draft scores (of 50): A 43, B 46, C 42, D 42. Check each against the screenshots in designs/a/shots/ to designs/d/shots/, not against my words, and say where a score is wrong and why.',
       })
       if (ok) return this.said('Draft scores are in. A verifier is checking them against the screenshots; I report once it is done.')
     }
     return this.said(`Done (${what}).\n\n| Version | Total of 50 |\n| --- | --- |\n| A | 43 |\n| **B** | **46** |\n\nBest: **B**, for the clearest hierarchy and the most careful details. Worth taking from A: its type scale.`)
+  }
+
+  /** Going crazy: the lead of one region starts its own team from the lines in its brief. */
+  private async region(what: string, text: string): Promise<string> {
+    const other = (r: string): string | undefined => new RegExp(`${r} ([^;.\\n]+)`).exec(/Other regions: ([^\n]+)/.exec(text)?.[1] || '')?.[1]?.trim()
+    const ask = /Request: ([^\n]+)/.exec(text)?.[1] || 'the request'
+    if (what === 'research') {
+      await this.think('My region is research: one scout per angle, none overlapping, sources for everything.', 600)
+      const lines = [...text.matchAll(/^- (Scout \d+) on (\S+): (.+)$/gm)]
+      for (const m of lines) await this.helperId({ name: m[1], role: `scouts ${m[3]}`, title: `Scout: ${m[3]}`, model: m[2], effort: 'medium', brief: `Request: ${ask}\n\nYour one angle: ${m[3]}. Report up to six findings, each with a link and the date you read it, and say what you could not confirm.` })
+      return this.said(`${lines.length} scouts are out, one angle each. I report once all are in.`)
+    }
+    if (what === 'memory') {
+      await this.call('board_read', {})
+      await this.call('board_post', { title: 'Findings', text: 'From research: lead with one idea and a lot of space (example.com/showcase); two type sizes, one family (example.org/type); motion under 300 ms (example.net/motion). All read today.' })
+      const ok = await this.helperId({ name: 'Archivist', role: 'writes the decisions to the board as they are made', title: 'Archive: decisions', model: 'haiku', effort: 'medium', brief: 'Read the board and the reports so far, and pin the decisions made, each with why, under "Decisions".' })
+      return this.said(ok !== undefined ? 'The findings are on the board. An archivist is writing up the decisions; I report once it is done.' : 'The findings are on the board.')
+    }
+    if (what === 'building') {
+      await this.think('My region is building: four complete versions, each a small cell with its own critic.', 600)
+      const lines = [...text.matchAll(/^- (Builder (\w)) on (\S+) at (\w+)$/gm)]
+      for (const [i, m] of lines.entries()) {
+        const tester = i < 2
+        const cell = `Before you submit, start a critic on a different model to attack your draft${tester ? ', and a tester that renders it and reports what it saw' : ''}; answer the critic's points first.${i === 0 ? ' Your critic may start a fact-checker for the claims it leans on.' : ''}`
+        await this.helperId({ name: m[1], role: `builds version ${m[2]}`, title: `Build: version ${m[2]}`, model: m[3], effort: m[4], brief: `Request: ${ask}\n\nMake a complete version of your own, working to the rubric on the board and using the research findings. Do not look at the other versions. Work in designs/${m[2].toLowerCase()}/ only.${/designs\/assets\//.test(text) ? ' Build with the generated images in designs/assets/ (the moodboard and the hero): use them as files and as references.' : ''} Render it and take a screenshot in light and dark mode. ${cell} Report the path and the screenshots.` })
+      }
+      // A lateral link: building tells memory a decision directly, not through the lead.
+      const memory = other('memory')
+      const last = lines.length ? lines[lines.length - 1][2] : 'D'
+      if (memory) await this.call('message', { to: memory, text: `Decision from building: ${lines.length} versions, A to ${last}, each in its own folder under designs/. Please keep it on the board.` })
+      return this.said(`${lines.length} builders are at work, each with its own critic. I report once all versions are in.`)
+    }
+    // The judging region.
+    await this.think('My region is judging: two rounds, fresh judges in the second, scores checked against the evidence.', 600)
+    const lines = [...text.matchAll(/^- (Judge \d+) on (\S+) at (\w+), round (\d)$/gm)]
+    const round1: string[] = []
+    for (const [i, m] of lines.entries()) {
+      const id = await this.helperId({
+        name: m[1],
+        role: m[4] === '1' ? 'judges the versions against the rubric' : 'judges the final round, fresh',
+        title: `Judge: round ${m[4]}`,
+        model: m[2],
+        effort: m[3],
+        after: m[4] === '1' ? [] : round1,
+        brief: `You did none of this work. Score every version (A, B, C, D) on each rubric criterion from 1 to 10 with a reason, name the best version, and list the best ideas in the others.${m[4] === '2' ? ' Round one has judged already; judge the improved versions afresh.' : ''}${i === 0 ? ' Start a verifier who checks your scores against the screenshots before you report.' : ''}`,
+      })
+      if (id && m[4] === '1') round1.push(id)
+    }
+    return this.said(`${lines.length} judges are lined up in two rounds. I report once the final round is in.`)
+  }
+
+  /** Starts an agent of this one's own: its task id, '' when it started with no task, undefined when it could not start. */
+  private async helperId(args: Record<string, unknown>): Promise<string | undefined> {
+    if (this.stopped || !this.o.tools.some((t) => t.name === 'spawn_agent')) return undefined
+    let r = await this.call('spawn_agent', args)
+    if (!/joined the chat/.test(r)) r = await this.call('spawn_agent', { ...args, model: undefined, effort: undefined })
+    return /joined the chat/.test(r) ? /Task (t\d+)/.exec(r)?.[1] || '' : undefined
+  }
+
+  /** The image agent of a design run: a moodboard of directions, then the hero in variations, saved where the builders read them. */
+  private async imageWork(what: string): Promise<string> {
+    const sample = process.env.ENSEMBLE_DEMO_IMAGE
+    const show = (): void => {
+      if (sample && fs.existsSync(sample)) this.emit({ type: 'image', path: sample })
+    }
+    await this.think('Three clearly different directions first, then the hero in the one that fits the rubric, at the size the layout needs.', 400)
+    await this.tool('ImageGen', { prompt: 'Moodboard, three directions for a landing page: editorial calm, bold geometric, soft gradient. 16:9 each, no text.' }, 'Generated 3 images', 700)
+    show()
+    await this.tool('ImageGen', { prompt: 'Hero, 2560×1097: one product object on a quiet surface, soft window light from the left, the rubric palette, generous empty space on the right for the headline; no text, no stock clichés.' }, 'Generated 3 variations', 700)
+    show()
+    await this.tool('Shell', { command: 'Copy-Item moodboard-*.png, hero-*.png designs/assets/' }, '', 250)
+    await this.call('board_post', { title: 'Images', text: 'Generated with ChatGPT image generation (label them as generated): moodboard-1 to 3 (editorial calm, bold geometric, soft gradient) and hero-1 to 3 (2560×1097) in designs/assets/. hero-2 fits the rubric best.' })
+    return this.said(`Done: ${what}.\n\n- Moodboard, three directions: \`designs/assets/moodboard-1.png\` to \`moodboard-3.png\` (editorial calm, bold geometric, soft gradient)\n- Hero, three variations at 2560×1097: \`designs/assets/hero-1.png\` to \`hero-3.png\`; hero-2 fits the rubric best\n\nAll of them are generated images, noted as such on the board.`)
   }
 
   private async said(text: string): Promise<string> {
@@ -1026,19 +1221,30 @@ export class DemoRuntime implements AgentRuntime {
   /** Starts a helper of this agent's own inside an Ultra run; false when the chat allows no deeper level. */
   private async helper(args: Record<string, unknown>): Promise<boolean> {
     if (this.stopped || !this.o.tools.some((t) => t.name === 'spawn_agent')) return false
-    return /joined the chat/.test(await this.call('spawn_agent', args))
+    // Refused for the model (a Claude model on a team of ChatGPT accounts): the answer says why, so try again on the account's usual model.
+    let r = await this.call('spawn_agent', args)
+    if (!/joined the chat/.test(r) && args.model && !/deepest level|limit|already has/i.test(r)) r = await this.call('spawn_agent', { ...args, model: undefined, effort: undefined })
+    return /joined the chat/.test(r)
   }
 
   /** A builder, judge or critic hears from a helper it started: waits for the rest, then submits. */
   private async ultraHelped(): Promise<string> {
     const status = await this.call('task_status', {})
-    const mine = [...status.matchAll(/^t\d+ · (\w+)[^·\n]* · .+? · ((Critique|Test|Verify|Fact-check):[^\n]*)$/gm)].map((m) => ({ status: m[1], title: m[2], kind: m[3] }))
+    const mine = [...status.matchAll(/^t\d+ · (\w+)[^·\n]* · .+? · ((Critique|Test|Verify|Fact-check|Scout|Build|Judge|Archive):[^\n]*)$/gm)].map((m) => ({ status: m[1], title: m[2], kind: m[3] }))
     const open = mine.filter((t) => !/^(done|failed|cancelled)$/.test(t.status))
     if (open.length) {
-      const who = open.map((t) => (t.kind === 'Critique' ? 'the critic' : t.kind === 'Test' ? 'the tester' : t.kind === 'Verify' ? 'the verifier' : 'the fact-checker'))
+      const who = [...new Set(open.map((t) => (t.kind === 'Critique' ? 'the critic' : t.kind === 'Test' ? 'the tester' : t.kind === 'Verify' ? 'the verifier' : t.kind === 'Fact-check' ? 'the fact-checker' : t.kind === 'Scout' ? 'the other scouts' : t.kind === 'Build' ? 'the other builders' : t.kind === 'Judge' ? 'the other judges' : 'the archivist')))]
       return this.said(`Got one report; waiting on ${who.join(' and ')}.`)
     }
     const kinds = new Set(mine.map((t) => t.kind))
+    // A region's lead: its whole team is in.
+    if (kinds.has('Scout')) {
+      await this.call('board_read', {})
+      return this.said(`Research region: all ${mine.length} scouts are in. The strongest examples lead with one idea and a lot of space; type does the work with a tight scale; motion stays under 300 ms. Every finding has a link and a date; memory has them on the board. Could not confirm: how any of them test on slow phones.`)
+    }
+    if (kinds.has('Build')) return this.said(`Building region: all ${mine.length} versions are complete in \`designs/a/\` to \`designs/${String.fromCharCode(96 + mine.length)}/\`, each cleared by its own critic before it was submitted, with screenshots in light and dark mode.`)
+    if (kinds.has('Judge')) return this.said('Judging region: both rounds are in. **B** won both, 46 of 50 in the final round (verified against the screenshots). Worth taking from A: its type scale; from C: its motion.')
+    if (kinds.has('Archive')) return this.said('Memory region: the board holds the rubric, the findings with their sources, and the decisions so far, with why. I keep it current as the regions report.')
     const V = /version (\w)/i.exec(mine[0]?.title || '')?.[1] || 'A'
     if (kinds.has('Fact-check')) {
       return this.said(`Critique of version ${V}, most serious first, with both claims confirmed by the fact-checker:\n\n1. The secondary text is too faint in dark mode (3.8:1; WCAG 1.4.3 asks 4.5:1)\n2. The hero headline wraps to three lines on a phone\n3. The cards' hover lift of 8 px reads as loose; 2 px is enough`)
@@ -1053,6 +1259,7 @@ export class DemoRuntime implements AgentRuntime {
 
   async interrupt(): Promise<void> {
     this.stopped = true
+    this.steerIn = []
     for (const wake of [...this.wakers]) wake()
   }
 

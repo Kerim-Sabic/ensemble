@@ -42,6 +42,8 @@ export interface AutoHost {
   judge(system: string, prompt: string, cwd: string, signal?: AbortSignal): Promise<string>
   /** The model a loop's run goes on: the one chosen for the loop, else a mid-sized one rather than the agent's strongest. */
   loopRun(account: Account, model?: string | null): Pending['run']
+  /** What goes ahead of each round of a goal that keeps a way of working (Ultra, Go crazy): '' when it keeps none. */
+  goalWay?(chat: Chat): string
 }
 
 type AutoItem = Extract<Item, { kind: 'auto' }>
@@ -234,6 +236,8 @@ export class Autopilot {
       createdAt: Date.now(),
       log: [],
     }
+    // Set in Ultra or Go crazy, every round runs that way until the goal ends.
+    if (input.mode === 'ultra' || input.mode === 'gocrazy') goal.mode = input.mode
     chat.goal = goal
     const limits = [`up to ${rounds} ${rounds === 1 ? 'round' : 'rounds'}`, minutes ? `${span(minutes * MIN)} at most` : '', goal.check === 'fresh' ? 'checked by a fresh pair of eyes' : "the lead's own word"].filter(Boolean).join(' · ')
     this.row(chat, lead, { of: 'goal', event: 'set', ref: goal.id, title: `Goal set · ${limits}`, text: goal.doneWhen ? `Done when: ${goal.doneWhen}` : undefined, round: 1, max: rounds })
@@ -267,6 +271,14 @@ After each of your replies ${check}. If it is not, you are sent back with what i
 </goal>
 
 `
+  }
+
+  /** The reminder of the way of working a goal keeps, for the front of a round's message. */
+  private way(chat: Chat): string {
+    const w = this.host.goalWay?.(chat) || ''
+    return w ? `${w}
+
+` : ''
   }
 
   private nudge(goal: Goal, v: Verdict): string {
@@ -361,8 +373,22 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
   }
 
   /** The chat changed lead. A goal under way waits for the user, so nothing is sent to the old lead or lost between them. */
-  leadChanged(chat: Chat, next: Account): void {
+  /**
+   * The chat has a new lead. Changed by the user, a goal under way waits for them. Changed by the app
+   * because `from` ran out of usage, the goal carries on with the new lead and the loops `from` ran go with it.
+   */
+  leadChanged(chat: Chat, next: Account, from?: Account): void {
     const goal = chat.goal
+    if (from) {
+      let moved = false
+      for (const l of chat.loops || []) {
+        if (l.to !== from.id || l.status === 'done') continue
+        l.to = next.id
+        moved = true
+      }
+      if (moved) this.host.changed(chat)
+      return
+    }
     if (goal?.status === 'active') this.pauseGoal(chat, goal, next, `Paused when ${next.name} took over as lead. Resume to carry on.`)
   }
 
@@ -519,7 +545,7 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
       } else {
         goal.round++
         this.row(chat, lead, { of: 'goal', event: 'check', ref: goal.id, title: `Check ${rounds} of ${goal.maxRounds}: not there yet`, text: v.next ? `${v.why}\nNext: ${v.next}` : v.why, round: rounds, max: goal.maxRounds })
-        this.send(chat, lead, this.nudge(goal, v))
+        this.send(chat, lead, this.way(chat) + this.nudge(goal, v))
       }
     }
     this.host.changed(chat)
@@ -602,7 +628,7 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
     this.send(
       chat,
       lead,
-      `<goal-check round="${goal.round + 1}" of="${goal.maxRounds}">
+      `${this.way(chat)}<goal-check round="${goal.round + 1}" of="${goal.maxRounds}">
 The user set the goal going again. It is not met yet.
 Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
 Look at where things stand (what the user said since, what is already done), carry on, check your work, and end with what is now done and the evidence. Call \`goal_report\` with state "met" when it is, or "blocked" if only the user can unblock it.

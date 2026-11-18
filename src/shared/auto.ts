@@ -20,7 +20,21 @@ export const GOCRAZY_NEEDS_ULTRA = 'Go crazy works in Ultra mode. Turn Ultra on 
 
 /** How many extra agents one chat may have at once, by the way the current message is being worked. */
 export const SPAWN_CAP_ULTRA = 20
-export const SPAWN_CAP_GOCRAZY = 32
+/**
+ * Going crazy there is no set number: the cap is what this machine can carry right now (free memory
+ * and processor cores, hub.machineCap), worked out again at every spawn. This is only a safety stop
+ * against a runaway, far above what any machine reaches: every agent's events pass through the
+ * app's one main thread, and the roster each agent reads lists everyone.
+ */
+export const SPAWN_CAP_GOCRAZY = 200
+/** What one agent is reckoned to take in memory, in MB: its CLI process and the connector servers it starts. */
+export const AGENT_MB = 400
+/** Going crazy, how many live agents each processor core is reckoned to carry (they mostly wait on the network). */
+export const AGENTS_PER_CORE = 6
+/** Going crazy, the lead tries again once when its first turn on a substantial request started fewer agents than this. */
+export const CRAZY_FLOOR = 8
+/** Going crazy, how many agents the lead of a region (an agent the lead started) may run of its own. */
+export const REGION_TEAM = 12
 
 /**
  * How many levels of agents a chat may hold below its lead: 1 is an agent the lead started, 2 an
@@ -28,7 +42,19 @@ export const SPAWN_CAP_GOCRAZY = 32
  */
 export const MAX_DEPTH_USUAL = 2
 export const MAX_DEPTH_ULTRA = 3
-export const MAX_DEPTH_GOCRAZY = 4
+export const MAX_DEPTH_GOCRAZY = 8
+
+/**
+ * A message that needs a direct answer, not a team: a thank-you, a clicked choice from an earlier
+ * answer, or a short question about how things stand.
+ */
+export function isSmallTalk(text: string): boolean {
+  const t = text.trim()
+  if (!t) return true
+  if (/^(?:Chose|Answers):/i.test(t)) return true
+  if (t.length < 40 && /^(thanks|thank you|thx|ty|cheers|great|nice|perfect|awesome|ok|okay|cool|looks good|got it|yes|no)\b/i.test(t)) return true
+  return t.length < 80 && /\?$/.test(t) && /\b(status|where are we|how far|done yet|progress|how is it going|any news)\b/i.test(t)
+}
 
 /**
  * The way a message really goes: the mode it was sent with, or 'ultra' when it was sent with none

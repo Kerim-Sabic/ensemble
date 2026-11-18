@@ -122,6 +122,31 @@ try {
     await idle(leadId)
     await new Promise((r) => setTimeout(r, 1000))
     log('circle.png exists:', fs.existsSync(path.join(work, 'circle.png')))
+  } else if (scenario === 'image-gpt') {
+    // One ChatGPT agent, on its lightest model, makes one image for a small design brief
+    // (ENSEMBLE_TEST_ONLY=chatgpt). Shows whether the file is made and whether it reaches the chat.
+    const gpt = hub.accounts.accounts.find((a) => a.provider === 'chatgpt')
+    if (!gpt) throw new Error('no chatgpt account')
+    const light = modelForTier(hub.accounts.statuses.get(gpt.id)?.models || [], 'light')
+    hub.updateSettings({ leadId: gpt.id })
+    hub.updateAccount(gpt.id, { model: light?.value ?? null })
+    log('model:', light?.value || '(account default)')
+    const chat = hub.createChat({ cwd: work })
+    const file = path.join(work, 'hero-test.png')
+    fs.rmSync(file, { force: true })
+    hub.send({
+      chatId: chat.id,
+      to: gpt.id,
+      text: `Make one image with your built-in image generation, for a small design brief: the hero image of a landing page for a calm note-taking app. A single paper notebook on a light oak desk, soft morning light from the left, warm off-white and sage green, generous empty space on the right for a headline, no text in the image, 16:9. Save it as ${file} and give its full path in one sentence. Do nothing else.`,
+    })
+    await idle(gpt.id)
+    await new Promise((r) => setTimeout(r, 1500))
+    const items = hub.openChat(chat.id).items[gpt.id] || []
+    const pics = items.flatMap((i) => (i.kind === 'image' ? [i.path] : []))
+    const reply = [...items].reverse().find((i) => i.kind === 'assistant')
+    log('saved where asked:', fs.existsSync(file), file)
+    log('image rows in the chat:', pics.length ? pics.join(', ') : 'none')
+    log('reply:', reply && 'text' in reply ? reply.text.slice(0, 300) : '(none)')
   } else if (scenario === 'stop') {
     // Interrupt a teammate in the middle of a long command.
     const id = process.argv[3] || 'hello'
@@ -137,6 +162,36 @@ try {
     log('>>> idle again after', Date.now() - t, 'ms')
     hub.send({ chatId: chat.id, to: id, text: 'Reply with exactly: STILL HERE' })
     await until((ev) => ev.type === 'item' && ev.item.kind === 'turn' && ev.accountId === id, 60000)
+  } else if (scenario === 'steer') {
+    // Steer an agent in the middle of a long command: the new words should change the same piece of
+    // work. A Claude account on Haiku by default; with ENSEMBLE_TEST_ONLY=chatgpt, the ChatGPT account
+    // on its lightest model.
+    const acc = only === 'chatgpt' ? hub.accounts.accounts.find((a) => a.provider === 'chatgpt') : hub.accounts.accounts.find((a) => a.id === (process.argv[3] || 'hello')) || hub.accounts.accounts.find((a) => a.provider === 'claude')
+    if (!acc) throw new Error('no account to steer')
+    const id = acc.id
+    if (acc.provider === 'chatgpt') {
+      const light = modelForTier(hub.accounts.statuses.get(id)?.models || [], 'light')
+      hub.updateAccount(id, { model: light?.value ?? null })
+      log('model:', light?.value || '(account default)')
+    } else hub.updateAccount(id, { model: 'haiku' })
+    const chat = hub.createChat({ cwd: work })
+    hub.send({ chatId: chat.id, to: id, text: 'Run this exact PowerShell command and then tell me what it printed: Start-Sleep -Seconds 40; "finished"' })
+    await until((ev) => ev.type === 'agent' && ev.state.accountId === id && ev.state.phase === 'tool', 90000)
+    await new Promise((r) => setTimeout(r, 2500))
+    log('>>> steering')
+    const t = Date.now()
+    log('>>> steer said:', hub.steer({ chatId: chat.id, to: id, text: 'stop that and just say STEERED' }))
+    await idle(id)
+    const items = hub.openChat(chat.id).items[id] || []
+    const turns = items.filter((i) => i.kind === 'turn')
+    const said = items.filter((i) => i.kind === 'assistant').map((i) => (i as { text: string }).text.trim())
+    const users = items.filter((i) => i.kind === 'user').map((i) => `${(i as { text: string }).text}${(i as { steered?: boolean }).steered ? ' [steered]' : ''}${(i as { queued?: boolean }).queued ? ' [queued]' : ''}`)
+    const tools = items.filter((i) => i.kind === 'tool').map((i) => `${(i as { name: string }).name}:${(i as { status?: string }).status}`)
+    log('>>> idle', Date.now() - t, 'ms after steering')
+    log('>>> user rows:', JSON.stringify(users))
+    log('>>> tools:', JSON.stringify(tools))
+    log('>>> turns:', JSON.stringify(turns.map((x) => ({ status: (x as { status?: string }).status, ms: (x as { durationMs?: number }).durationMs }))))
+    log('>>> replies:', JSON.stringify(said))
   } else if (scenario === 'question') {
     // A teammate asks the person a multiple-choice question; we answer it.
     const id = process.argv[3] || 'hello'
@@ -560,7 +615,9 @@ try {
     hub.updateSettings({ leadId: lead.id, smartTitles: false, recall: false, chatNotes: false })
     const chat = hub.createChat({ cwd: work })
     hub.setUltra(chat.id, true)
+    // ENSEMBLE_TEST_ASK replaces the request, for trying one thing (for example a builder starting its own critic).
     const ask =
+      process.env.ENSEMBLE_TEST_ASK ||
       'Write the best possible tagline (one line, at most 8 words) for a note-taking app for medical students. This is a small trial of the pipeline, so keep it small: exactly 2 scouts, 2 builders and 1 judge, no refine round, and send everyone home at the end.'
     hub.send({ chatId: chat.id, to: lead.id, text: scenario === 'gocrazy' ? `/gocrazy ${ask}` : ask })
     const t1 = Date.now()
@@ -568,10 +625,30 @@ try {
     // "stop" as the last word presses Stop for the whole chat once the swarm is at work, and watches that it stays stopped.
     const pressStop = process.argv.includes('stop')
     let firstAgent = 0
+    let firstTurnAt = 0
     for (;;) {
       await new Promise((r) => setTimeout(r, 4000))
       const open = hub.tasksOf(chat.id).filter((t) => t.status === 'running' || t.status === 'queued').length
       const busy = hub.openChat(chat.id).states.filter((s) => s.phase !== 'idle' && s.phase !== 'error').length
+      // ENSEMBLE_TEST_STOP_AFTER_FIRST_TURN=<seconds>: watch how many agents the lead starts in its first
+      // reply (and in the app's one follow-up, if it sends one), then press Stop, so a full run is not paid for.
+      const grace = Number(process.env.ENSEMBLE_TEST_STOP_AFTER_FIRST_TURN || 0)
+      if (grace) {
+        const mine = hub.openChat(chat.id).items[lead.id] || []
+        const turns = mine.filter((i) => i.kind === 'turn').length
+        const started = (): string => `${(chat.agents || []).length} agents started (deepest level ${Math.max(0, ...(chat.agents || []).map((a) => a.spawned?.depth || 0))}), ${hub.tasksOf(chat.id).length} tasks handed out`
+        if (turns >= 1 && !firstTurnAt) {
+          firstTurnAt = Date.now()
+          log('>>> the lead\'s first reply ended after', Math.round((firstTurnAt - t1) / 1000), 's:', started())
+        }
+        if (firstTurnAt && (turns >= 2 || Date.now() - firstTurnAt > grace * 1000)) {
+          log('>>> before Stop (lead replies so far:', turns, '):', started(), '| follow-up sent:', mine.some((i) => i.kind === 'auto' || (i.kind === 'notice' && /regions|Go crazy/i.test(i.text))))
+          await hub.stop(chat.id)
+          await new Promise((r) => setTimeout(r, 10_000))
+          log('>>> 10 s after Stop:', hub.openChat(chat.id).states.filter((x) => x.phase !== 'idle' && x.phase !== 'error').length, 'busy')
+          break
+        }
+      }
       if (pressStop) {
         // Work is out with at least two others, whether they are agents started here or teammates.
         if (!firstAgent && hub.tasksOf(chat.id).length >= 2) firstAgent = Date.now()
@@ -598,7 +675,7 @@ try {
     const snap = hub.openChat(chat.id)
     const name = (id: string): string => hub.accounts.get(id)?.name || id
     log('ULTRA took', Math.round((Date.now() - t1) / 1000), 's | lead', lead.name, 'ran on', snap.states.find((s) => s.accountId === lead.id)?.model, '| agents started:', (chat.agents || []).length, '| still here:', (chat.agents || []).filter((a) => !a.spawned?.gone).length)
-    for (const a of chat.agents || []) log('  agent', a.name, '| on', name(a.spawned?.base || ''), '| for:', a.role, a.spawned?.gone ? '| sent home' : '')
+    for (const a of chat.agents || []) log('  agent', a.name, '| depth', a.spawned?.depth, '| started by', name(a.spawned?.by || ''), '| on', name(a.spawned?.base || ''), '| for:', a.role, a.spawned?.gone ? '| sent home' : '')
     for (const t of hub.tasksOf(chat.id)) log('  task', t.id, t.status, '|', name(t.to), '|', t.title, '| asked:', t.modelLabel || '-', t.effort || '', '| ran on:', t.ranOn || '?', t.after?.length ? `| after ${t.after.join(',')}` : '', '|', (t.result || '').replace(/\s+/g, ' ').slice(0, 140))
     const mine = snap.items[lead.id] || []
     log('  lead tools:', mine.flatMap((i) => (i.kind === 'tool' ? [i.name.replace('mcp__team__', '')] : [])).join(', '))

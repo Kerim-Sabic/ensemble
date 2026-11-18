@@ -6,13 +6,15 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { Hub } from '../src/main/hub'
 import { readVerdict } from '../src/main/autopilot'
-import { countdown, everyLabel, goalLine, loopLine, namesLine, parseCommand, parseEvery, span, APP_COMMANDS, GOCRAZY_NEEDS_ULTRA, effectiveMode, MAX_DEPTH_GOCRAZY, MAX_DEPTH_ULTRA, MAX_DEPTH_USUAL, SPAWN_CAP_GOCRAZY, SPAWN_CAP_ULTRA } from '../src/shared/auto'
-import { modeNote } from '../src/main/prompts'
+import { countdown, everyLabel, goalLine, loopLine, namesLine, parseCommand, parseEvery, span, APP_COMMANDS, GOCRAZY_NEEDS_ULTRA, effectiveMode, MAX_DEPTH_GOCRAZY, MAX_DEPTH_ULTRA, MAX_DEPTH_USUAL, SPAWN_CAP_GOCRAZY, SPAWN_CAP_ULTRA, CRAZY_FLOOR, isSmallTalk } from '../src/shared/auto'
+import { leadBriefing, memberBriefing, modeNote, modeReminder, crazyFollowUp, type BriefingContext } from '../src/main/prompts'
+import { codexConfig } from '../src/main/providers/codex'
 import { AccountManager } from '../src/main/accounts'
 import { askClaudeOnce, onceResult } from '../src/main/providers/claude'
 import { demoTime } from '../src/main/util'
 import type { Account, Chat, HubEvent, Item, PermissionLevel } from '../src/shared/types'
 import * as iui from '../src/shared/iui' // Live answers checks (Canvas), near the end
+import { handoverLine, supplyOf, supplyWords } from '../src/shared/failover' // automatic handover checks (Failover)
 import { IUI_BRIEFING } from '../src/main/iui' // Live answers checks (Canvas)
 
 const dataDir = path.join(os.tmpdir(), 'ensemble-auto-test')
@@ -69,10 +71,41 @@ check('APP_COMMANDS lists ultra and gocrazy', APP_COMMANDS.some((c) => c.name ==
   const ultra = modeNote('ultra', { lead: true, team: true, spawn: true, cap: 16, models: team })
   check('ultra note: rubric, scouts, builders, judges, design bar', /rubric/.test(ultra) && /4 to 8/.test(ultra) && /Judges/.test(ultra) && /design studios/.test(ultra) && /spend allowance heavily/.test(ultra))
   check('research note points to checking facts on the web', [true, false].every((team) => /Checking facts on the web/.test(modeNote('research', { lead: true, team, spawn: false }))))
+  // Design work: generated images when the team has a ChatGPT account, SVG and CSS when it has none.
+  {
+    const claudeOnly = '- 2 Claude accounts (A, B): strongest Fable 5.2 (`fable`, effort up to max); fastest Haiku 5.5 (`haiku`)'
+    const drawn = modeNote('ultra', { lead: true, team: true, spawn: true, cap: 16, models: team })
+    const plain = modeNote('ultra', { lead: true, team: true, spawn: true, cap: 16, models: claudeOnly })
+    check('ultra note: an image agent on a ChatGPT account serves the builders when the team has one', /image agent on a ChatGPT account/.test(drawn) && /moodboard/.test(drawn) && !/SVG and CSS/.test(drawn))
+    check('and on a team without one, the builders draw in SVG and CSS', /SVG and CSS/.test(plain) && !/image agent/.test(plain))
+    check('go crazy note: the images are a region of their own', /image agent on a ChatGPT account \(a region of its own\)/.test(crazy))
+    const acct = (name: string, provider: 'claude' | 'chatgpt'): Account => ({ id: name.toLowerCase(), name, provider, configDir: null, enabled: true }) as unknown as Account
+    const ctxOf = (self: Account, mates: Account[], lead: Account = self): BriefingContext => ({ self, lead, teammates: mates.map((account) => ({ account, available: true })), spawn: 4, depth: lead === self ? 0 : 1, smart: false, cwd: work, memory: null, hasTools: true, hands: { browser: false, computer: false }, menus: { claude: '', chatgpt: '' }, vault: null })
+    const ada = acct('Ada', 'claude')
+    const gale = acct('Gale', 'chatgpt')
+    const withGpt = leadBriefing(ctxOf(ada, [gale]))
+    const noGpt = leadBriefing(ctxOf(ada, [acct('Bo', 'claude')]))
+    check('lead briefing: design uses generated images in full when the team has a ChatGPT account', /moodboard/.test(withGpt) && /art director/.test(withGpt) && /real product screenshot/.test(withGpt) && /paths of the generated images/.test(withGpt) && /several variations of each asset/.test(withGpt))
+    check('and SVG and CSS when it has none, with no pictures promised', /SVG and CSS/.test(noGpt) && !/moodboard/.test(noGpt))
+    const gptMember = memberBriefing(ctxOf(gale, [ada], ada))
+    const claudeMember = memberBriefing(ctxOf(acct('Cy', 'claude'), [ada], ada))
+    check('member briefings: a ChatGPT member makes the pictures itself and copies them into the project', /you generate them yourself/.test(gptMember) && /copy each one/.test(gptMember))
+    check('a Claude member on a team with no ChatGPT account draws in SVG and CSS', /SVG and CSS/.test(claudeMember) && !/moodboard/.test(claudeMember))
+  }
   check('ultra note: small follow-ups get a direct answer, the stages are for real work', /scale this to the message/.test(ultra) && /thank-you/.test(ultra) && /new, substantial request/.test(crazy))
   check('ultra note when alone: the stages in passes', /in separate passes/.test(modeNote('ultra', { lead: true, team: false, spawn: false })))
   check('ultra note: the lead chooses a shape (tournament, divide and assemble, investigation)', /Tournament, for work/.test(ultra) && /Divide and assemble/.test(ultra) && /Investigation, for a question/.test(ultra) && /small cell/.test(ultra))
-  check('go crazy note: four levels and a cross-critique round', /four levels below you/.test(crazy) && /cross-critique round/.test(crazy))
+  check('go crazy note: eight levels and a cross-critique round', /eight levels below you/.test(crazy) && /eighth level/.test(crazy) && /cross-critique round/.test(crazy))
+  check('go crazy note: its numbers are floors, and only real small talk skips the stages', /floors, not ceilings/.test(crazy) && /at least 8 agents/.test(crazy) && /however briefly it is put/.test(crazy))
+  same('small talk, as the app reads it', ['Thanks!', 'Chose: Use version B', 'status?', 'Any news?', 'build the landing page', 'fix it', 'Research our competitors and write it up'].map(isSmallTalk), [true, true, true, true, false, false, false])
+  const follow = crazyFollowUp({ started: 2, floor: 8, room: 30, depth: 8 })
+  check('the one follow-up: the count, the floor, the live room and depth, the team tool, and what to do when refused', /only 2 agents/.test(follow) && /at least 8/.test(follow) && /up to 30 more agents/.test(follow) && /down to 8 levels/.test(follow) && /mcp__team__spawn_agent/.test(follow) && /If a spawn was refused/.test(follow))
+  const codex = codexConfig({ team: { url: 'http://127.0.0.1:1/mcp/x' } }) as { agents?: { enabled?: boolean }; features?: Record<string, boolean>; mcp_servers?: Record<string, unknown> }
+  check("ChatGPT agents get the team's tool server and none of Codex's own agent tools", codex.agents?.enabled === false && codex.features?.multi_agent === false && codex.features?.sleep_tool === false && !!codex.mcp_servers?.team)
+  check('go crazy note: a brain in regions (sub-leads with teams, lateral links, feedback loops, memory, attention, integrator)', /like a brain, in regions/.test(crazy) && /3 to 5 region leads/.test(crazy) && /Lateral links/.test(crazy) && /Feedback loops/.test(crazy) && /memory \(keeps the board current/.test(crazy) && /Attention/.test(crazy) && /integrator/.test(crazy))
+  check('ultra note: no regions, the brain is for Go crazy', !/in regions/.test(ultra))
+  const keep = modeReminder('gocrazy', { cap: 30, depth: 5, total: 48 })
+  check('goal reminder for Go crazy: the regions, the room and depth now, and the goal\'s limits', /mode="gocrazy"/.test(keep) && /regions/.test(keep) && /up to 30 more agents \(48 in the chat at most\), down to 5 levels/.test(keep) && /rounds, its time, and the user's Stop/.test(keep))
   check('ultra note: three levels by default, no capitals for emphasis', /third level below you/.test(ultra) && !/\b[A-Z]{4,}\b/.test(ultra.replace(/\b(GPT|API|ChatGPT)\b/g, '')))
   // pnpm auto-test with ENSEMBLE_DUMP_NOTES=1 writes the note texts for reading.
   if (process.env.ENSEMBLE_DUMP_NOTES) {
@@ -86,7 +119,8 @@ check('APP_COMMANDS lists ultra and gocrazy', APP_COMMANDS.some((c) => c.name ==
       [
         '# Ultra and Go crazy: the notes the lead receives\n\nGenerated by `ENSEMBLE_DUMP_NOTES=1 pnpm auto-test` from src/main/prompts.ts modeNote(). The team lines come from hub.ultraTeam(chat); the cap from spawnRoom(); the depth from hub.maxDepth(chat).\n',
         block('modeNote("ultra"), mixed team (3 Claude + 1 ChatGPT), cap 20, depth 3', modeNote('ultra', { lead: true, team: true, spawn: true, cap: 20, models: mixed, depth: 3 })),
-        block('modeNote("gocrazy"), ChatGPT-only team (4 accounts), cap 32, depth 4', modeNote('gocrazy', { lead: true, team: true, spawn: true, cap: 32, models: gpt4, depth: 4 })),
+        block('modeNote("gocrazy"), ChatGPT-only team (4 accounts), cap 48, depth 5', modeNote('gocrazy', { lead: true, team: true, spawn: true, cap: 48, models: gpt4, depth: 5 })),
+        block('modeReminder("gocrazy"): ahead of each later round of a goal set in Go crazy', modeReminder('gocrazy', { cap: 30, depth: 5, total: 48 })),
         block('modeNote("ultra"), lead alone (no team, cannot start agents)', modeNote('ultra', { lead: true, team: false, spawn: false })),
       ].join('\n'),
     )
@@ -361,6 +395,9 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     const started = (chat.agents || []).length
     console.log(`  (Ultra run: ${((Date.now() - ultraFrom) / 1000).toFixed(1)} s at demo speed ${process.env.ENSEMBLE_DEMO_SPEED || 1}, ${started} agents)`)
     check('ultra: the demo starts scouts, builders and a judge', started >= 7, String(started))
+    const img = hub.tasksOf(chat.id).find((t) => t.title.startsWith('Images:'))
+    const builtWith = hub.tasksOf(chat.id).filter((t) => t.title.startsWith('Build:'))
+    check('ultra design run: a ChatGPT agent makes the moodboard and the hero, and the builders build with them', !!img && img.status === 'done' && hub.accounts.get(img.to)?.provider === 'chatgpt' && builtWith.length > 0 && builtWith.every((t) => (t.after || []).includes(img.id) && /designs\/assets\//.test(t.brief)), img ? `${img.status} on ${hub.accounts.get(img.to)?.provider}` : 'no image task')
     const staged = hub.tasksOf(chat.id).filter((t) => /^(Scout|Build|Judge):/.test(t.title))
     const on = (kind: string): string => staged.filter((t) => t.title.startsWith(kind)).map((t) => `${t.model}`).join(',')
     check('ultra: scouts on the fast models (Haiku and Luna), builders and judges on the strongest', staged.length >= 7 && /haiku/i.test(on('Scout')) && /luna/i.test(on('Scout')) && /fable/i.test(on('Build')) && /astra/i.test(on('Build')), `scouts ${on('Scout')} builders ${on('Build')} judges ${on('Judge')}`)
@@ -368,7 +405,7 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     check('ultra: agents left idle after the run are sent home', swept.length > 0 && (chat.agents || []).every((a) => a.spawned?.gone), swept.join(', '))
     check('and the lead is told who went', rows(chat).some((i) => i.kind === 'notice' && /home after a few minutes idle/.test(i.text)))
     const builds = staged.filter((t) => t.title.startsWith('Build'))
-    check('what a task waits for is said in names, never task ids', builds.length > 0 && builds.every((t) => t.afterFor === '4 scouts') && staged.every((t) => !/\bt\d+\b/.test(`${t.afterFor || ''} ${t.waitingFor || ''}`)), builds.map((t) => t.afterFor).join(' | '))
+    check('what a task waits for is said in names, never task ids', builds.length > 0 && builds.every((t) => /^4 scouts( and Image maker)?$/.test(t.afterFor || '')) && staged.every((t) => !/\bt\d+\b/.test(`${t.afterFor || ''} ${t.waitingFor || ''}`)), builds.map((t) => t.afterFor).join(' | '))
     const agentsBefore = (chat.agents || []).length
     hub.send({ chatId: chat.id, to: leadId, text: 'Thanks' })
     await until('the thank-you to be answered', () => idle(chat) && rows(chat).some((i) => i.kind === 'assistant' && /Glad it helps/.test(i.text)), 30_000)
@@ -385,8 +422,25 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     const crazyFrom = Date.now()
     hub.send({ chatId: crazy.id, to: leadId, text: '/gocrazy design the landing page' })
     check('go crazy is accepted while Ultra is on', rows(crazy).some((i) => i.kind === 'user' && i.text === 'design the landing page'))
-    same('the cap rises to 32 while going crazy', [SPAWN_CAP_GOCRAZY, hub.agentCap(crazy)], [32, Math.max(usual, 32)])
-    same('the depth rises to 4 while going crazy', [MAX_DEPTH_GOCRAZY, hub.maxDepth(crazy)], [4, 4])
+    same('going crazy, the cap is what the machine carries (up to a safety stop of 200)', [SPAWN_CAP_GOCRAZY, hub.agentCap(crazy)], [200, Math.max(usual, Math.min(200, hub.machineCap(crazy)))])
+    same('the depth rises to 8 while going crazy', [MAX_DEPTH_GOCRAZY, hub.maxDepth(crazy)], [8, 8])
+    check('chat.crazy is on while going crazy, and the window hears it', crazy.crazy === true && events.some((e) => e.type === 'chat' && e.chat.id === crazy.id && e.chat.crazy === true))
+    {
+      // The cap is bounded by the memory there is: 3 agents' worth free after the reserve.
+      const real = hub.machine
+      const live = (crazy.agents || []).filter((a) => !a.spawned?.gone).length
+      hub.machine = { free: () => 2 * 1024 ** 3 + 3 * 400 * 1024 ** 2 + 1, total: () => 8 * 1024 ** 3, cores: () => 64 }
+      same('with little free memory the Go crazy cap is what fits', [hub.memoryCap(crazy), hub.agentCap(crazy)], [live + 3, Math.max(usual, live + 3)])
+      hub.machine = { free: () => 512 * 1024 ** 3, total: () => 1024 * 1024 ** 3, cores: () => 2 }
+      same('with few processor cores the cap is what they carry (6 each)', hub.agentCap(crazy), Math.max(usual, 12))
+      hub.machine = { free: () => 512 * 1024 ** 3, total: () => 1024 * 1024 ** 3, cores: () => 128 }
+      same('with a huge machine there is no set number, only the safety stop', hub.agentCap(crazy), 200)
+      hub.machine = { ...real, free: () => 2 * 1024 ** 3 + 30 * 400 * 1024 ** 2, total: () => 8 * 1024 ** 3, cores: () => 64 }
+      const roster = hub['rosterText'](crazy, hub.accounts.get(leadId)!) as string
+      const roomNow = hub['spawnRoom'](crazy, hub.accounts.get(leadId)!) as number
+      check('the roster shows the live room', new RegExp(`You can start ${roomNow} more`).test(roster) && roomNow <= 30, (/You can start[^\n]*/.exec(roster) || [''])[0])
+      hub.machine = real
+    }
     same('go crazy: the lead thinks as hard as its model can', (hub['ultraLead'](crazy, hub.accounts.get(leadId)!) as { effort?: string } | null)?.effort, 'max')
     await until('the Go crazy run to finish', () => idle(crazy) && rows(crazy).some((i) => i.kind === 'assistant' && /both judging rounds/.test(i.text)), 120_000)
     console.log(`  (go crazy run: ${((Date.now() - crazyFrom) / 1000).toFixed(1)} s at demo speed ${process.env.ENSEMBLE_DEMO_SPEED || 1}, ${(crazy.agents || []).length} agents)`)
@@ -397,28 +451,82 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     const depthOf = (a: Account): number => a.spawned?.depth || 0
     const byName = (c: Chat, n: string): Account | undefined => (c.agents || []).find((a) => a.name === n)
     const deep = (crazy.agents || []).filter((a) => depthOf(a) >= 2)
-    check('go crazy: builders start a critic and a tester, a judge a verifier (depth 2)', ['Critic A', 'Critic B', 'Critic C', 'Critic D', 'Tester A', 'Tester B', 'Verifier'].every((n) => depthOf(byName(crazy, n) || ({} as Account)) === 2), deep.map((a) => `${a.name}@${depthOf(a)}`).join(', '))
+    const regions = (crazy.agents || []).filter((a) => depthOf(a) === 1)
+    const teams = regions.filter((r) => (crazy.agents || []).some((a) => a.spawned?.by === r.id))
+    check('go crazy: 3 to 5 regions, each a lead at depth 1 with a team of its own', teams.length >= 3 && teams.length <= 5, regions.map((r) => `${r.name}:${(crazy.agents || []).filter((a) => a.spawned?.by === r.id).length}`).join(', '))
+    check('go crazy: scouts, builders and judges are in their regions (depth 2)', ['Scout 1', 'Scout 8', 'Builder A', 'Builder D', 'Judge 1', 'Judge 3', 'Archivist'].every((n) => depthOf(byName(crazy, n) || ({} as Account)) === 2) && byName(crazy, 'Scout 1')?.spawned?.by === byName(crazy, 'Research lead')?.id && byName(crazy, 'Builder A')?.spawned?.by === byName(crazy, 'Build lead')?.id, deep.map((a) => `${a.name}@${depthOf(a)}`).join(', '))
+    check('go crazy: builders start a critic and a tester, a judge a verifier (depth 3)', ['Critic A', 'Critic B', 'Critic C', 'Critic D', 'Tester A', 'Tester B', 'Verifier'].every((n) => depthOf(byName(crazy, n) || ({} as Account)) === 3), deep.map((a) => `${a.name}@${depthOf(a)}`).join(', '))
     const fc = byName(crazy, 'Fact-checker A')
-    check('go crazy: a critic starts a fact-checker (depth 3)', !!fc && depthOf(fc) === 3 && fc.spawned?.by === byName(crazy, 'Critic A')?.id)
-    check('go crazy: about 23 agents, within the cap', (crazy.agents || []).length >= 20 && (crazy.agents || []).length <= SPAWN_CAP_GOCRAZY, String((crazy.agents || []).length))
+    check('go crazy: a critic starts a fact-checker (depth 4)', !!fc && depthOf(fc) === 4 && fc.spawned?.by === byName(crazy, 'Critic A')?.id)
+    const buildLead = byName(crazy, 'Build lead')
+    const memoryLead = byName(crazy, 'Memory lead')
+    const lateral = buildLead && memoryLead ? (hub.openChat(crazy.id).items[buildLead.id] || []).some((i) => i.kind === 'outgoing' && i.to === memoryLead.id) : false
+    check('go crazy: a lateral message between regions (building tells memory)', lateral)
+    check('go crazy: the memory region keeps the board (findings and decisions)', /Findings/.test(hub['boardText'](crazy) as string) && /Decisions/.test(hub['boardText'](crazy) as string))
+    const crazyImg = hub.tasksOf(crazy.id).find((t) => t.title.startsWith('Images:'))
+    check('go crazy design run: an image region on ChatGPT, and building waits for it', !!crazyImg && crazyImg.status === 'done' && hub.accounts.get(crazyImg.to)?.provider === 'chatgpt' && hub.tasksOf(crazy.id).some((t) => t.title === 'Region: building' && (t.after || []).includes(crazyImg.id)))
+    check('go crazy: about 28 agents, within the cap', (crazy.agents || []).length >= 25 && (crazy.agents || []).length <= SPAWN_CAP_GOCRAZY, String((crazy.agents || []).length))
     const crazyTasks = hub.tasksOf(crazy.id)
     check('go crazy: every task ended done', crazyTasks.every((t) => t.status === 'done'), crazyTasks.filter((t) => t.status !== 'done').map((t) => `${t.title}:${t.status}`).join(', '))
     check('go crazy: helpers report to whoever started them', crazyTasks.filter((t) => /^(Critique|Test|Verify|Fact-check):/.test(t.title)).every((t) => hub.accounts.get(t.to)?.spawned?.by === t.from))
     // The run is over: the chat is back to plain Ultra by itself, without waiting for the user's next message.
     same('when a Go crazy run ends, the cap and the depth go back to Ultra', [hub.agentCap(crazy), hub.maxDepth(crazy)], [Math.max(usual, SPAWN_CAP_ULTRA), 3])
+    check('and chat.crazy goes off', !crazy.crazy)
     if (fc) {
       // The next two checks are about a run in progress.
       hub['markUltra'](crazy, 'gocrazy')
-      hub['spawn'](crazy, fc, { name: 'Fourth level', role: 'the last level going crazy allows' })
-      const fourth = byName(crazy, 'Fourth level')
-      check('going crazy allows a fourth level', fourth?.spawned?.depth === 4)
-      const refused = fourth ? (hub['spawn'](crazy, fourth, { name: 'Too deep', role: 'should not exist' }) as string) : ''
+      let deepest: Account | undefined = fc
+      for (const n of ['Level 5', 'Level 6', 'Level 7', 'Level 8']) {
+        hub['spawn'](crazy, deepest!, { name: n, role: 'one level further down' })
+        deepest = byName(crazy, n) || deepest
+      }
+      check('going crazy allows eight levels', deepest?.spawned?.depth === 8, `${deepest?.name}@${deepest?.spawned?.depth}`)
+      const refused = deepest ? (hub['spawn'](crazy, deepest, { name: 'Too deep', role: 'should not exist' }) as string) : ''
       check('an agent at the last level is refused with a clear message', /deepest level/.test(refused) && !byName(crazy, 'Too deep'), refused)
     }
     const builderA = byName(crazy, 'Builder A')
     if (builderA) {
       await hub.removeAgent(crazy.id, builderA.id)
       check('a subtree goes home with its parent', ['Builder A', 'Critic A', 'Tester A', 'Fact-checker A'].every((n) => byName(crazy, n)?.spawned?.gone), ['Critic A', 'Tester A', 'Fact-checker A'].map((n) => `${n}:${!!byName(crazy, n)?.spawned?.gone}`).join(' '))
+    }
+
+    // Brain mode: Ultra, Go crazy and a goal together. Every round of the goal runs in Go crazy.
+    {
+      const brain = hub.createChat({ cwd: work })
+      hub.setUltra(brain.id, true)
+      const leadAcc = hub.accounts.get(leadId)!
+      const sent: string[] = []
+      const ses = hub['session'](brain, leadAcc) as { enqueue: (p: { text: string }, front?: boolean) => void }
+      const real = ses.enqueue.bind(ses)
+      ses.enqueue = (p, front) => {
+        sent.push(p.text)
+        real(p, front)
+      }
+      hub.send({ chatId: brain.id, to: leadId, text: 'Add a pricing page', mode: 'gocrazy', goal: { doneWhen: 'the tests pass and the page was opened' } })
+      check('a goal set in Go crazy keeps that mode', brain.goal?.mode === 'gocrazy' && brain.crazy === true, `${brain.goal?.mode} ${brain.crazy}`)
+      await until('round 2 of the Go crazy goal', () => (brain.goal?.round || 0) >= 1 && sent.length >= 2, 60_000)
+      const round2 = sent[sent.length - 1]
+      check('round 2 carries the Go crazy reminder with the room and depth in force', /<way-of-working mode="gocrazy">/.test(round2) && /This goal runs in Go crazy/.test(round2) && /down to 8 levels/.test(round2) && /<goal-check round="2"/.test(round2), round2.slice(0, 300))
+      same('and the Go crazy cap and depth hold in round 2', [hub.agentCap(brain), hub.maxDepth(brain), brain.crazy], [Math.max(usual, Math.min(200, hub.machineCap(brain))), 8, true])
+      await until('the Go crazy goal to be met', () => brain.goal?.status === 'met' && idle(brain), 60_000)
+      same('once the goal is met, Go crazy ends with it', [!!brain.crazy, hub.agentCap(brain), hub.maxDepth(brain)], [false, Math.max(usual, SPAWN_CAP_ULTRA), 3])
+      check('the goal kept to its rounds', (brain.goal?.round || 0) + 1 <= (brain.goal?.maxRounds || 0))
+
+      const stopped = hub.createChat({ cwd: work })
+      hub.setUltra(stopped.id, true)
+      hub.send({ chatId: stopped.id, to: leadId, text: 'Add a pricing page', mode: 'gocrazy', goal: { doneWhen: 'the tests pass' } })
+      check('a second Go crazy goal is under way', stopped.crazy === true && stopped.goal?.status === 'active')
+      await hub.goalAction(stopped.id, 'stop')
+      same('a stopped goal ends the Go crazy run', [stopped.goal?.status, !!stopped.crazy, hub.agentCap(stopped), hub.maxDepth(stopped)], ['stopped', false, Math.max(usual, SPAWN_CAP_ULTRA), 3])
+      await until('the stopped chat to be idle', () => idle(stopped), 30_000)
+
+      const off = hub.createChat({ cwd: work })
+      hub.setUltra(off.id, true)
+      hub.send({ chatId: off.id, to: leadId, text: 'Add a pricing page', mode: 'gocrazy', goal: { doneWhen: 'the tests pass' } })
+      hub.setUltra(off.id, false)
+      check('turning Ultra off ends Go crazy, goal or not', !off.crazy && hub.maxDepth(off) === 2)
+      await hub.goalAction(off.id, 'stop')
+      await until('that chat to be idle', () => idle(off), 30_000)
     }
     hub.send({ chatId: crazy.id, to: leadId, text: 'Thanks', mode: 'quick' })
     same('a message in another mode ends the raised Go crazy cap', hub.agentCap(crazy), Math.max(usual, SPAWN_CAP_ULTRA))
@@ -610,7 +718,8 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     const member = hub.accounts.accounts.find((a) => a.id !== leadId && a.enabled && a.provider === 'claude') || hub.accounts.accounts.find((a) => a.id !== leadId && a.enabled)
     if (!member) throw new Error('the demo team has only a lead')
 
-    // A lead out of allowance: what reaches it waits, one offer to switch, and the new lead gets it all.
+    // A lead out of allowance with handover switched off: what reaches it waits, one offer to switch, and the new lead gets it all.
+    hub.updateSettings({ handover: false })
     const dry = hub.createChat({ cwd: work })
     const refill = Date.now() + 2 * 3600e3
     hub.accounts.setUsage(leadId, { session: { utilization: 1, resetsAt: refill, status: 'rejected' } })
@@ -626,8 +735,10 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     check('nothing is left waiting on the old lead', !rows(dry).some((i) => 'queued' in i && i.queued))
     await until('the new lead to take what was waiting', () => rows(dry, member.id).some((i) => i.kind === 'turn'), 60_000)
     check('the new lead is given what was waiting', rows(dry, member.id).some((i) => i.kind === 'notice' && /Passed on what was waiting/.test(i.text) && /3 messages/.test(i.text)))
+    check('handover off: no automatic handover, the old offer only', !dry.cover && rows(dry, member.id).every((i) => !(i.kind === 'notice' && i.handover)))
     hub.accounts.setUsage(leadId, { session: { utilization: 0.2, resetsAt: refill } })
     await hub.stop(dry.id)
+    hub.updateSettings({ handover: true })
 
     // An error that arrives as a "success" is not an answer, and a stalled call is really ended.
     let thrown = ''
@@ -715,6 +826,199 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     hub.send({ chatId: perm.id, to: leadId, text: 'And the licence', mode: 'quick' })
     same('the next turn runs at the level the user chose', lv(), 'ask')
     await until('the lead to be idle', () => idle(perm), 30_000)
+
+    // Steering: a message sent while the lead works reaches the work under way.
+    const st = hub.createChat({ cwd: work })
+    hub.send({ chatId: st.id, to: leadId, text: 'Add a pricing page with a checkout flow' })
+    await until('the lead to be working', () => !idle(st), 10_000)
+    await pause(300)
+    const how = hub.steer({ chatId: st.id, to: leadId, text: 'stop that and just say STEERED' })
+    same('a message to a working agent is steered in', how, 'steered')
+    const said = rows(st).filter((i) => i.kind === 'user' && /just say STEERED/.test(i.text))
+    check('it shows once, where it was sent, marked as steered and not waiting', said.length === 1 && (said[0] as { steered?: boolean }).steered === true && !(said[0] as { queued?: boolean }).queued, JSON.stringify(said))
+    check('nothing is lined up behind the turn', hub.openChat(st.id).states.find((x) => x.accountId === leadId)?.queued === 0)
+    await until('the lead to finish', () => idle(st), 30_000)
+    const turnsSteered = rows(st).filter((i) => i.kind === 'turn')
+    const lastSaid = [...rows(st)].reverse().find((i) => i.kind === 'assistant')
+    check('the work under way changed course: its reply is the steered one', !!lastSaid && (lastSaid as { text: string }).text.trim() === 'STEERED', lastSaid && (lastSaid as { text: string }).text)
+    check('in the same turn: one turn for the whole piece of work, not a second one', turnsSteered.length === 1 && (turnsSteered[0] as { status?: string }).status === 'done', JSON.stringify(turnsSteered.map((t) => (t as { status?: string }).status)))
+    check('and nothing was handed out after the change of course', hub.tasksOf(st.id).length === 0, String(hub.tasksOf(st.id).length))
+    // An agent that is not working: the message goes the usual way, as a turn of its own.
+    same('to an idle agent it is sent as usual', hub.steer({ chatId: st.id, to: leadId, text: 'Thanks', mode: 'quick' }), 'sent')
+    await until('the lead to answer', () => rows(st).filter((i) => i.kind === 'turn').length === 2 && idle(st), 30_000)
+    // A command is never steered in: it goes through send(), which reads it.
+    const sc = hub.createChat({ cwd: work })
+    hub.send({ chatId: sc.id, to: leadId, text: 'Summarise the plan', mode: 'quick' })
+    same('a command goes the usual way even while the agent works', hub.steer({ chatId: sc.id, to: leadId, text: '/goal pause' }), 'sent')
+    await until('the lead to be idle', () => idle(sc), 30_000)
+    // Stopped right after steering: the steered words stay in the transcript, and nothing runs on by itself afterwards.
+    const ss = hub.createChat({ cwd: work })
+    hub.send({ chatId: ss.id, to: leadId, text: 'Add a pricing page with a checkout flow' })
+    await until('the lead to be working', () => !idle(ss), 10_000)
+    hub.steer({ chatId: ss.id, to: leadId, text: 'Use a dark theme too' })
+    await hub.stop(ss.id, leadId)
+    await until('the lead to stop', () => idle(ss), 10_000)
+    await pause(1500)
+    const ssTurns = rows(ss).filter((i) => i.kind === 'turn')
+    check('stopped after steering: the words stay, one interrupted turn, nothing runs on its own', rows(ss).filter((i) => i.kind === 'user' && /dark theme/.test(i.text)).length === 1 && ssTurns.length === 1 && (ssTurns[0] as { status?: string }).status === 'interrupted' && idle(ss), JSON.stringify(ssTurns.map((t) => (t as { status?: string }).status)))
+  }
+
+  console.log('\nautomatic handover when an account runs out')
+  {
+    type Sp = { name?: string; role: string; account?: string; brief?: string; title?: string }
+    const H = hub as unknown as {
+      assign(chat: Chat, from: Account, a: { to: string; title: string; brief: string }): string
+      spawn(chat: Chat, by: Account, a: Sp): string
+      memoryOf(chat: Chat, a: Account): string
+    }
+    const ids = hub.accounts.accounts.filter((a) => a.enabled).map((a) => a.id)
+    const c3 = hub.accounts.accounts.find((a) => a.name === 'Claude 3')!
+    const hello = hub.accounts.accounts.find((a) => a.name === 'Hello')!
+    const gpt = hub.accounts.accounts.find((a) => a.provider === 'chatgpt')!
+    const hour = 3600e3
+    const out = (id: string, at: number): void => hub.accounts.setUsage(id, { session: { utilization: 1, resetsAt: at, status: 'rejected' } })
+    const low = (id: string): void => hub.accounts.setUsage(id, { session: { utilization: 0.93, resetsAt: Date.now() + 2 * hour, status: 'allowed_warning' } })
+    const fine = (id: string): void => hub.accounts.setUsage(id, { session: { utilization: 0.2, resetsAt: Date.now() + 3 * hour, status: 'allowed' } })
+    const handovers = (chat: Chat): Item[] => ids.flatMap((id) => rows(chat, id).filter((i) => i.kind === 'notice' && !!i.handover))
+    const errors = (chat: Chat, who: string): Item[] => rows(chat, who).filter((i) => i.kind === 'notice' && i.level === 'error')
+    const clk = (ts: number): string => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+    // The states, worked out from the usage windows, with give so an account near the line does not flip.
+    const now = Date.now()
+    same('fine, running low, out', [supplyOf({ session: { utilization: 0.5, resetsAt: now + hour } }).state, supplyOf({ session: { utilization: 0.91, resetsAt: now + hour } }).state, supplyOf({ weekly: { utilization: 0.96, resetsAt: now + hour } }).state, supplyOf({ session: { utilization: 0.4, resetsAt: now + hour, status: 'rejected' } }).state], ['ok', 'low', 'low', 'out'])
+    same('low stays low until clearly below the line', [supplyOf({ session: { utilization: 0.85, resetsAt: now + hour } }, { state: 'low', until: null }).state, supplyOf({ session: { utilization: 0.8, resetsAt: now + hour } }, { state: 'low', until: null }).state], ['low', 'ok'])
+    check('a window whose refill time has passed is fine again', supplyOf({ session: { utilization: 1, resetsAt: now - 1000, status: 'rejected' } }).state === 'ok')
+    check('out until the later refill when both windows are out', supplyOf({ session: { utilization: 1, resetsAt: now + hour }, weekly: { utilization: 1, resetsAt: now + 5 * hour } }).until === now + 5 * hour)
+    same('the team panel words', [supplyWords({ state: 'out', until: now }, () => '14:30', 'Hello'), supplyWords({ state: 'low', until: null }, clk), supplyWords({ state: 'ok', until: null }, clk)], ['Out until 14:30 · covered by Hello', 'Running low', ''])
+    same('the handover line', handoverLine('Hello', 'Main', 'out', now, () => '14:30'), 'Hello took over as lead: Main ran out of usage. Main is back at 14:30.')
+    check('the state reaches the window with the usage', (() => { out(c3.id, now + hour); const u = hub.accounts.usage.get(c3.id); fine(c3.id); return u?.supply?.state === 'out' })())
+
+    // 1. The lead runs out in the middle of a reply: the best placed teammate takes over by itself.
+    const mid = hub.createChat({ cwd: work })
+    hub.send({ chatId: mid.id, to: leadId, text: 'Add a pricing page, and simulate a limit' })
+    await until('a teammate to take over', () => !!mid.cover, 20_000)
+    const next = hub.lead(mid)!
+    check('a Claude teammate with room took over, not the lead itself', next.id !== leadId && next.provider === 'claude' && mid.cover?.from === leadId && mid.cover.why === 'out', `${next.name} ${JSON.stringify(mid.cover)}`)
+    const row = handovers(mid)
+    check('one clean handover row, in the new lead\'s transcript: who, why, back when', row.length === 1 && rows(mid, next.id).includes(row[0]) && /took over as lead: Main ran out of usage\. Main is back at \d/.test((row[0] as { text: string }).text), JSON.stringify(row.map((r) => (r as { text: string }).text)))
+    check('no error and no switch offer on the old lead', errors(mid, leadId).length === 0 && !rows(mid).some((i) => i.kind === 'notice' && i.action?.kind === 'switch-lead'))
+    await until('the new lead to carry on the interrupted work', () => rows(mid, next.id).some((i) => i.kind === 'turn'), 30_000)
+    check('nothing is left waiting on the old lead', !rows(mid).some((i) => 'queued' in i && i.queued))
+    check('what the user asked shows in the new lead transcript too', rows(mid, next.id).some((i) => i.kind === 'user' && /simulate a limit/.test(i.text)))
+    hub.send({ chatId: mid.id, to: next.id, text: 'Thanks. What is left?', mode: 'quick' })
+    out(leadId, Date.now() + 2 * hour)
+    await pause(300)
+    same('never twice for one outage', handovers(mid).length, 1)
+    fine(leadId)
+    await until('the hand-back to be offered once the old lead refills', () => mid.cover?.back === true, 5000)
+    await until('the new lead to be idle', () => idle(mid, next.id), 30_000)
+    await hub.setChatLead(mid.id, leadId)
+    check('handing back is one click, and clears the cover', hub.lead(mid)?.id === leadId && !mid.cover)
+
+    // 2. The lead is out before a message: it hands over first and the message goes to the new lead.
+    const before = hub.createChat({ cwd: work })
+    out(leadId, Date.now() + hour)
+    hub.send({ chatId: before.id, to: leadId, text: 'What is the state of the build?', mode: 'quick' })
+    const took = hub.lead(before)!
+    check('the message went to whoever took over', took.id !== leadId && rows(before, took.id).some((i) => i.kind === 'user' && i.text === 'What is the state of the build?'), took.name)
+    await until('it to answer', () => idle(before, took.id) && rows(before, took.id).some((i) => i.kind === 'turn'), 30_000)
+    fine(leadId)
+
+    // 3. A teammate's task: its account runs out partway, and it moves to someone with room.
+    const job = hub.createChat({ cwd: work })
+    H.assign(job, lead, { to: c3.name, title: 'Write the header', brief: 'Write the site header.' })
+    out(c3.id, Date.now() + hour)
+    const task = (): ReturnType<typeof hub.tasksOf>[number] | undefined => hub.tasksOf(job.id)[0]
+    await until('the task to move', () => !!task()?.movedFrom, 20_000)
+    check('it moved off the account that ran out, to one with room', task()?.movedFrom === c3.id && task()?.to !== c3.id && hub.accounts.supply(task()!.to).state === 'ok' && task()?.moves === 1, JSON.stringify({ to: task()?.to, moves: task()?.moves }))
+    check('the lead is told in one line', rows(job).some((i) => i.kind === 'notice' && /Claude 3 ran out of allowance, so .+ picked up "Write the header"/.test(i.text)))
+    await until('the moved task to finish', () => task()?.status === 'done', 30_000)
+    check('no error row on the agent that ran out', errors(job, c3.id).length === 0)
+    // New work avoids an account that is out, and one that is running low while others have room.
+    low(hello.id)
+    H.assign(job, lead, { to: 'auto', title: 'Write the footer', brief: 'Write the site footer.' })
+    const second = hub.tasksOf(job.id).find((t) => t.title === 'Write the footer')
+    check('new work skips accounts that are out or running low', !!second && second.to !== c3.id && second.to !== hello.id, second?.to)
+    fine(hello.id)
+    fine(c3.id)
+    await until('the footer to finish', () => second?.status === 'done', 30_000)
+
+    // 4. Agents started in the chat: their account runs out, and they move to one with room.
+    const kids = hub.createChat({ cwd: work })
+    H.spawn(kids, lead, { name: 'Critic', role: 'reviews the header', account: c3.name, title: 'Look over the header', brief: 'Look over the header and say what to fix.' })
+    const critic = (kids.agents || []).find((a) => a.name === 'Critic')!
+    out(c3.id, Date.now() + hour)
+    await until('the agent to move', () => critic.spawned?.base !== c3.id, 20_000)
+    check('a started agent whose account ran out moved to an account with room', !!critic.spawned && critic.spawned.base !== c3.id && hub.accounts.supply(critic.spawned.base).state === 'ok', critic.spawned?.base)
+    check('whoever started it is told in one line', rows(kids).some((i) => i.kind === 'notice' && /Critic moved from Claude 3's account to .+'s: Claude 3 ran out of usage/.test(i.text)))
+    const ctask = hub.tasksOf(kids.id).find((t) => t.to === critic.id)
+    await until('its task to finish on the new account', () => ctask?.status === 'done', 30_000)
+    check('it carries a summary of its work', /Task from Main, "Look over the header"/.test(H.memoryOf(kids, critic)))
+    // A sub-agent two levels down, idle on an account that runs out, moves when it is next given work.
+    fine(c3.id)
+    H.spawn(kids, critic, { name: 'Fact-checker', role: 'checks claims', account: c3.name })
+    const fc = (kids.agents || []).find((a) => a.name === 'Fact-checker')!
+    check('a sub-agent at depth 2 was started on Claude 3', fc?.spawned?.depth === 2 && fc.spawned.base === c3.id, JSON.stringify(fc?.spawned))
+    out(c3.id, Date.now() + hour)
+    const handed = H.assign(kids, critic, { to: fc.name, title: 'Check the claims', brief: 'Check every claim in the header copy.' })
+    check('work for it is accepted while another account has room', /Fact-checker/.test(handed) && !/no usage allowance/.test(handed), handed)
+    await until('the sub-agent to move', () => fc.spawned?.base !== c3.id, 10_000)
+    const ftask = hub.tasksOf(kids.id).find((t) => t.to === fc.id)
+    await until('the sub-agent\'s task to finish', () => ftask?.status === 'done', 30_000)
+    check('the sub-agent moved before its turn and did the work', fc.spawned!.base !== c3.id && ftask?.status === 'done' && rows(kids, critic.id).some((i) => i.kind === 'notice' && /Fact-checker moved from Claude 3/.test(i.text)))
+    fine(c3.id)
+    await until('everyone in the chat to be idle', () => hub.openChat(kids.id).states.every((x) => x.phase === 'idle' || x.phase === 'error'), 30_000)
+    // Three levels down in Ultra, running out in the middle of its task: it moves and starts the task again.
+    const deep = hub.createChat({ cwd: work })
+    hub.setUltra(deep.id, true)
+    H.spawn(deep, lead, { name: 'Builder', role: 'builds a version' })
+    const builder = (deep.agents || []).find((a) => a.name === 'Builder')!
+    H.spawn(deep, builder, { name: 'Critic B', role: 'critiques it' })
+    const cb = (deep.agents || []).find((a) => a.name === 'Critic B')!
+    H.spawn(deep, cb, { name: 'Checker', role: 'checks the critique', account: c3.name, title: 'Check the critique', brief: 'Check each point in the critique.' })
+    const checker = (deep.agents || []).find((a) => a.name === 'Checker')!
+    out(c3.id, Date.now() + hour)
+    const dtask = hub.tasksOf(deep.id).find((t) => t.to === checker?.id)
+    await until('the depth-3 agent to move and finish', () => dtask?.status === 'done', 30_000)
+    check('an agent at depth 3 that ran out partway moved and finished its task', checker?.spawned?.depth === 3 && checker.spawned.base !== c3.id && dtask?.moves === 1 && dtask.movedFrom === c3.id, JSON.stringify({ spawned: checker?.spawned, moves: dtask?.moves }))
+    fine(c3.id)
+    await until('the deep chat to be idle', () => hub.openChat(deep.id).states.every((x) => x.phase === 'idle' || x.phase === 'error'), 30_000)
+    hub.setUltra(deep.id, false)
+
+    // 5. Every account is out: the work waits, the chat is told once, and the first refill takes it.
+    const all = hub.createChat({ cwd: work })
+    const first = Date.now() + 40 * 60e3
+    out(leadId, Date.now() + 2 * hour)
+    out(hello.id, Date.now() + 3 * hour)
+    out(gpt.id, Date.now() + 4 * hour)
+    out(c3.id, first)
+    hub.send({ chatId: all.id, to: leadId, text: 'Summarise the plan', mode: 'quick' })
+    hub.send({ chatId: all.id, to: leadId, text: 'And the budget', mode: 'quick' })
+    const told = rows(all).filter((i) => i.kind === 'notice' && /Every account on the team is out of usage/.test(i.text))
+    check('told once, with the earliest refill and who it is', told.length === 1 && new RegExp(`goes on by itself at ${clk(first)}, when Claude 3 refills`).test((told[0] as { text: string }).text), JSON.stringify(told.map((t) => (t as { text: string }).text)))
+    check('the messages wait, no handover, no error', !all.cover && handovers(all).length === 0 && rows(all).filter((i) => i.kind === 'user' && i.queued).length === 2 && errors(all, leadId).length === 0)
+    fine(c3.id)
+    await until('the first account to refill takes the waiting work', () => all.cover?.to === c3.id, 5000)
+    await until('the waiting messages to be answered', () => rows(all, c3.id).some((i) => i.kind === 'turn'), 30_000)
+    check('nothing is left waiting', !rows(all).some((i) => 'queued' in i && i.queued))
+    for (const id of ids) fine(id)
+    await until('the new lead to be idle', () => idle(all, c3.id), 30_000)
+
+    // 6. No flapping: a lead that is only running low hands over to an account that is fine, once.
+    const calm = hub.createChat({ cwd: work })
+    low(leadId)
+    low(c3.id)
+    hub.send({ chatId: calm.id, to: leadId, text: 'Tidy the readme', mode: 'quick' })
+    const took2 = hub.lead(calm)!
+    check('running low hands over, to an account that is itself fine', calm.cover?.why === 'low' && took2.id !== leadId && took2.id !== c3.id && hub.accounts.supply(took2.id).state === 'ok', `${took2.name} ${JSON.stringify(calm.cover)}`)
+    check('the line says it is about to run out', /Main is about to run out of usage/.test((handovers(calm)[0] as { text?: string })?.text || ''))
+    await until('the new lead to answer', () => idle(calm, took2.id) && rows(calm, took2.id).some((i) => i.kind === 'turn'), 30_000)
+    low(took2.id)
+    hub.send({ chatId: calm.id, to: took2.id, text: 'And the licence', mode: 'quick' })
+    same('a second account running low right after does not bounce the lead again', [handovers(calm).length, hub.lead(calm)?.id], [1, took2.id])
+    await until('the lead to be idle', () => idle(calm, took2.id), 30_000)
+    for (const id of ids) fine(id)
+    for (const c of [mid, before, job, kids, all, calm]) await hub.stop(c.id)
   }
 
   console.log('\nreopening the app')
@@ -737,6 +1041,108 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     check('a goal that was under way waits for a word from the user', again?.goal?.status === 'paused' && /closed/.test(again.goal.note || ''), `${again?.goal?.status} ${again?.goal?.note}`)
     check('a loop keeps its time', again?.loops?.[0]?.status === 'active' && !!again.loops[0].nextAt && !again.loops[0].running)
     check('a run that fell due while closed waits a full pace', (again?.loops?.[1]?.nextAt || 0) > Date.now() + 3_500_000, String(again?.loops?.[1]?.nextAt))
+  }
+  console.log('\ngo crazy: the one follow-up, and a team of ChatGPT accounts only')
+  {
+    const leadAcc = hub.accounts.get(leadId)!
+    // A known effort the model lacks runs at the nearest one below; a word that is no level is refused with why.
+    const clamp = hub['runFor'](leadAcc, 'haiku', 'max') as { run: { effort?: string } } | string
+    check('effort "max" on a model that stops at "high" runs at "high"', typeof clamp !== 'string' && clamp.run.effort === 'high', JSON.stringify(clamp))
+    const bad = hub['runFor'](leadAcc, 'haiku', 'turbo') as string
+    check('an effort that is no level at all is refused, with the levels there are', typeof bad === 'string' && /low, medium, high/.test(bad), String(bad))
+
+    const few = hub.createChat({ cwd: work })
+    hub.setUltra(few.id, true)
+    hub.send({ chatId: few.id, to: leadId, text: '/gocrazy design the landing page with only two agents' })
+    await until('the follow-up and the regions', () => idle(few) && rows(few).some((i) => i.kind === 'assistant' && /both judging rounds/.test(i.text)), 120_000)
+    const nudges = rows(few).filter((i) => i.kind === 'notice' && /asked once to start the regions/.test(i.text))
+    same('a Go crazy lead that starts 2 gets exactly one follow-up', nudges.length, 1)
+    check('and then starts the regions', (few.agents || []).filter((a) => a.spawned?.depth === 1).length >= 3 && (few.agents || []).length >= CRAZY_FLOOR, String((few.agents || []).length))
+
+    const thanks = hub.createChat({ cwd: work })
+    hub.setUltra(thanks.id, true)
+    hub.send({ chatId: thanks.id, to: leadId, text: '/gocrazy thanks' })
+    await until('the thank-you', () => idle(thanks) && rows(thanks).some((i) => i.kind === 'assistant'), 30_000)
+    check('a small follow-up in Go crazy gets no follow-up and starts nobody', !rows(thanks).some((i) => i.kind === 'notice' && /asked once/.test(i.text)) && !(thanks.agents || []).length)
+
+    const stopped = hub.createChat({ cwd: work })
+    hub.setUltra(stopped.id, true)
+    hub.send({ chatId: stopped.id, to: leadId, text: '/gocrazy design the landing page with only two agents' })
+    await hub.stop(stopped.id)
+    await until('the stopped chat to settle', () => idle(stopped), 30_000)
+    await pause(300)
+    check('Stop prevents the follow-up', !rows(stopped).some((i) => i.kind === 'notice' && /asked once/.test(i.text)))
+
+    const spawnTool = (hub['toolsFor'](hub['session'](stopped, leadAcc)) as { name: string; run: (a: Record<string, unknown>) => Promise<string> }[]).find((t) => t.name === 'spawn_agent')
+    const refusedWhy = spawnTool ? await spawnTool.run({ name: 'Nope', role: 'tries a model nobody has', model: 'gpt-9-imaginary' }) : ''
+    check("a refused spawn's reason is the tool's answer the lead reads", /cannot run "gpt-9-imaginary"/.test(refusedWhy) || /no .* account|cannot run/i.test(refusedWhy), refusedWhy)
+
+    // A team of ChatGPT accounts only, with a ChatGPT lead.
+    const gptDir = path.join(os.tmpdir(), 'ensemble-auto-gpt')
+    fs.rmSync(gptDir, { recursive: true, force: true })
+    const gpt = new Hub({
+      dataDir: gptDir,
+      version: 'test',
+      demo: true,
+      mica: false,
+      isFocused: () => false,
+      notify: () => {},
+      emit: (ev) => {
+        events.push(ev)
+        for (let i = waiters.length - 1; i >= 0; i--) if (waiters[i].test()) waiters.splice(i, 1)[0].resolve()
+      },
+    })
+    await gpt.start()
+    // The demo's own ChatGPT sign-in, and three more on the same plan (signed in, the same models).
+    const g1 = gpt.accounts.add({ name: 'G1', provider: 'chatgpt', configDir: null })
+    await gpt.accounts.refresh()
+    for (const n of ['G2', 'G3', 'G4']) {
+      const g = gpt.accounts.add({ name: n, provider: 'chatgpt', configDir: `demo://${n.toLowerCase()}` })
+      gpt.accounts['setStatus']({ ...gpt.accounts.statuses.get(g1.id)!, accountId: g.id })
+      gpt.accounts.setUsage(g.id, { session: { utilization: 0.1, resetsAt: Date.now() + 3 * 3600e3 }, weekly: { utilization: 0.3, resetsAt: Date.now() + 80 * 3600e3 } })
+    }
+    const gLead = gpt.lead()!
+    check('the ChatGPT-only team has a ChatGPT lead', gLead?.provider === 'chatgpt' && gpt.accounts.accounts.every((a) => a.provider === 'chatgpt'))
+    const gRows = (c: Chat): Item[] => gpt.openChat(c.id).items[gLead.id] || []
+    const gIdle = (c: Chat): boolean => {
+      const st = gpt.openChat(c.id).states.find((x) => x.accountId === gLead.id)
+      return !!st && st.phase === 'idle' && !st.queued
+    }
+    const gc = gpt.createChat({ cwd: work })
+    gpt.setUltra(gc.id, true)
+    const leadTools = (gpt['toolsFor'](gpt['session'](gc, gLead)) as { name: string }[]).map((t) => t.name)
+    check('a ChatGPT lead holds spawn_agent and assign_task', leadTools.includes('spawn_agent') && leadTools.includes('assign_task'), leadTools.join(', '))
+    // The tools really reach it over the tool server, the way the ChatGPT program asks for them.
+    const url = gpt['toolServer'].register(`${gc.id}:${gLead.id}`, gpt['toolsFor'](gpt['session'](gc, gLead))) as string | undefined
+    let listed: string[] = []
+    if (url) {
+      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) })
+      const body = await res.text()
+      listed = [...body.matchAll(/"name":"([a-z_]+)"/g)].map((m) => m[1])
+    }
+    check('the tool server lists spawn_agent and assign_task for the ChatGPT lead', listed.includes('spawn_agent') && listed.includes('assign_task'), listed.join(', ') || 'nothing listed')
+    const luna = gpt['spawn'](gc, gLead, { name: 'Luna scout', role: 'scouts', model: 'luna', effort: 'medium' }) as string
+    const astra = gpt['spawn'](gc, gLead, { name: 'Astra builder', role: 'builds', model: 'astra', effort: 'max' }) as string
+    const sol = gpt['spawn'](gc, gLead, { name: 'Sol critic', role: 'critiques', model: 'sol' }) as string
+    check('spawns named by ChatGPT model (luna, astra, sol) start on ChatGPT accounts', [luna, astra, sol].every((r) => /joined the chat/.test(r)) && (gc.agents || []).every((a) => a.provider === 'chatgpt'), [luna, astra, sol].join(' | '))
+    const opus = gpt['spawn'](gc, gLead, { name: 'Opus', role: 'x', model: 'opus' }) as string
+    check('a Claude model on a ChatGPT-only team is refused with why', /no Claude account/.test(opus), opus)
+    await gpt.sweepIdle(gc, 0)
+    const gFrom = Date.now()
+    gpt.send({ chatId: gc.id, to: gLead.id, text: '/gocrazy design the landing page' })
+    await until('the ChatGPT-only Go crazy run', () => gIdle(gc) && gRows(gc).some((i) => i.kind === 'assistant' && /both judging rounds/.test(i.text)), 120_000)
+    const live = (gc.agents || []).filter((a) => a.spawned && a.spawned.at >= gFrom)
+    console.log(`  (ChatGPT-only go crazy: ${((Date.now() - gFrom) / 1000).toFixed(1)} s, ${live.length} agents)`)
+    check('ChatGPT only: the regions run, every agent on a ChatGPT account, down to depth 4', live.length >= 25 && live.every((a) => a.provider === 'chatgpt') && live.some((a) => a.spawned?.depth === 4) && live.filter((a) => a.spawned?.depth === 1).length >= 3, `${live.length} agents, deepest ${Math.max(...live.map((a) => a.spawned?.depth || 0))}`)
+    const gtasks = gpt.tasksOf(gc.id).filter((t) => t.createdAt >= gFrom)
+    check('ChatGPT only: scouts on Luna, builders on Astra', gtasks.filter((t) => t.title.startsWith('Scout')).every((t) => /luna/i.test(t.model || '')) && gtasks.filter((t) => t.title.startsWith('Build')).every((t) => /astra/i.test(t.model || '')), gtasks.map((t) => `${t.title}:${t.model}`).slice(0, 6).join(', '))
+    check('ChatGPT only: no follow-up was needed', !gRows(gc).some((i) => i.kind === 'notice' && /asked once/.test(i.text)))
+    const gfew = gpt.createChat({ cwd: work })
+    gpt.setUltra(gfew.id, true)
+    gpt.send({ chatId: gfew.id, to: gLead.id, text: '/gocrazy design the landing page with only two agents' })
+    await until('the ChatGPT lead to be asked once and start the regions', () => gIdle(gfew) && gRows(gfew).some((i) => i.kind === 'assistant' && /both judging rounds/.test(i.text)), 120_000)
+    same('ChatGPT only: a lead that starts 2 gets exactly one follow-up', gRows(gfew).filter((i) => i.kind === 'notice' && /asked once/.test(i.text)).length, 1)
+    await gpt.dispose()
   }
 } catch (e) {
   failed.push(`stopped early: ${(e as Error).message}`)

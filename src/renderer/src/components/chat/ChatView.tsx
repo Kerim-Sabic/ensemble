@@ -13,6 +13,9 @@ import { AutoBar } from './AutoBar'
 import { NetworkStrip, UltraEdge, UltraMark, useStripShown } from '../ultra/Ultra'
 import { OverflowChip, usePhases, working } from '../ultra/Team'
 import { fitTabs, useMeasured } from '../ultra/fit'
+import { AnimatePresence } from 'motion/react'
+import { BrainPanel } from '../brain/BrainView'
+import { useBrainMode } from '../brain/hooks'
 
 
 /** True when the window is wide enough to show the panel beside the chat. */
@@ -485,6 +488,8 @@ export function ChatView() {
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
   const setFocus = useStore((s) => s.setFocus)
   const strip = useStripShown(chatId)
+  // Ultra going crazy on a goal: the brain view takes the strip's place until it ends.
+  const brain = useBrainMode(chatId)
   const inspector = useStore((s) => s.settings.inspector)
   const wide = useWide(1180)
   const showPanel = !!chatId && inspector && wide
@@ -493,10 +498,11 @@ export function ChatView() {
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
         {ultra && <UltraEdge />}
         <AgentTabs canInspect={!!chatId && wide} />
-        {chatId && <NetworkStrip chatId={chatId} onOpen={setFocus} />}
-        {chatId && focusId ? <Transcript chatId={chatId} accountId={focusId} fadeTop={strip} /> : <EmptyState />}
+        {chatId && <NetworkStrip chatId={chatId} onOpen={setFocus} off={brain.on} />}
+        <AnimatePresence initial={false}>{chatId && brain.on && <BrainPanel key="brain" chatId={chatId} mode={brain} onOpen={setFocus} />}</AnimatePresence>
+        {chatId && focusId ? <Transcript chatId={chatId} accountId={focusId} fadeTop={strip || brain.on} /> : <EmptyState />}
         <LiveStrip />
-        {chatId && <AutoBar chatId={chatId} />}
+        {chatId && <AutoBar chatId={chatId} hideGoal={brain.on} />}
         <Composer />
       </div>
       {showPanel && chatId && <Inspector chatId={chatId} />}

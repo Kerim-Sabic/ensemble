@@ -1,0 +1,46 @@
+[
+ {
+  "size": [
+   1380,
+   880
+  ],
+  "theme": "light",
+  "wait": 3500
+ },
+ {
+  "js": "const st = window.__ensemble;\nfor (let i = 0; i < 16; i++) {\n  if (st.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 1300));\n}\nawait window.ensemble.updateSettings({ inspector: false });\nreturn 'onboarded=' + st.getState().settings.onboarded",
+  "wait": 1200
+ },
+ {
+  "js": "const st = window.__ensemble.getState(); const chat = await window.ensemble.createChat({ title: 'Pricing page' }); await st.openChat(chat.id); const lead = st.accounts.find(a => a.provider === 'claude' && !a.configDir) || st.accounts[0]; window.__chat = chat.id; await window.ensemble.send({ chatId: chat.id, to: lead.id, text: 'Add a pricing page with three tiers. Simulate a limit while you are at it.', mode: 'quick' }); return 'sent to ' + lead.name",
+  "wait": 9000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const c = s.chats.find(x => x.id === window.__chat); return 'cover: ' + JSON.stringify(c && c.cover) + ' lead: ' + c.leadId",
+  "wait": 300,
+  "shot": "auto-failover-1-handover-light.png"
+ },
+ {
+  "js": "window.__ensemble.setState(s => { const u = s.usage['claude-3']; return { usage: { ...s.usage, ['claude-3']: { ...u, supply: { state: 'low', until: Date.now() + 2 * 3600e3, window: 'session' } } }, chats: s.chats.map(c => c.id === window.__chat && c.cover ? { ...c, cover: { ...c.cover, back: true } } : c) } }); return 'patched: Claude 3 running low, Main back'",
+  "wait": 600,
+  "shot": "auto-failover-2-states-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 900,
+  "shot": "auto-failover-2-states-dark.png"
+ },
+ {
+  "js": "window.__ensemble.setState(s => ({ chats: s.chats.map(c => c.id === window.__chat && c.cover ? { ...c, cover: { ...c.cover, back: false } } : c) })); return 'hand-back not offered yet'",
+  "wait": 600,
+  "shot": "auto-failover-1-handover-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "wait": 900,
+  "shot": "auto-failover-3-narrow-dark.png"
+ }
+]

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowUp, ChevronDown, CornerDownLeft, FileText, Flame, Paperclip, Repeat, Square, Target, TriangleAlert, WandSparkles, X } from 'lucide-react'
+import { ArrowUp, ChevronDown, Clock, CornerDownLeft, FileText, Flame, Navigation2, Paperclip, Repeat, Square, Target, TriangleAlert, WandSparkles, X } from 'lucide-react'
 import type { Attachment, UsageWindow, WorkMode } from '@shared/types'
 import { goalOpen, parseEvery } from '@shared/auto'
 import { IMAGE_EXT } from '@shared/tools'
@@ -66,6 +66,9 @@ function setDraft(slot: string, d: Draft): void {
   saveDrafts()
 }
 
+/** Set once the person has seen how steering works. */
+const STEER_HINT_KEY = 'ensemble.steer.hint'
+
 /** A message needs about this much to it before it is worth improving. */
 const ENHANCE_MIN = 12
 
@@ -115,6 +118,10 @@ export function Composer() {
   const [dragging, setDragging] = useState(false)
   // The message in the box was taken back from the queue to be changed.
   const [recalled, setRecalled] = useState(false)
+  // While the agent works, a message steers the work under way unless this is on: then it waits for the reply.
+  const [afterReply, setAfterReply] = useState(false)
+  // The one-time explanation of steering, until it has been seen and put away (or used).
+  const [steerHint, setSteerHint] = useState(() => localStorage.getItem(STEER_HINT_KEY) !== 'done')
   // Esc put away the list of commands or teammates for what is typed now.
   const [popupOff, setPopupOff] = useState<string | null>(null)
   const [at, setAt] = useState(0)
@@ -209,7 +216,11 @@ export function Composer() {
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`
   }, [text])
 
-  const submit = useCallback(async () => {
+  // Steering: the person's words reach the agent's work under way. Plain words only: a goal, a loop,
+  // a way of working or a command is sent the usual way.
+  const steerable = busy && !!chatId && !extras.kind && extras.mode === 'chat' && !commandOf(text.trim()) && !gone && !signedOut
+
+  const submit = useCallback(async (wait = false) => {
     let body = text.trim()
     if (!body && !attachments.length) return
     // "/loop 15m" and nothing more would start a loop whose whole job is "15m"; "/gocrazy" needs Ultra on.
@@ -242,14 +253,23 @@ export function Composer() {
     saveDrafts()
     setRecalled(false)
     if (!chatId && extras.ultra) opts.ultra = true
-    const ok = await send(body, sent.attachments, to, opts.mode || opts.goal || opts.loop || opts.ultra ? opts : undefined)
+    // The agent is at work: plain words reach the work under way, unless they were asked to wait.
+    if (steerable && !afterReply && !wait && !opts.mode && !opts.goal && !opts.loop) {
+      opts.steer = true
+      if (steerHint) {
+        setSteerHint(false)
+        localStorage.setItem(STEER_HINT_KEY, 'done')
+      }
+    }
+    setAfterReply(false)
+    const ok = await send(body, sent.attachments, to, opts.mode || opts.goal || opts.loop || opts.ultra || opts.steer ? opts : undefined)
     if (!ok) {
       setText(sent.text)
       setAttachments(sent.attachments)
       setExtras(sent.extras)
       setUndo(sent.undo)
     }
-  }, [text, attachments, extras, undo, team, send, slot, chatId, leadId, ultra, settings.goalRounds, settings.goalCheck])
+  }, [text, attachments, extras, undo, team, send, slot, chatId, leadId, ultra, settings.goalRounds, settings.goalCheck, steerable, afterReply, steerHint])
 
   // Whoever you are writing to, if they are at work; otherwise the lead; otherwise everyone in the chat.
   const stop = useCallback(() => {
@@ -457,7 +477,8 @@ export function Composer() {
   ) : null
 
   const crazy = !kind && !command && extras.mode === 'gocrazy' && gocrazyAllowed(ultra)
-  const sendLabel = kind === 'goal' ? 'Start goal' : kind === 'loop' ? 'Start loop' : crazy ? 'Go crazy' : busy ? 'Send when the current reply ends' : ultra ? 'Send in Ultra' : 'Send'
+  const steering = steerable && !afterReply && canSend
+  const sendLabel = kind === 'goal' ? 'Start goal' : kind === 'loop' ? 'Start loop' : crazy ? 'Go crazy' : steering ? 'Steer: reaches the work under way now' : busy ? 'Send when the current reply ends' : ultra ? 'Send in Ultra' : 'Send'
   const SendIcon = kind === 'goal' ? Target : kind === 'loop' ? Repeat : ArrowUp
 
   return (
@@ -483,6 +504,25 @@ export function Composer() {
               </button>
             )
           )}
+        </div>
+      )}
+      {steerHint && steerable && canSend && (
+        <div className="mb-2 flex animate-rise items-center gap-2.5 rounded-[14px] bg-surface py-2 pr-2 pl-3.5 text-[12.5px] shadow-card">
+          <Navigation2 className="size-3.5 shrink-0 rotate-90 text-ink-2" strokeWidth={2} />
+          <span className="min-w-0 flex-1 leading-snug text-ink-2">
+            <span className="font-medium text-ink">New: steer while it works.</span> Enter reaches the work under way at its next step. <span className="whitespace-nowrap"><Kbd>Alt</Kbd> <Kbd>Enter</Kbd></span> waits for the reply.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setSteerHint(false)
+              localStorage.setItem(STEER_HINT_KEY, 'done')
+              ref.current?.focus()
+            }}
+            className="h-7 shrink-0 rounded-[8px] px-2.5 font-medium text-ink-2 transition-colors hover:bg-hover hover:text-ink"
+          >
+            Got it
+          </button>
         </div>
       )}
       <div
@@ -594,7 +634,8 @@ export function Composer() {
               }
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
-                void submit()
+                // Alt+Enter: send it for after the reply, as before steering existed.
+                void submit(e.altKey)
               }
             }}
             className={cn(
@@ -664,7 +705,23 @@ export function Composer() {
 
           {/* The model pill gives way first (down to its icon and a few letters), then this. */}
           <span className="flex min-w-0 flex-1 basis-auto items-center justify-end pl-1.5">{status}</span>
-          {busy && canSend && !status && (
+          {busy && canSend && !status && steerable && (
+            <Tip label={afterReply ? 'Sends when the reply ends. Click to steer the work under way instead' : 'Reaches the work under way at its next step. Click to wait for the reply instead'} kbd={afterReply ? undefined : 'Alt+Enter waits'} side="top">
+              <button
+                type="button"
+                aria-pressed={afterReply}
+                onClick={() => {
+                  setAfterReply((v) => !v)
+                  ref.current?.focus()
+                }}
+                className="ml-1.5 flex h-6 shrink-0 animate-fade-in items-center gap-1 rounded-full px-2 text-[11.5px] font-medium text-ink-3 shadow-[inset_0_0_0_1px_var(--line)] transition-colors hover:bg-hover hover:text-ink"
+              >
+                {afterReply ? <Clock className="size-3" strokeWidth={2} /> : <Navigation2 className="size-3 rotate-90" strokeWidth={2} />}
+                {afterReply ? 'After the reply' : 'Steers now'}
+              </button>
+            </Tip>
+          )}
+          {busy && canSend && !status && !steerable && (
             <Tip label="Sends when the current reply ends" side="top">
               <span className="ml-1.5 flex shrink-0 items-center gap-1 text-[11.5px] text-ink-4">
                 <CornerDownLeft className="size-3" /> queues
@@ -762,7 +819,7 @@ export function Composer() {
                 aria-label={sendLabel}
                 className={cn(
                   'ml-1.5 flex h-8 shrink-0 items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-95 disabled:scale-100 disabled:bg-active disabled:text-ink-4 disabled:shadow-none disabled:[background-image:none]',
-                  crazy ? 'gap-1.5 pr-3.5 pl-3 text-[12.5px] font-semibold hover:scale-[1.03]' : 'w-8',
+                  crazy || steering ? 'gap-1.5 pr-3.5 pl-3 text-[12.5px] font-semibold hover:scale-[1.03]' : 'w-8',
                   kind ? 'bg-accent text-white' : ultra ? 'cu-send' : 'bg-ink text-inverse',
                 )}
               >
@@ -770,6 +827,11 @@ export function Composer() {
                   <>
                     <Flame key="crazy" className="size-[15px] animate-pop" strokeWidth={2.2} />
                     Go crazy
+                  </>
+                ) : steering ? (
+                  <>
+                    <Navigation2 key="steer" className="size-[14px] rotate-90 animate-pop" strokeWidth={2.2} />
+                    Steer
                   </>
                 ) : (
                   <SendIcon key={kind || 'send'} className="size-4 animate-pop" strokeWidth={kind ? 2.2 : 2.4} />
