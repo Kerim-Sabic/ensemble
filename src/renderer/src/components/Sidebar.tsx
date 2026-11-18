@@ -1,11 +1,13 @@
 import { memo, useMemo, useState, type DragEvent } from 'react'
-import { Activity, BookOpen, ChevronRight, Plug, ScrollText, Download, Ellipsis, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, Images, PanelLeft, Pencil, Pin, PinOff, Plus, Search, Settings2, SquarePen, Trash2 } from 'lucide-react'
+import { Activity, BookOpen, ChevronRight, Plug, ScrollText, Download, Ellipsis, Folder as FolderIcon, FolderInput, FolderOpen, FolderPlus, Images, PanelLeft, Pencil, Pin, PinOff, Plus, Repeat, Search, Settings2, SquarePen, Target, Trash2 } from 'lucide-react'
+import { goalLine, goalOpen, liveLoops } from '@shared/auto'
 import type { Account, AgentState, Chat, Folder } from '@shared/types'
 import { adviseModel, budgetOf, hoursLabel, paceWord, type WindowBudget } from '@shared/budget'
 import { leadOf, useAccounts, useStore } from '@/store'
 import { accentVars, api, cn, dayBucket, folderLabel, relative, until } from '@/lib/util'
 import { IconButton, Kbd, Menu, MenuItem, MenuLabel, MenuSeparator, Tip } from './ui'
 import { BudgetMeter, Orb, OrbStack } from './Orb'
+import { UltraGlyph } from './ultra/Ultra'
 
 /** The app's mark, the same drawing as its icon: three lights that add up to white where they meet. */
 export function Logo({ size = 20 }: { size?: number }) {
@@ -60,6 +62,32 @@ const DRAG = 'application/x-ensemble-chat'
 
 const draggedChat = (e: DragEvent): boolean => e.dataTransfer.types.includes(DRAG)
 
+/** A small mark on a chat row for what runs there by itself: a goal, loops, or both. Fixed width, so the row does not move. */
+function AutoMarks({ chat }: { chat: Chat }) {
+  const goal = goalOpen(chat.goal) ? chat.goal : null
+  const loops = liveLoops(chat.loops)
+  const ultra = !!chat.ultra
+  if (!goal && !loops.length && !ultra) return null
+  const blocked = goal?.status === 'blocked'
+  const paused = (!goal || goal.status === 'paused') && loops.every((l) => l.status === 'paused')
+  const tip = [
+    goal ? `Goal: ${goalLine(goal)}` : '',
+    loops.length ? (loops.length === 1 ? `Loop${loops[0].status === 'paused' ? ', paused' : ''}` : `${loops.length} loops`) : '',
+    ultra ? 'Ultra is on' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <Tip label={tip} side="right">
+      <span className={cn('flex h-3 shrink-0 items-center gap-0.5', blocked ? 'text-warn' : paused ? 'text-ink-4' : 'text-ink-3')}>
+        {goal && <Target className="size-3" strokeWidth={2.2} />}
+        {loops.length > 0 && <Repeat className={cn('size-3', blocked && 'text-ink-3')} strokeWidth={2.2} />}
+        {ultra && <UltraGlyph size={12} />}
+      </span>
+    </Tip>
+  )
+}
+
 const ChatRow = memo(function ChatRow({ chat, active, live, waiting, folders, onNewFolder }: { chat: Chat; active: boolean; live: Account[]; waiting: boolean; folders: Folder[]; onNewFolder(chat: Chat): void }) {
   const openChat = useStore((s) => s.openChat)
   const setModal = useStore((s) => s.setModal)
@@ -107,6 +135,7 @@ const ChatRow = memo(function ChatRow({ chat, active, live, waiting, folders, on
         )}
         {!renaming && (
           <span className="flex shrink-0 items-center gap-1.5">
+            <AutoMarks chat={chat} />
             {waiting && <span className="size-[7px] animate-pulse-soft rounded-full bg-warn" title="Needs your OK" />}
             {live.length > 0 ? (
               <span className={cn(menu ? 'hidden' : 'group-hover/chat:hidden')}>

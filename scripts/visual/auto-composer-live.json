@@ -1,0 +1,86 @@
+[
+ {
+  "size": [
+   1200,
+   800
+  ],
+  "theme": "light",
+  "wait": 2000
+ },
+ {
+  "js": "for (let i=0;i<8;i++){ const b=[...document.querySelectorAll('button')].find(b=>/^(Continue|Start using Ensemble|Get started)$/i.test(b.textContent.trim())); if(!b) break; b.click(); await new Promise(r=>setTimeout(r,900)); } window.__ta = () => document.querySelector('.composer textarea'); window.__t = (v) => { const ta = window.__ta(); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, v); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus(); }; window.__setInput = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el, v); el.dispatchEvent(new Event('input',{bubbles:true})); }; window.__in = (ph, v) => { const el = [...document.querySelectorAll('.composer input')].find(i => (i.placeholder||'').startsWith(ph)); if (!el) return false; window.__setInput(el, v); return true }; window.__btn = (label) => { const b = document.querySelector('.composer button[aria-label^=\"'+label+'\"]'); if (b) b.click(); return !!b }; window.__open = (label) => { const b = document.querySelector('.composer button[aria-label^=\"'+label+'\"]'); if (!b) return false; b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,pointerType:'mouse'})); return true }; window.__enter = (el) => (el || window.__ta()).dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',bubbles:true,cancelable:true})); window.__chat = () => { const s = window.__ensemble.getState(); return s.chats.find(c => c.id === s.chatId) }; window.__auto = () => document.querySelector('.composer').dataset.auto || 'off'; return 'ready'",
+  "wait": 600
+ },
+ {
+  "js": "window.__t('/loop 15m'); await new Promise(r=>setTimeout(r,200)); const send = document.querySelector('.composer button[aria-label^=\"Send\"]'); return 'lone pace: send disabled=' + (send && send.disabled)",
+  "wait": 500,
+  "shot": "c20-lone-pace.png"
+ },
+ {
+  "js": "window.__t(''); const s = window.__ensemble.getState(); s.setFocus(s.accounts.find(a => a.name === 'Hello').id); await new Promise(r=>setTimeout(r,200)); window.__btn('Goal:'); window.__t('Add a pricing page'); await new Promise(r=>setTimeout(r,150)); window.__in('optional, e.g. all tests', 'the tests pass and the page was opened'); await new Promise(r=>setTimeout(r,150)); window.__enter(); return 'goal sent via Enter (Hello was selected)'",
+  "wait": 2600
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const c = window.__chat(); const lead = s.accounts.find(a => a.id === s.settings.leadId); return 'goal: ' + JSON.stringify(c && c.goal && { text: c.goal.text, doneWhen: c.goal.doneWhen, status: c.goal.status, round: c.goal.round, maxRounds: c.goal.maxRounds, check: c.goal.check }) + ' | focus now ' + (s.accounts.find(a => a.id === s.focus[s.chatId]) || {}).name + ' (lead ' + lead.name + ') | composer auto=' + window.__auto() + ' text=[' + window.__ta().value + ']'",
+  "wait": 300,
+  "shot": "c21-goal-sent.png"
+ },
+ {
+  "js": "return 'waiting for the goal'",
+  "wait": 15000
+ },
+ {
+  "js": "const c = window.__chat(); return 'goal now: ' + c.goal.status + ' round ' + c.goal.round + ' log ' + c.goal.log.length",
+  "wait": 300,
+  "shot": "c22-goal-met.png"
+ },
+ {
+  "js": "window.__open('Way of working'); await new Promise(r=>setTimeout(r,400)); const p = [...document.querySelectorAll('[role=menuitem]')].find(i => /Plan first/.test(i.textContent)); p && p.click(); await new Promise(r=>setTimeout(r,300)); const before = document.querySelector('.composer button[aria-label^=\"Way of working\"]').getAttribute('aria-label'); window.__t('Add a newsletter signup to the footer'); await new Promise(r=>setTimeout(r,150)); window.__enter(); await new Promise(r=>setTimeout(r,300)); const after = document.querySelector('.composer button[aria-label^=\"Way of working\"]').getAttribute('aria-label'); return 'plan: before send [' + before + '] after send [' + after + ']'",
+  "wait": 7000,
+  "shot": "c23-plan-sent.png"
+ },
+ {
+  "js": "return 'plan question on screen: ' + /Go ahead with this plan/.test(document.body.textContent)",
+  "wait": 300
+ },
+ {
+  "js": "const qs = [...document.querySelectorAll('button')].find(b => /^Leave it$/.test(b.textContent.trim())); if (qs) qs.click(); await new Promise(r=>setTimeout(r,800)); window.__btn('Loop:'); await new Promise(r=>setTimeout(r,200)); window.__open('How often'); await new Promise(r=>setTimeout(r,400)); const other = [...document.querySelectorAll('[role=menuitem]')].find(i => /Another pace/.test(i.textContent)); other && other.click(); await new Promise(r=>setTimeout(r,300)); const f = document.querySelector('.composer input[aria-label=\"Custom pace\"]'); if (!f) return 'no custom field'; window.__setInput(f, '10m'); window.__enter(f); await new Promise(r=>setTimeout(r,200)); const pill = document.querySelector('.composer button[aria-label=\"How often\"]').textContent; window.__t('Check whether the deploy is live'); window.__in('optional, e.g. the deploy', 'the deploy is live'); await new Promise(r=>setTimeout(r,150)); return 'left plan: ' + !!qs + ' | pace pill after typing 10m: ' + pill",
+  "wait": 400,
+  "shot": "c24-loop-ready.png"
+ },
+ {
+  "js": "window.__enter(); await new Promise(r=>setTimeout(r,3000)); const c = window.__chat(); return 'loops: ' + JSON.stringify((c.loops||[]).map(l => ({ prompt: l.prompt, every: l.every, until: l.until, status: l.status, runs: l.runs }))) + ' | composer auto=' + window.__auto()",
+  "wait": 400,
+  "shot": "c25-loop-sent.png"
+ },
+ {
+  "js": "window.__t('make the pricing page better'); await new Promise(r=>setTimeout(r,150)); window.dispatchEvent(new KeyboardEvent('keydown',{key:'E',code:'KeyE',ctrlKey:true,shiftKey:true,bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,1500)); const improved = window.__ta().value; const undo = [...document.querySelectorAll('.composer button')].some(b => /Undo/.test(b.textContent)); return 'improved via Ctrl+Shift+E: [' + improved.slice(0,70).replace(/\\n/g,' / ') + '] undo chip ' + undo",
+  "wait": 300,
+  "shot": "c26-improved.png"
+ },
+ {
+  "js": "const undo = [...document.querySelectorAll('.composer button')].find(b => /Undo/.test(b.textContent)); undo && undo.click(); await new Promise(r=>setTimeout(r,200)); return 'after undo: [' + window.__ta().value + '] chip gone ' + ![...document.querySelectorAll('.composer button')].some(b => /Undo/.test(b.textContent))",
+  "wait": 300
+ },
+ {
+  "js": "window.__t('Draft kept in chat A'); window.dispatchEvent(new KeyboardEvent('keydown',{key:'g',code:'KeyG',altKey:true,bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,250)); window.__in('optional, e.g. all tests', 'it is kept'); const a = window.__ensemble.getState().chatId; const altG = window.__auto(); window.__ensemble.getState().newChat(); await new Promise(r=>setTimeout(r,500)); const inNew = window.__auto() + ' text=[' + window.__ta().value + ']'; await window.__ensemble.getState().openChat(a); await new Promise(r=>setTimeout(r,500)); const done = [...document.querySelectorAll('.composer input')].find(i => (i.placeholder||'').startsWith('optional, e.g. all tests')); return 'Alt+G -> ' + altG + ' | new chat: ' + inNew + ' | back in A: ' + window.__auto() + ' text=[' + window.__ta().value + '] doneWhen=[' + (done && done.value) + ']'",
+  "wait": 500,
+  "shot": "c27-draft-back.png"
+ },
+ {
+  "theme": "dark",
+  "js": "window.dispatchEvent(new KeyboardEvent('keydown',{key:'l',code:'KeyL',altKey:true,bubbles:true,cancelable:true})); await new Promise(r=>setTimeout(r,250)); window.__t('/loop 15m'); return 'Alt+L -> ' + window.__auto()",
+  "wait": 600,
+  "shot": "c28-lone-pace-dark.png"
+ },
+ {
+  "js": "window.__btn('Loop:'); window.__t('/gocrazy build three versions of the pricing page'); await new Promise(r=>setTimeout(r,200)); const send = document.querySelector('.composer button[aria-label^=\"Send\"]'); return 'gocrazy without ultra: send disabled=' + (send ? send.disabled : 'stop shown')",
+  "wait": 500,
+  "shot": "c29-gocrazy-locked-dark.png"
+ },
+ {
+  "js": "window.__t(''); return 'mode menu ' + window.__open('Way of working')",
+  "wait": 700,
+  "shot": "c30-mode-menu-ultra-dark.png"
+ }
+]

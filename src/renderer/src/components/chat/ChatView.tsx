@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bug, ChevronDown, CornerDownRight, Crown, FolderOpen, FolderPlus, GitCompareArrows, Globe, ImagePlus, ListTree, Map as MapIcon, Monitor, PanelRight, Search, ShieldQuestion, ScrollText, SlidersHorizontal, Sparkles, Telescope, UserMinus } from 'lucide-react'
+import { Bug, ChevronDown, ListChecks, Repeat, Target, UsersRound, CornerDownRight, Crown, FolderOpen, FolderPlus, GitCompareArrows, Globe, ImagePlus, ListTree, Map as MapIcon, Monitor, PanelRight, Search, ShieldQuestion, ScrollText, SlidersHorizontal, Sparkles, Telescope, UserMinus } from 'lucide-react'
 import { adviseModel, budgetOf, modelForTier } from '@shared/budget'
 import { agentKey, focusOf, isBusy, leadOf, useStore, useTeam } from '@/store'
 import { accentVars, api, cn, folderLabel, tildify } from '@/lib/util'
@@ -8,6 +8,8 @@ import { Orb } from '../Orb'
 import { Inspector } from '../Inspector'
 import { Transcript } from './Transcript'
 import { Composer, seedComposer } from './Composer'
+import { AutoBar } from './AutoBar'
+import { NetworkStrip, UltraEdge, UltraMark, useStripShown } from '../ultra/Ultra'
 
 
 /** True when the window is wide enough to show the panel beside the chat. */
@@ -36,6 +38,7 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
   const setModal = useStore((s) => s.setModal)
   const toggleInspector = useStore((s) => s.toggleInspector)
   const run = useStore((s) => s.run)
+  const ultra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
   const focused = team.find((a) => a.id === focusId)
 
   if (!team.length) return null
@@ -76,6 +79,7 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
           )
         })}
       </div>
+      {ultra && chatId && <UltraMark chatId={chatId} />}
       {focused && (
         <Menu
           align="end"
@@ -138,11 +142,14 @@ function LiveStrip() {
   const focusId = useStore(focusOf)
   const agents = useStore((s) => s.agents)
   const setFocus = useStore((s) => s.setFocus)
+  // While the network at the top shows everyone at work, only those waiting for you stay here.
+  const net = useStripShown(chatId)
   if (!chatId) return null
-  const others = team
+  const busy = team.filter((a) => isBusy(agents[agentKey(chatId, a.id)]))
+  const others = busy
     .filter((a) => a.id !== focusId)
     .map((a) => ({ a, st: agents[agentKey(chatId, a.id)] }))
-    .filter((x) => isBusy(x.st))
+    .filter((x) => !net || x.st?.phase === 'waiting')
   if (!others.length) return null
   return (
     <div className="mx-auto flex w-full max-w-[780px] flex-wrap gap-1.5 px-7 pb-2.5">
@@ -183,6 +190,14 @@ const STARTERS = [
   { icon: ImagePlus, tone: 'green', title: 'Make an image', blurb: 'ChatGPT draws, the lead puts it to use', text: 'Create an image of ', needs: 'gpt' },
   { icon: Globe, tone: 'amber', title: 'Work a website', blurb: 'Open it, click through it, report back. Watch live.', text: 'Open the browser and ', needs: 'browser' },
   { icon: Monitor, tone: 'slate', title: 'Use my computer', blurb: 'Do it in an app, with your OK', text: 'On my computer, ', needs: 'computer' },
+] as const
+
+/** Ways to start that the app runs itself: they put the command in the message box, ready to finish. */
+const MODE_STARTERS = [
+  { icon: Target, label: 'Set a goal', text: '/goal ', tip: 'The team keeps working until it is done, checked after every reply' },
+  { icon: Repeat, label: 'Start a loop', text: '/loop 15m ', tip: 'A message sent again by itself, every 15 minutes or at its own pace' },
+  { icon: UsersRound, label: 'Ask the council', text: '/council ', tip: 'Every model answers on its own, then the lead compares them' },
+  { icon: ListChecks, label: 'Plan first', text: '/plan ', tip: 'You get a plan to approve before any work starts' },
 ] as const
 
 /** Research is worth more when it is kept: with a vault, the starter asks for it to be filed. */
@@ -417,6 +432,20 @@ function EmptyState() {
           </button>
         ))}
       </div>
+
+      <div className="mt-4 flex max-w-full animate-rise flex-wrap justify-center gap-1.5" style={{ animationDelay: '200ms' }}>
+        {MODE_STARTERS.map((m) => (
+          <Tip key={m.label} label={m.tip}>
+            <button
+              onClick={() => seedComposer(m.text)}
+              className="flex h-7 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium text-ink-2 shadow-[inset_0_0_0_1px_var(--line-2)] transition-colors hover:bg-hover hover:text-ink"
+            >
+              <m.icon className="size-3.5 text-ink-3" strokeWidth={1.9} />
+              {m.label}
+            </button>
+          </Tip>
+        ))}
+      </div>
       <div className="flex min-h-[24px] flex-[1.3]" />
     </div>
   )
@@ -425,15 +454,21 @@ function EmptyState() {
 export function ChatView() {
   const chatId = useStore((s) => s.chatId)
   const focusId = useStore(focusOf)
+  const ultra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
+  const setFocus = useStore((s) => s.setFocus)
+  const strip = useStripShown(chatId)
   const inspector = useStore((s) => s.settings.inspector)
   const wide = useWide(1180)
   const showPanel = !!chatId && inspector && wide
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex h-full min-w-0 flex-1 flex-col">
+      <div className="relative flex h-full min-w-0 flex-1 flex-col">
+        {ultra && <UltraEdge />}
         <AgentTabs canInspect={!!chatId && wide} />
-        {chatId && focusId ? <Transcript chatId={chatId} accountId={focusId} /> : <EmptyState />}
+        {chatId && <NetworkStrip chatId={chatId} onOpen={setFocus} />}
+        {chatId && focusId ? <Transcript chatId={chatId} accountId={focusId} fadeTop={strip} /> : <EmptyState />}
         <LiveStrip />
+        {chatId && <AutoBar chatId={chatId} />}
         <Composer />
       </div>
       {showPanel && chatId && <Inspector chatId={chatId} />}

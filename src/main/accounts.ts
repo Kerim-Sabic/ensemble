@@ -52,7 +52,23 @@ export interface AccountHost {
   demo?: boolean
   emit(ev: HubEvent): void
   claudePath(): string | null
+  /** The team's usual lead as set by the user, if any. Used to give an all-ChatGPT team's lead a lead's role. */
+  leadId?(): string | null
 }
+
+/**
+ * Roles the app gives ChatGPT accounts by itself. A role still equal to one of these was not
+ * typed by the user, so it may be changed when the team changes.
+ */
+export const DEFAULT_ROLES = {
+  /** One ChatGPT account beside Claude accounts. */
+  beside: 'Images and a second opinion',
+  /** The lead of a team with no Claude account. */
+  lead: 'Lead and coding',
+  /** Further ChatGPT accounts, in turn. */
+  more: ['Coding', 'Research', 'Review and testing', 'Images and design'],
+} as const
+const AUTO_ROLES = new Set<string>([DEFAULT_ROLES.beside, DEFAULT_ROLES.lead, ...DEFAULT_ROLES.more])
 
 const DEMO_FOUND: AccountCandidate[] = [
   { provider: 'claude', configDir: null, suggestedName: 'Main', signedIn: true, email: 'you@example.com', plan: 'Max' },
@@ -121,6 +137,34 @@ export class AccountManager {
     this.usageFile = path.join(host.dataDir, 'usage.json')
     this.accounts = readJson<Account[]>(this.file, [])
     for (const u of readJson<AccountUsage[]>(this.usageFile, [])) this.usage.set(u.accountId, u)
+    if (this.balanceRoles(false)) writeJson(this.file, this.accounts)
+  }
+
+  /**
+   * Gives ChatGPT accounts roles that fit the team as it is. Beside a Claude account, the first
+   * keeps "Images and a second opinion"; on a team with no Claude account the lead gets "Lead
+   * and coding"; the others get coding, research, review and design in turn. Only roles the app
+   * gave are changed: one the user typed is left alone. Returns whether anything changed.
+   */
+  balanceRoles(save = true): boolean {
+    const team = this.accounts.filter((a) => a.enabled)
+    const claude = team.some((a) => a.provider === 'claude')
+    const leadId = this.host.leadId?.() || null
+    const gpt = this.accounts.filter((a) => a.provider === 'chatgpt' && a.enabled)
+    // On an all-ChatGPT team the lead is the one set as lead, else the first, as the hub picks it.
+    const lead = claude ? null : gpt.find((a) => a.id === leadId) || gpt[0]
+    const order = lead ? [lead, ...gpt.filter((a) => a !== lead)] : gpt
+    let changed = false
+    let n = 0
+    order.forEach((a, i) => {
+      if (!a.role || !AUTO_ROLES.has(a.role)) return
+      const want = a === lead ? DEFAULT_ROLES.lead : claude && i === 0 ? DEFAULT_ROLES.beside : DEFAULT_ROLES.more[n++ % DEFAULT_ROLES.more.length]
+      if (a.role === want) return
+      a.role = want
+      changed = true
+    })
+    if (changed && save) this.save()
+    return changed
   }
 
   private save(): void {
@@ -262,11 +306,13 @@ export class AccountManager {
       accent: input.accent || (input.provider === 'chatgpt' && !this.accounts.some((a) => a.accent === 'green') ? 'green' : this.nextAccent()),
       model: null,
       effort: null,
-      role: input.provider === 'chatgpt' ? 'Images and a second opinion' : null,
+      // A first guess; balanceRoles sets the one that fits the team.
+      role: input.provider === 'chatgpt' ? DEFAULT_ROLES.beside : null,
       enabled: true,
       createdAt: Date.now(),
     }
     this.accounts.push(account)
+    this.balanceRoles(false)
     this.save()
     void this.refresh(id)
     return account
@@ -281,6 +327,8 @@ export class AccountManager {
     if (patch.model !== undefined) a.model = patch.model || null
     if (patch.effort !== undefined) a.effort = patch.effort || null
     if (patch.enabled !== undefined) a.enabled = patch.enabled
+    // Who is on the team decides which roles the app gives.
+    if (patch.enabled !== undefined) this.balanceRoles(false)
     this.save()
     return a
   }
@@ -291,6 +339,7 @@ export class AccountManager {
     this.accounts = this.accounts.filter((a) => a.id !== id)
     this.statuses.delete(id)
     this.usage.delete(id)
+    this.balanceRoles(false)
     this.save()
   }
 

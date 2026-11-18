@@ -509,6 +509,46 @@ try {
       log('original untouched:', before.size === after.size && before.mtimeMs === after.mtimeMs, '| now carried on in:', JSON.stringify(hub.chats.get(chat.id)?.sessions[lead.id]))
       await hub.deleteChat(chat.id)
     }
+  } else if (scenario === 'goal') {
+    // A real goal on a cheap model: the lead works, a real checker judges, and the lead is sent back if it falls short.
+    const leadId = process.argv[3] || 'hello'
+    hub.updateSettings({ leadId, smartTitles: false, recall: false, chatNotes: false })
+    for (const a of hub.accounts.accounts) hub.updateAccount(a.id, { model: a.provider === 'claude' ? 'haiku' : null })
+    const chat = hub.createChat({ cwd: work })
+    const file = path.join(work, 'goal-proof.txt')
+    fs.rmSync(file, { force: true })
+    hub.send({
+      chatId: chat.id,
+      to: leadId,
+      text: 'In the working folder, create goal-proof.txt containing exactly the line "ensemble". Do it yourself and hand nothing off. In this first reply only create the file and say you created it; do not read it back yet.',
+      goal: { doneWhen: 'the file exists and its contents have been read back and shown in the report', maxRounds: 4 },
+    })
+    await until((ev) => ev.type === 'chat' && ev.chat.id === chat.id && !!ev.chat.goal && ev.chat.goal.status !== 'active', 420000)
+    const g = hub.chats.get(chat.id)?.goal
+    log('GOAL', g?.status, '| rounds used:', (g?.round ?? 0) + 1, '| checks:', JSON.stringify(g?.log.map((l) => `${l.met ? 'met' : 'not met'}: ${l.note}`)))
+    log('file:', fs.existsSync(file) ? JSON.stringify(fs.readFileSync(file, 'utf8')) : 'MISSING')
+    log('used goal_report:', (hub.openChat(chat.id).items[leadId] || []).some((i) => i.kind === 'tool' && i.name === 'mcp__team__goal_report'))
+  } else if (scenario === 'loop') {
+    // A real self-paced loop: the agent sets its own next run, and ends the loop on the second run.
+    const leadId = process.argv[3] || 'hello'
+    hub.updateSettings({ leadId, smartTitles: false, recall: false, chatNotes: false })
+    for (const a of hub.accounts.accounts) hub.updateAccount(a.id, { model: a.provider === 'claude' ? 'haiku' : null })
+    const chat = hub.createChat({ cwd: work })
+    const file = path.join(work, 'loop-count.txt')
+    fs.rmSync(file, { force: true })
+    hub.send({ chatId: chat.id, to: leadId, text: 'Append one line with the word "tick" to loop-count.txt in the working folder (create it if missing), then say how many lines it has now. Do it yourself.', loop: { every: null, until: 'loop-count.txt has 2 or more lines' } })
+    const loop = hub.chats.get(chat.id)?.loops?.[0]
+    await until((ev) => ev.type === 'chat' && ev.chat.id === chat.id && !ev.chat.loops?.[0]?.running, 240000)
+    log('after run 1:', JSON.stringify({ status: loop?.status, nextAt: loop?.nextAt ? Math.round((loop.nextAt - Date.now()) / 1000) + ' s away' : null, last: loop?.last }))
+    if (loop && loop.status === 'active') {
+      hub.runLoop(chat.id, loop.id)
+      await until((ev) => ev.type === 'chat' && ev.chat.id === chat.id && !ev.chat.loops?.[0]?.running, 240000)
+    }
+    log('LOOP', loop?.status, '| runs:', loop?.runs, '| note:', loop?.note, '| last:', loop?.last)
+    log('file:', fs.existsSync(file) ? JSON.stringify(fs.readFileSync(file, 'utf8')) : 'MISSING')
+  } else if (scenario === 'enhance') {
+    const out = await hub.enhance(process.argv[3] || 'make the app better and smarter, add goal options and loop options, it should be really amazing', null)
+    log('ENHANCED:', JSON.stringify(out))
   } else if (scenario === 'gpt') {
     const id = hub.accounts.accounts.find((a) => a.provider === 'chatgpt')?.id
     if (!id) throw new Error('no chatgpt account')

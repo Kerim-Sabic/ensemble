@@ -1,13 +1,17 @@
 import { memo, useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowUpRight, Check, CircleDashed, CornerDownRight, FolderOpen, ListChecks, ShieldQuestion, Sparkles, Square, SquarePen } from 'lucide-react'
+import { Activity, ArrowUpRight, Check, CircleDashed, CornerDownRight, FolderOpen, ListChecks, Pause, Play, Repeat, ShieldQuestion, Sparkles, Square, SquarePen, Target } from 'lucide-react'
+import { countdown, goalLine, goalOpen, liveLoops, loopLine } from '@shared/auto'
 import type { Account, AgentState, Chat, Item, Task } from '@shared/types'
 import { adviseModel, budgetOf, hoursLabel, modelForTier, type WindowBudget } from '@shared/budget'
 import { agentKey, isBusy, leadOf, teamOf, useAccounts, useStore, type Step } from '@/store'
 import { accentVars, api, cn, duration, folderLabel, prettyModel, relative } from '@/lib/util'
 import { compactNumber, planFrom } from '@/lib/derive'
-import { Button, Tip } from './ui'
+import { Button, IconButton, Tip } from './ui'
 import { Orb, PaceChip } from './Orb'
 import { useElapsed } from './chat/Cards'
+import { useNow } from './auto/shared'
+import { AgentNetwork } from './ultra/AgentNetwork'
+import { UltraGlyph, UltraWord } from './ultra/Ultra'
 
 const EMPTY: Item[] = []
 const NO_TASKS: Task[] = []
@@ -214,9 +218,17 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
     <section className="flex min-w-0 flex-col rounded-[18px] bg-surface p-3.5 shadow-card">
       <header className="flex items-start gap-2.5">
         <div className="min-w-0 flex-1">
-          <button onClick={() => go()} className="block max-w-full truncate text-left text-[14px] font-semibold tracking-[-0.01em] hover:underline">
-            {chat.title}
-          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <button onClick={() => go()} className="block min-w-0 truncate text-left text-[14px] font-semibold tracking-[-0.01em] hover:underline">
+              {chat.title}
+            </button>
+            {chat.ultra && (
+              <span className="ux-ultra-pill flex h-5 shrink-0 items-center gap-1 rounded-full px-1.5 text-[11px]">
+                <UltraGlyph size={11} />
+                <UltraWord />
+              </span>
+            )}
+          </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
             <FolderOpen className="size-3 shrink-0" />
             <span className="truncate">
@@ -239,6 +251,13 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
           </Tip>
         )}
       </header>
+
+      {(chat.ultra || tasks.length > 0 || (chat.agents?.length ?? 0) > 0) && (
+        // The team as a network: who works with whom, and the work under way between them.
+        <div className={cn('map-grid mt-3 rounded-[13px] bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]', chat.ultra && 'ux-ultra-frame')} style={{ backgroundSize: '16px 16px' }}>
+          <AgentNetwork chatId={chat.id} variant="panel" onOpen={(id) => go(id)} />
+        </div>
+      )}
 
       {plan.length > 0 && (
         <div className="mt-3">
@@ -283,6 +302,103 @@ function ChatCard({ chat, accounts, leadId }: { chat: Chat; accounts: Account[];
         )}
       </div>
     </section>
+  )
+}
+
+/** One chat that is working towards a goal or running loops by itself, with a quick pause. */
+function AutopilotRow({ chat, now }: { chat: Chat; now: number }) {
+  const openChat = useStore((s) => s.openChat)
+  const setView = useStore((s) => s.setView)
+  const run = useStore((s) => s.run)
+  const [busy, setBusy] = useState(false)
+  const goal = goalOpen(chat.goal) ? chat.goal : null
+  const loops = liveLoops(chat.loops)
+  // Paused means nothing here would go on by itself; one click starts it all again.
+  const running = (goal && goal.status === 'active') || loops.some((l) => l.status === 'active')
+  const toggle = async (): Promise<void> => {
+    setBusy(true)
+    const jobs: Promise<unknown>[] = []
+    if (goal && running && goal.status === 'active') jobs.push(api.goalAction(chat.id, 'pause'))
+    if (goal && !running && (goal.status === 'paused' || goal.status === 'blocked')) jobs.push(api.goalAction(chat.id, 'resume'))
+    for (const l of loops) {
+      if (running && l.status === 'active') jobs.push(api.updateLoop(chat.id, l.id, { status: 'paused' }))
+      if (!running && l.status === 'paused') jobs.push(api.updateLoop(chat.id, l.id, { status: 'active' }))
+    }
+    await run(Promise.all(jobs))
+    setBusy(false)
+  }
+  const first = loops[0]
+  const next = loops
+    .filter((l) => l.status === 'active' && l.nextAt)
+    .map((l) => l.nextAt as number)
+    .sort((a, b) => a - b)[0]
+  const blocked = goal?.status === 'blocked'
+  const Icon = goal ? Target : Repeat
+  // A chat is often named after its goal or loop: then the title already says it.
+  const same = (t: string): boolean => t.trim().toLowerCase() === chat.title.trim().toLowerCase()
+  return (
+    <div className={cn('group/ap flex items-center gap-3 py-2.5 pr-2.5 pl-3.5 transition-colors hover:bg-hover', blocked && 'bg-warn-soft')}>
+      <Icon className={cn('size-4 shrink-0', blocked ? 'text-warn' : running ? 'text-ink' : 'text-ink-3', goal?.checking && 'animate-pulse-soft')} strokeWidth={2} />
+      <button onClick={() => void openChat(chat.id).then(() => setView('chat'))} className="min-w-0 flex-1 text-left">
+        <span className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-semibold">{chat.title}</span>
+          <ArrowUpRight className="size-3 shrink-0 text-ink-4 opacity-0 transition-opacity group-hover/ap:opacity-100" />
+        </span>
+        <span className="mt-px flex min-w-0 items-center gap-1.5 text-[12px] text-ink-3">
+          {goal ? (
+            <>
+              {!same(goal.text) && (
+                <>
+                  <span className="min-w-0 truncate text-ink-2">{goal.text}</span>
+                  <span className="shrink-0">·</span>
+                </>
+              )}
+              <span className={cn('tabular shrink-0', blocked ? 'font-medium text-warn' : goal.checking && 'shimmer-text')}>{goalLine(goal)}</span>
+              {loops.length > 0 && (
+                <span className="tabular shrink-0">
+                  · {loops.length === 1 ? '1 loop' : `${loops.length} loops`}
+                  {next ? `, next in ${countdown(next, now)}` : ''}
+                </span>
+              )}
+            </>
+          ) : first ? (
+            <>
+              {(loops.length > 1 || !same(first.prompt)) && (
+                <>
+                  <span className="min-w-0 truncate text-ink-2">{loops.length > 1 ? `${loops.length} loops: ${first.prompt}` : first.prompt}</span>
+                  <span className="shrink-0">·</span>
+                </>
+              )}
+              <span className="tabular shrink-0">{loops.length > 1 ? (next ? `Next run in ${countdown(next, now)}` : loopLine(first, now)) : loopLine(first, now)}</span>
+            </>
+          ) : null}
+        </span>
+      </button>
+      <IconButton label={running ? 'Pause everything that runs by itself here' : blocked ? 'Carry on: send the lead back to it' : 'Resume'} side="left" disabled={busy || (!running && !(goal?.status === 'paused' || blocked || loops.some((l) => l.status === 'paused')))} onClick={() => void toggle()}>
+        {running ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+      </IconButton>
+    </div>
+  )
+}
+
+/** Chats that carry on by themselves: an open goal, or loops that are not over. Hidden when there are none. */
+function Autopilot({ chats }: { chats: Chat[] }) {
+  const list = useMemo(() => chats.filter((c) => goalOpen(c.goal) || liveLoops(c.loops).length > 0), [chats])
+  const ticking = list.some((c) => liveLoops(c.loops).some((l) => l.status === 'active' && !!l.nextAt))
+  const now = useNow(ticking)
+  if (!list.length) return null
+  return (
+    <>
+      <div className="mt-6 mb-2 flex items-center gap-2 text-[12px] font-medium text-ink-3">
+        <Repeat className="size-3.5" strokeWidth={1.9} /> On autopilot
+        <span className="tabular font-normal text-ink-4">{list.length}</span>
+      </div>
+      <div className="divide-y divide-line overflow-hidden rounded-[14px] bg-surface shadow-card">
+        {list.map((c) => (
+          <AutopilotRow key={c.id} chat={c} now={now} />
+        ))}
+      </div>
+    </>
   )
 }
 
@@ -347,6 +463,8 @@ export function NowView() {
             <AllowanceCard key={a.id} account={a} lead={a.id === leadId} />
           ))}
         </div>
+
+        <Autopilot chats={chats} />
 
         {live.length > 0 && (
           <div className={cn('mt-6 grid gap-3', live.length > 1 ? 'xl:grid-cols-2' : 'grid-cols-1')}>

@@ -1,0 +1,28 @@
+[
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1200
+ },
+ {
+  "js": "await window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.'); const id = window.__ensemble.getState().chatId; const c = await window.ensemble.setUltra(id, true); return 'setUltra -> ' + c.ultra;",
+  "wait": 3000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === s.chatId); return 'store ultra=' + c.ultra + ' strip=' + !!document.querySelector('[data-network-strip]') + ' mark=' + !!document.querySelector('button[aria-label=\"Ultra is on\"]');",
+  "wait": 50,
+  "shot": "auto-surfaces-u13-real-ultra.png"
+ },
+ {
+  "js": "const b = document.querySelector('button[aria-label=\"Ultra is on\"]'); b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); await new Promise(r => setTimeout(r, 500)); const it = [...document.querySelectorAll('[role=menuitem]')].find(e => /Turn Ultra off/.test(e.textContent)); it && it.click(); await new Promise(r => setTimeout(r, 1200)); const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === s.chatId); return 'after turn off: ultra=' + !!c.ultra + ' mark=' + !!document.querySelector('button[aria-label=\"Ultra is on\"]');",
+  "wait": 600,
+  "shot": "auto-surfaces-u14-ultra-off.png"
+ }
+]

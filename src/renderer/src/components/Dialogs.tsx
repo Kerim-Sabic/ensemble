@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Command } from 'cmdk'
 import { Dialog } from 'radix-ui'
 import { Activity, Plug, BookOpen, Check, CircleAlert, Download, FolderInput, Images, Info, Keyboard, LayoutGrid, MessageSquare, Moon, MousePointerClick, PanelRight, Search, Settings2, SquarePen, Sun, UserPlus, Waypoints, X } from 'lucide-react'
-import type { ModelRecord, PermissionLevel, SearchHit, Settings, VaultInfo } from '@shared/types'
+import type { GoalCheck, ModelRecord, PermissionLevel, SearchHit, Settings, VaultInfo } from '@shared/types'
+import { ROUND_PRESETS } from '@shared/auto'
 import { leadOf, useStore } from '@/store'
 import { api, baseName, cn, PERMISSIONS, relative, tildify } from '@/lib/util'
 import { Button, Kbd, Modal, Row, Segmented, Toggle, inputClass } from './ui'
@@ -256,6 +257,29 @@ export function SettingsDialog() {
           </Row>
           <Row label="Notifications" hint="Tell me when work finishes or needs my OK while I am in another window.">
             <Toggle checked={settings.notifications} onChange={(notifications) => set({ notifications })} label="Notifications" />
+          </Row>
+        </div>
+
+        <div className="mt-5 mb-1 text-[12px] font-medium text-ink-3">Goals</div>
+        <div className="divide-y divide-line">
+          <Row label="Rounds before it stops and asks" hint="When a goal is set, the lead is sent back to it after every reply until it is met. After this many rounds the team stops and asks you whether to go on.">
+            <Picker<string>
+              value={String(settings.goalRounds ?? 12)}
+              width={180}
+              options={ROUND_PRESETS.map((n) => ({ value: String(n), label: `${n} rounds`, hint: n === 12 ? 'Usual' : n >= 50 ? 'Uses allowance quickly' : undefined }))}
+              onChange={(v) => set({ goalRounds: Number(v) })}
+            />
+          </Row>
+          <Row label="Who says a goal is met" hint="After each reply, someone decides whether the goal is done or the lead goes back to it.">
+            <Picker<GoalCheck>
+              value={settings.goalCheck ?? 'fresh'}
+              width={290}
+              options={[
+                { value: 'fresh', label: 'A fresh checker', hint: 'Recommended. An agent that did not do the work looks at the result' },
+                { value: 'self', label: "The lead's own word", hint: 'Quicker and uses less allowance, but the lead marks its own work' },
+              ]}
+              onChange={(goalCheck) => set({ goalCheck })}
+            />
           </Row>
         </div>
 

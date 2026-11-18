@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react'
-import { AlertTriangle, ArrowUpRight, Ban, Check, CircleAlert, Clock, CornerDownRight, FileText, FolderOpen, Gauge, Hourglass, Info, MessageCircleQuestion, MousePointerClick, Pause, Play, RotateCcw, Globe, KeyRound, ShieldCheck, ShieldQuestion, Undo2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Ban, Check, ChevronDown, CircleCheck, Hand, Repeat, Square, Target, CircleAlert, Clock, CornerDownRight, FileText, FolderOpen, Gauge, Hourglass, Info, MessageCircleQuestion, MousePointerClick, Pause, Play, RotateCcw, Globe, KeyRound, ShieldCheck, ShieldQuestion, Undo2, UserPlus, X } from 'lucide-react'
 import { compactNumber } from '@/lib/derive'
 import type { Account, AgentState, Item, Task } from '@shared/types'
 import { describeTool, mediaPathsIn } from '@shared/tools'
@@ -73,6 +73,86 @@ export const UserBubble = memo(function UserBubble({ item }: { item: Of<'user'> 
           <Clock className="size-3" /> Waiting for the current reply to finish
         </div>
       )}
+    </div>
+  )
+})
+
+// ───────────── goals and loops ─────────────
+
+type AutoEvent = Of<'auto'>['event']
+
+/** Icon, colour and the word for the detail, per goal or loop event. */
+function autoLook(item: Of<'auto'>): { icon: typeof Target; tone: string; box: string; more: string; slim?: boolean } {
+  const plain = 'bg-surface-2 shadow-[inset_0_0_0_1px_var(--line)]'
+  const e: AutoEvent = item.event
+  if (item.of === 'loop') {
+    if (e === 'run' || e === 'set') return { icon: Repeat, tone: 'text-ink', box: plain, more: 'The message' }
+    if (e === 'done') return { icon: Repeat, tone: 'text-ink-3', box: '', more: 'Why it ended', slim: true }
+  }
+  switch (e) {
+    case 'set':
+      return { icon: Target, tone: 'text-ink', box: plain, more: 'The goal' }
+    case 'check':
+      return { icon: RotateCcw, tone: 'text-ink-2', box: plain, more: 'What is missing' }
+    case 'met':
+      return { icon: CircleCheck, tone: 'text-ok', box: 'bg-ok-soft shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--ok)_25%,transparent)]', more: 'How it was checked' }
+    case 'blocked':
+      return { icon: Hand, tone: 'text-warn', box: 'bg-warn-soft shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--warn)_28%,transparent)]', more: 'What it needs' }
+    case 'paused':
+      return { icon: Pause, tone: 'text-ink-3', box: '', more: 'Why', slim: true }
+    case 'resumed':
+      return { icon: Play, tone: 'text-ink-3', box: '', more: 'Why', slim: true }
+    case 'stopped':
+      return { icon: Square, tone: 'text-ink-3', box: '', more: 'Why', slim: true }
+    default:
+      return { icon: item.of === 'loop' ? Repeat : Target, tone: 'text-ink-3', box: '', more: 'More', slim: true }
+  }
+}
+
+/** Something the app did by itself for a goal or a loop: a slim row, with the detail one click away. */
+export const AutoRow = memo(function AutoRow({ item }: { item: Of<'auto'> }) {
+  const look = autoLook(item)
+  // What is missing, and why it is blocked, are worth seeing without a click.
+  const [open, setOpen] = useState(item.event === 'blocked')
+  const text = item.text?.trim() || ''
+  const Icon = look.icon
+  const time = new Date(item.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const title = item.title || (item.of === 'goal' ? 'Goal' : 'Loop')
+
+  if (look.slim) {
+    return (
+      <div className="my-1.5 flex animate-rise items-start gap-2 text-[12.5px] text-ink-3">
+        <Icon className={cn('mt-[2.5px] size-3.5 shrink-0', look.tone)} strokeWidth={2} fill={item.event === 'stopped' ? 'currentColor' : 'none'} />
+        <span className="min-w-0 flex-1 leading-snug">
+          <span className="font-medium text-ink-2">{title}</span>
+          {text && <span className="selectable"> · {text}</span>}
+        </span>
+        <span className="tabular shrink-0 text-[11px] text-ink-4">{time}</span>
+      </div>
+    )
+  }
+
+  const met = item.event === 'met'
+  return (
+    <div className="my-2.5 animate-rise">
+      <div className={cn('rounded-[12px] px-3 py-2', look.box)}>
+        <button
+          onClick={() => text && setOpen((o) => !o)}
+          className={cn('flex w-full min-w-0 items-center gap-2 text-left text-[12.5px]', !text && 'cursor-default')}
+        >
+          <Icon className={cn('size-[15px] shrink-0', look.tone)} strokeWidth={2} />
+          <span className={cn('min-w-0 truncate font-semibold', met ? 'text-ok' : item.event === 'blocked' ? 'text-warn' : 'text-ink')}>{title}</span>
+          {text && !open ? <span className="min-w-0 flex-1 basis-0 truncate text-ink-2">{text}</span> : <span className="flex-1" />}
+          <span className="tabular shrink-0 text-[11px] text-ink-4">{time}</span>
+          {text && <ChevronDown className={cn('size-3.5 shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')} />}
+        </button>
+        {text && open && (
+          <div className="mt-1 animate-fade-in pl-[23px]">
+            <div className="mb-0.5 text-[11px] font-medium text-ink-3">{look.more}</div>
+            <div className="selectable text-[13px] leading-[1.5] whitespace-pre-wrap text-ink-2 [overflow-wrap:anywhere]">{text}</div>
+          </div>
+        )}
+      </div>
     </div>
   )
 })

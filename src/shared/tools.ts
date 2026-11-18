@@ -142,6 +142,24 @@ export function describeTool(name: string, input: unknown): ToolSummary {
         return { icon: 'note', doing: 'Reading note', done: 'Read note', target: noteName(str(i.note)) }
       case 'vault_save':
         return { icon: 'note', doing: i.mode === 'create' ? 'Writing note' : 'Adding to note', done: i.mode === 'create' ? 'Wrote note' : 'Added to note', target: noteName(str(i.path)) }
+      case 'goal_report':
+        return i.state === 'blocked'
+          ? { icon: 'todo', doing: 'Saying the goal needs you', done: 'Said the goal needs you', target: '' }
+          : i.state === 'met'
+            ? { icon: 'todo', doing: 'Reporting the goal as met', done: 'Reported the goal as met', target: '' }
+            : { icon: 'todo', doing: 'Reporting on the goal', done: 'Reported on the goal', target: '' }
+      case 'goal_set':
+        return { icon: 'todo', doing: 'Setting a goal', done: 'Set a goal', target: oneLine(str(i.goal), 70) }
+      case 'loop_start':
+        return { icon: 'todo', doing: 'Starting a loop', done: 'Started a loop', target: oneLine(str(i.prompt), 70) }
+      case 'loop_update':
+        return i.stop
+          ? { icon: 'todo', doing: 'Ending the loop', done: 'Ended the loop', target: oneLine(str(i.reason), 70) }
+          : i.next_in_minutes !== undefined
+            ? { icon: 'todo', doing: 'Setting the next run', done: 'Set the next run', target: `in ${String(i.next_in_minutes)} min` }
+            : { icon: 'todo', doing: 'Checking the loops', done: 'Checked the loops', target: '' }
+      case 'notify_user':
+        return { icon: 'note', doing: 'Letting you know', done: 'Let you know', target: oneLine(str(i.title), 60) }
       case 'browser':
         return { icon: 'screen', doing: 'Using the browser', done: 'Used the browser', target: '' }
       case 'computer':

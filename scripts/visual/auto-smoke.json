@@ -1,0 +1,5 @@
+[
+  { "size": [1380, 880], "theme": "light", "wait": 1800 },
+  { "js": "const b = [...document.querySelectorAll('button')].find(b => /Start with|Get started/.test(b.textContent)); if (b) b.click(); return 'onboarding button: ' + !!b", "wait": 1600 },
+  { "js": "const s = window.__ensemble.getState(); return 'chat: ' + s.chatId + ' | accounts: ' + s.accounts.map(a => a.name).join(', ') + ' | version: ' + s.env.version", "wait": 300, "shot": "auto-smoke.png" }
+]

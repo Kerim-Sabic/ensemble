@@ -10,15 +10,19 @@ import type {
   Chat,
   Folder,
   FolderChanges,
+  GoalInput,
   HubEvent,
   Item,
   LoginProgress,
+  LoopInput,
   MemoryNote,
   ScreenKind,
   ScreenState,
+  SendRequest,
   Settings,
   Task,
   VaultInfo,
+  WorkMode,
 } from '@shared/types'
 import { api, errorText } from './lib/util'
 import { forgetFrames, startFrames } from './lib/frames'
@@ -131,12 +135,24 @@ interface State {
   closeViewer(): void
   setDraftCwd(cwd: string | null): void
   setDraftLead(accountId: string | null): void
-  send(text: string, attachments?: Attachment[], to?: string): Promise<boolean>
+  /** `opts` makes the message a goal or a loop, or asks for a way of working other than the usual. */
+  send(text: string, attachments?: Attachment[], to?: string, opts?: SendOptions): Promise<boolean>
   refreshChanges(chatId: string): void
   toggleInspector(): void
   toast(text: string, level?: Toast['level']): void
   dismissToast(id: number): void
   run<T>(p: Promise<T>): Promise<T | undefined>
+  /** Turns a chat's Ultra on or off. Shows at once, and goes back if the app says no. */
+  setUltra(chatId: string, on: boolean): Promise<boolean>
+}
+
+/** What can go with a message besides its text: a way of working, or making it a goal or a loop. */
+export interface SendOptions {
+  mode?: WorkMode
+  goal?: Partial<GoalInput>
+  loop?: Partial<LoopInput>
+  /** Turn Ultra on for the chat this message starts (Ultra picked before the chat existed). */
+  ultra?: boolean
 }
 
 const key = (chatId: string, accountId: string): string => `${chatId}:${accountId}`
@@ -379,6 +395,8 @@ export const useStore = create<State>((set, get) => {
       economy: 'auto',
       recall: true,
       chatNotes: true,
+      goalRounds: 12,
+      goalCheck: 'fresh',
     },
     accounts: [],
     statuses: {},
@@ -541,7 +559,7 @@ export const useStore = create<State>((set, get) => {
       set({ draftLead, draftTo: null })
     },
 
-    async send(text, attachments, to) {
+    async send(text, attachments, to, opts) {
       const s = get()
       const target = to || focusOf(s)
       if (!target) {
@@ -555,6 +573,7 @@ export const useStore = create<State>((set, get) => {
           chatId = chat.id
           // Someone other than the usual lead was picked to lead this one.
           if (s.draftLead && s.draftLead === target) await api.setChatLead(chat.id, target).then((c) => Object.assign(chat, c))
+          if (opts?.ultra) await api.setUltra(chat.id, true).then((c) => Object.assign(chat, c))
           set((st) => ({
             chatId,
             draftFolder: null,
@@ -567,7 +586,11 @@ export const useStore = create<State>((set, get) => {
         } else if (to && s.focus[chatId] !== to) {
           set((st) => ({ focus: { ...st.focus, [chatId as string]: to } }))
         }
-        await api.send({ chatId, to: target, text, attachments })
+        const req: SendRequest = { chatId, to: target, text, attachments }
+        if (opts?.mode && opts.mode !== 'chat') req.mode = opts.mode
+        if (opts?.goal) req.goal = opts.goal
+        else if (opts?.loop) req.loop = opts.loop
+        await api.send(req)
         return true
       } catch (e) {
         s.toast(errorText(e), 'error')
@@ -603,6 +626,20 @@ export const useStore = create<State>((set, get) => {
 
     dismissToast(id) {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+    },
+
+    async setUltra(chatId, on) {
+      const flip = (v: boolean): void => set((st) => ({ chats: st.chats.map((c) => (c.id === chatId ? { ...c, ultra: v } : c)) }))
+      const was = !!get().chats.find((c) => c.id === chatId)?.ultra
+      flip(on)
+      try {
+        await api.setUltra(chatId, on)
+        return true
+      } catch (e) {
+        flip(was)
+        get().toast(errorText(e), 'error')
+        return false
+      }
     },
 
     async run(p) {

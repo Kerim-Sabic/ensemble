@@ -1,0 +1,142 @@
+[
+ {
+  "size": [
+   1200,
+   800
+  ],
+  "theme": "light",
+  "wait": 2000
+ },
+ {
+  "js": "for (let i=0;i<8;i++){ const b=[...document.querySelectorAll('button')].find(b=>/^(Continue|Start using Ensemble|Get started)$/i.test(b.textContent.trim())); if(!b) break; b.click(); await new Promise(r=>setTimeout(r,900)); } window.__t = (v) => { const ta = document.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(ta, v); ta.dispatchEvent(new Event('input',{bubbles:true})); ta.focus(); }; window.__in = (ph, v) => { const el = [...document.querySelectorAll('.composer input')].find(i => (i.placeholder||'').startsWith(ph)); if (!el) return false; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el, v); el.dispatchEvent(new Event('input',{bubbles:true})); return true }; window.__btn = (label) => { const b = document.querySelector('.composer button[aria-label^=\"'+label+'\"]'); if (b) b.click(); return !!b }; window.__open = (label) => { const b = document.querySelector('.composer button[aria-label^=\"'+label+'\"]'); if (!b) return false; b.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,button:0,pointerType:'mouse'})); return true }; window.__esc = () => document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); const s = window.__ensemble.getState(); return 'onboarded ' + s.settings.onboarded + ' keepRunning ' + s.settings.keepRunning",
+  "wait": 900,
+  "shot": "c01-default.png"
+ },
+ {
+  "js": "const b=[...document.querySelectorAll('button')].find(b=>/^Start a loop$/.test(b.textContent.trim())); if(b) b.click(); await new Promise(r=>setTimeout(r,300)); return 'starter loop '+!!b+' text=['+document.querySelector('.composer textarea').value+']'",
+  "wait": 700,
+  "shot": "c01b-starter-loop.png"
+ },
+ {
+  "js": "window.__btn('Loop:'); return 'off'",
+  "wait": 400
+ },
+ {
+  "js": "await window.__ensemble.getState().send('Hi, what can you do?'); return 'sent'",
+  "wait": 15000
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chat ' + s.chatId + ' busy ' + Object.values(s.agents).filter(a => a.phase !== 'idle').length",
+  "wait": 300
+ },
+ {
+  "js": "return 'mode menu ' + window.__open('Way of working')",
+  "wait": 700,
+  "shot": "c02-mode-menu.png"
+ },
+ {
+  "js": "window.__esc(); await new Promise(r=>setTimeout(r,300)); window.__ensemble.setState(s => ({ chats: s.chats.map(c => c.id === s.chatId ? { ...c, goal: { id: 'g1', text: 'Old goal', status: 'active', round: 1, maxRounds: 12, check: 'fresh', createdAt: Date.now(), log: [] } } : c) })); window.__btn('Goal:'); window.__t('Get the checkout flow working end to end and fix whatever breaks on the way'); await new Promise(r=>setTimeout(r,200)); return 'done when ' + window.__in('optional, e.g. all tests', 'all tests pass and a test order goes through')",
+  "wait": 900,
+  "shot": "c03-goal-on.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const h = s.accounts.find(a => a.name === 'Hello'); s.setFocus(h.id); return 'focus hello'",
+  "wait": 700,
+  "shot": "c03b-goal-not-lead.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); s.setFocus(s.accounts.find(a => a.name === 'Main').id); await new Promise(r=>setTimeout(r,200)); window.__btn('Loop:'); window.__t('Check the deploy and tell me if anything is red'); await new Promise(r=>setTimeout(r,200)); return 'until ' + window.__in('optional, e.g. the deploy', 'the deploy is live')",
+  "wait": 900,
+  "shot": "c04-loop-on.png"
+ },
+ {
+  "js": "return 'pace menu ' + window.__open('How often')",
+  "wait": 700,
+  "shot": "c04b-pace-menu.png"
+ },
+ {
+  "js": "window.__esc(); await new Promise(r=>setTimeout(r,300)); window.__btn('Loop:'); window.__t('/'); return 'slash'",
+  "wait": 700,
+  "shot": "c05-slash.png"
+ },
+ {
+  "js": "window.__t('/loop 10m check the deploy and tell me when it is live'); return 'preview'",
+  "wait": 600,
+  "shot": "c06-preview.png"
+ },
+ {
+  "js": "window.__t('/plan add a pricing page with a checkout flow'); return 'preview plan'",
+  "wait": 600,
+  "shot": "c06b-preview-plan.png"
+ },
+ {
+  "js": "window.__t('Keep going until all the tests pass and the build is green'); return 'nudge goal'",
+  "wait": 600,
+  "shot": "c07-nudge-goal.png"
+ },
+ {
+  "js": "window.__t('Every 15 minutes check the deploy dashboard and tell me if anything breaks'); return 'nudge loop'",
+  "wait": 600,
+  "shot": "c08-nudge-loop.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('.composer button')].find(b => /Make this a loop/.test(b.textContent)); if (b) b.click(); const s = window.__ensemble.getState(); return 'took nudge ' + !!b",
+  "wait": 700,
+  "shot": "c08b-nudge-taken.png"
+ },
+ {
+  "size": [
+   900,
+   700
+  ],
+  "js": "window.__btn('Goal:'); window.__t('Get the checkout flow working end to end'); return 'narrow goal'",
+  "wait": 900,
+  "shot": "c09-goal-900.png"
+ },
+ {
+  "js": "window.__btn('Loop:'); return 'narrow loop'",
+  "wait": 700,
+  "shot": "c10-loop-900.png"
+ },
+ {
+  "js": "window.__btn('Loop:'); window.__t('Keep going until all the tests pass and the build is green'); return 'narrow nudge'",
+  "wait": 700,
+  "shot": "c10b-nudge-900.png"
+ },
+ {
+  "size": [
+   1200,
+   800
+  ],
+  "theme": "dark",
+  "js": "window.__btn('Goal:'); window.__t('Get the checkout flow working end to end and fix whatever breaks'); return 'dark goal'",
+  "wait": 1000,
+  "shot": "c11-goal-dark.png"
+ },
+ {
+  "js": "window.__btn('Loop:'); window.__t('Check the deploy and tell me if anything is red'); return 'dark loop'",
+  "wait": 800,
+  "shot": "c12-loop-dark.png"
+ },
+ {
+  "js": "window.__btn('Loop:'); window.__t(''); return 'mode ' + window.__open('Way of working')",
+  "wait": 700,
+  "shot": "c13-mode-dark.png"
+ },
+ {
+  "js": "const items = [...document.querySelectorAll('[role=menuitem]')]; const p = items.find(i => /Plan first/.test(i.textContent)); if (p) p.click(); await new Promise(r=>setTimeout(r,300)); window.__t('/'); return 'picked plan ' + !!p",
+  "wait": 700,
+  "shot": "c14-slash-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__t('make the pricing page nicer and fix checkout'); await new Promise(r=>setTimeout(r,150)); window.__btn('Improve this message'); await new Promise(r=>setTimeout(r,150)); return 'enhancing ' + !!document.querySelector('.composer textarea[aria-busy]')",
+  "wait": 200,
+  "shot": "c15-enhancing.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'after enhance: ' + document.querySelector('.composer textarea').value.slice(0, 160) + ' | toasts ' + s.toasts.map(t => t.level + ':' + t.text).join(' / ')",
+  "wait": 4000,
+  "shot": "c16-enhanced.png"
+ }
+]

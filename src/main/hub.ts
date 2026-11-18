@@ -13,6 +13,10 @@ import {
   type Chat,
   type ChatSnapshot,
   type Folder,
+  type GoalAction,
+  type GoalInput,
+  type Loop,
+  type LoopInput,
   type FolderChanges,
   type HubEvent,
   type ImportResult,
@@ -34,6 +38,8 @@ import {
   type SetupStatus,
   type VaultNote,
 } from '@shared/types'
+import { GOCRAZY_NEEDS_ULTRA, SPAWN_CAP_GOCRAZY, SPAWN_CAP_ULTRA, everyLabel, parseCommand, span } from '@shared/auto'
+import { Autopilot } from './autopilot'
 import { adviseModel, budgetLine, budgetOf, isTopModel, modelForTier, spendScore, TIER_ORDER, tierOfModel, type Tier } from '@shared/budget'
 import { familyOf, kindLabel, kindOf, Learning, type Verdict } from './learning'
 import { ConnectorStore, findConnectors, ownConnectors, type Sealer } from './connectors'
@@ -46,7 +52,7 @@ import { ClaudeRuntime, askClaudeOnce } from './providers/claude'
 import { CodexRuntime } from './providers/codex'
 import { DemoRuntime, demoChanges, demoDiff } from './providers/demo'
 import type { AgentRuntime, RuntimeEvent, TeamTool } from './providers/types'
-import { leadBriefing, memberBriefing, TITLE_SYSTEM, type BriefingContext } from './prompts'
+import { ENHANCE_SYSTEM, leadBriefing, memberBriefing, modeNote, TITLE_SYSTEM, type BriefingContext } from './prompts'
 import { Hands } from './hands/hands'
 import type { HandsDrivers } from './hands/types'
 import { Vault, detectVaults } from './vault'
@@ -137,6 +143,8 @@ const DEFAULTS: Settings = {
   economy: 'auto',
   recall: true,
   chatNotes: true,
+  goalRounds: 12,
+  goalCheck: 'fresh',
 }
 
 /** A few notes for the scripted demo team to find, so the vault can be shown without touching a real one. */
@@ -203,6 +211,8 @@ export class Hub implements SessionHost {
   private running = new Map<string, Set<string>>()
   private saveRunning = debounce(() => writeJson(this.file('running.json'), Object.fromEntries([...this.running].map(([k, v]) => [k, [...v]]))), 250)
   private quiet = new Set<string>()
+  /** Chats whose lead is working a message in Ultra or Go crazy right now: their agent cap is raised. */
+  private ultraRun = new Map<string, 'ultra' | 'gocrazy'>()
   folders: Folder[] = []
   /** Each chat's team board, read from disk the first time it is needed. */
   private boards = new Map<string, BoardNote[]>()
@@ -213,6 +223,8 @@ export class Hub implements SessionHost {
   /** Chats whose vault note is due to be brought up to date. */
   private noteTimers = new Map<string, NodeJS.Timeout>()
   private toolServer = new ToolServer()
+  /** Goals and loops: what keeps a chat working without the user typing again. */
+  readonly auto: Autopilot
   readonly hands: Hands
   private vault: Vault | null = null
   private saveChats: ReturnType<typeof debounce<[]>>
@@ -245,6 +257,7 @@ export class Hub implements SessionHost {
       demo: host.demo,
       emit: (ev) => this.emit(ev),
       claudePath: () => this.settings.claudePath,
+      leadId: () => this.settings?.leadId ?? null,
     })
     this.memory = new MemoryStore(this.dataDir, (ev) => this.emit(ev))
     this.learning = new Learning(this.dataDir)
@@ -256,6 +269,29 @@ export class Hub implements SessionHost {
     }
     this.folders = readJson<Folder[]>(this.file('folders.json'), []).sort((a, b) => a.order - b.order)
     this.saveChats = debounce(() => writeJson(this.file('chats.json'), [...this.chats.values()]), 400)
+    this.auto = new Autopilot({
+      demo: host.demo,
+      settings: () => this.settings,
+      chats: () => this.chats.values(),
+      chat: (id) => this.chats.get(id),
+      lead: (chat) => this.lead(chat),
+      account: (id) => this.accounts.get(id),
+      unavailable: (a) => this.unavailable(a),
+      session: (chat, a) => this.session(chat, a),
+      out: (chat, a) => this.outFrom(chat, a).length,
+      changed: (chat) => {
+        this.saveChats()
+        this.emit({ type: 'chat', chat })
+      },
+      preface: (chat, a) => {
+        const pre = this.takeWaiting(chat, a)
+        return { text: this.catchUp(chat, a) + pre.text, itemIds: pre.itemIds }
+      },
+      tell: (title, body, chat, accountId) => this.tell(title, body, chat, accountId),
+      stop: (chat) => this.stop(chat.id),
+      // A wrong verdict costs a whole round of the lead's work, so the check gets a model that can judge.
+      judge: (system, prompt, cwd) => this.askLight(system, prompt, { model: 'sonnet', cwd }),
+    })
   }
 
   async start(): Promise<void> {
@@ -269,6 +305,7 @@ export class Hub implements SessionHost {
     } catch (e) {
       console.error('[recover]', (e as Error).message)
     }
+    this.auto.start()
     void this.accounts.refresh()
     // Keep plan usage fresh without spending any of it.
     this.timer = setInterval(() => {
@@ -337,6 +374,8 @@ export class Hub implements SessionHost {
     const ledBy = leadChanged ? new Map([...this.chats.values()].filter((c) => !c.leadId).map((c) => [c.id, this.lead(c)])) : null
     this.settings = { ...before, ...patch }
     if (ledBy) this.handOver(ledBy)
+    // On a team with no Claude account, the new lead gets the lead's role (unless the user wrote one).
+    if (leadChanged) this.accounts.balanceRoles()
     writeJson(this.file('settings.json'), this.settings)
     this.emit({ type: 'settings', settings: this.settings })
     if (this.settings.vaultPath !== before.vaultPath) {
@@ -358,6 +397,7 @@ export class Hub implements SessionHost {
       const chat = this.chats.get(chatId)
       const next = chat ? this.lead(chat) : null
       if (!chat || !prev || !next || prev.id === next.id) continue
+      this.auto.leadChanged(chat, next)
       const old = this.sessions.get(`${chatId}:${prev.id}`)
       for (const t of this.tasksOf(chatId)) {
         if (t.from === prev.id && (t.status === 'running' || t.status === 'queued')) {
@@ -602,6 +642,8 @@ export class Hub implements SessionHost {
     this.quiet.delete(id)
     this.hands.closeChat(id)
     for (const a of this.chats.get(id)?.agents || []) this.accounts.unregister(a.id)
+    const gone = this.chats.get(id)
+    if (gone) this.auto.drop(gone)
     this.chats.delete(id)
     this.tasks.delete(id)
     this.boards.delete(id)
@@ -660,11 +702,49 @@ export class Hub implements SessionHost {
     return Math.max(3, Math.min(12, n))
   }
 
+  /** The way the chat's lead is working right now when it is Ultra or Go crazy; null otherwise. */
+  private ultraOf(chat: Chat): 'ultra' | 'gocrazy' | null {
+    const run = this.ultraRun.get(chat.id)
+    if (run === 'gocrazy') return 'gocrazy'
+    return run || chat.ultra ? 'ultra' : null
+  }
+
+  /**
+   * How many extra agents this chat may hold: the usual cap, raised to 16 while the chat is in
+   * Ultra and to 24 while it is going crazy. The user chose to spend allowance there.
+   */
+  agentCap(chat: Chat): number {
+    const usual = this.maxAgents()
+    const ultra = this.ultraOf(chat)
+    return ultra === 'gocrazy' ? Math.max(usual, SPAWN_CAP_GOCRAZY) : ultra ? Math.max(usual, SPAWN_CAP_ULTRA) : usual
+  }
+
   /** How many more agents `a` may start in the chat. 0 when it may not start any. */
   private spawnRoom(chat: Chat, a: Account): number {
     if (this.depthOf(chat, a) >= MAX_DEPTH) return 0
     const live = (chat.agents || []).filter((x) => !x.spawned?.gone).length
-    return Math.max(0, this.maxAgents() - live)
+    return Math.max(0, this.agentCap(chat) - live)
+  }
+
+  /**
+   * The team's models as Ultra needs them: per provider, the accounts that can take work and
+   * the strongest and fastest model each offers. Read from what the accounts really report.
+   */
+  private ultraTeam(chat: Chat): string {
+    const lines: string[] = []
+    for (const provider of ['claude', 'chatgpt'] as const) {
+      const accs = this.teamOf(chat).filter((a) => !a.spawned && a.provider === provider && a.enabled && this.accounts.statuses.get(a.id)?.state === 'ready' && !this.accounts.limitedUntil(a.id))
+      if (!accs.length) continue
+      const list = this.choices(accs[0])
+      const top = modelForTier(list, 'top') || modelForTier(list, 'strong')
+      const fast = modelForTier(list, 'light')
+      const efforts = (top?.efforts || []).filter((e) => e !== 'ultra')
+      const maxEffort = efforts.includes('max') ? 'max' : efforts[efforts.length - 1]
+      const kind = provider === 'claude' ? 'Claude' : 'ChatGPT'
+      const parts = [top ? `strongest ${top.label} (\`${top.value}\`${maxEffort ? `, effort up to ${maxEffort}` : ''})` : '', fast ? `fastest ${fast.label} (\`${fast.value}\`)` : '']
+      lines.push(`- ${accs.length} ${kind} ${accs.length === 1 ? 'account' : 'accounts'} (${accs.map((a) => a.name).join(', ')}): ${parts.filter(Boolean).join('; ') || 'models not known yet, see roster'}`)
+    }
+    return lines.join('\n')
   }
 
   /** The instructions of the folder a chat is filed under, when it has some. */
@@ -693,7 +773,7 @@ export class Hub implements SessionHost {
       lead,
       teammates,
       parent: account.spawned ? { name: name(account.spawned.by), base: name(account.spawned.base) } : null,
-      spawn: hasTools && this.maxAgents() > 0 && this.depthOf(chat, account) < MAX_DEPTH ? this.maxAgents() : 0,
+      spawn: hasTools && this.agentCap(chat) > 0 && this.depthOf(chat, account) < MAX_DEPTH ? this.agentCap(chat) : 0,
       depth: this.depthOf(chat, account),
       smart: this.settings.smartModels,
       connectors: this.connectors.all().filter((c) => c.enabled && (c.accounts === 'all' || c.accounts.includes(this.accounts.baseId(account.id)))).map((c) => ({ slug: c.slug, name: c.name, blurb: c.blurb, tools: c.test?.ok ? c.test.tools.length : undefined })),
@@ -783,6 +863,14 @@ export class Hub implements SessionHost {
   /** The account's model for a tier, or the nearest one below it that the account has. */
   private modelAt(a: Account, tier: Tier): ModelOption | undefined {
     return modelForTier(this.choices(a), tier)
+  }
+
+  /** Which provider a model named in a task belongs to ("luna", "gpt-6-astra", "haiku"); undefined when it does not say. */
+  private providerOfModel(model: string | undefined | null): Account['provider'] | undefined {
+    const m = (model || '').trim()
+    if (/^gpt|^o\d|codex|luna|astra|(^|[^a-z])sol([^a-z]|$)/i.test(m)) return 'chatgpt'
+    if (/fable|mythos|opus|sonnet|haiku|claude/i.test(m)) return 'claude'
+    return undefined
   }
 
   private isTop(model: string | undefined | null): boolean {
@@ -1094,9 +1182,72 @@ export class Hub implements SessionHost {
     const status = this.accounts.statuses.get(account.id)
     if (status?.state === 'signed-out') throw new Error(`${account.name} is signed out. Sign in from the team panel first.`)
     if (account.spawned?.gone) throw new Error(`${account.name} was sent home and no longer takes messages.`)
-    const text = req.text.trim()
+    let text = req.text.trim()
     const attachments = req.attachments || []
     if (!text && !attachments.length) return
+    let mode = req.mode && req.mode !== 'chat' ? req.mode : undefined
+    let goalIn = req.goal
+    let loopIn = req.loop
+    // The app's own commands, typed like any other message.
+    const cmd = parseCommand(text)
+    if (cmd?.kind === 'goal-action') {
+      void this.goalAction(chat.id, cmd.action)
+      return
+    }
+    if (cmd?.kind === 'loop-stop') {
+      if (!this.auto.stopLoops(chat)) this.emit({ type: 'toast', level: 'info', text: 'No loop is going in this chat.' })
+      return
+    }
+    if (cmd?.kind === 'ultra') {
+      const on = cmd.on ?? !chat.ultra
+      this.setUltra(chat.id, on)
+      this.emit({ type: 'toast', level: 'info', text: on ? 'Ultra is on for this chat: many agents on the strongest models. Uses allowance very fast.' : 'Ultra is off for this chat.' })
+      return
+    }
+    if (cmd?.kind === 'goal') {
+      goalIn = { ...goalIn, text: cmd.text }
+      text = cmd.text
+    } else if (cmd?.kind === 'loop') {
+      loopIn = { ...loopIn, prompt: cmd.prompt, every: cmd.every ?? loopIn?.every }
+      text = cmd.prompt
+    } else if (cmd?.kind === 'mode') {
+      mode = cmd.mode === 'chat' ? undefined : cmd.mode
+      text = cmd.text
+    } else if (/^\/(gocrazy|go-crazy)\s*$/i.test(text) && !attachments.length) {
+      this.emit({ type: 'toast', level: 'info', text: chat.ultra ? 'Type /gocrazy and what you want, for example: /gocrazy design the landing page' : GOCRAZY_NEEDS_ULTRA })
+      return
+    } else if (/^\/(goal|loop)\s*$/i.test(text) && !attachments.length) {
+      // The bare command: say where things stand, or how it is used.
+      const g = chat.goal
+      const loops = this.auto.loopsText(chat)
+      const say = /goal/i.test(text)
+        ? g
+          ? `Goal (${g.status}): ${truncate(g.text, 120)}`
+          : 'Type /goal and what done looks like, for example: /goal all tests pass and the build is green'
+        : loops.startsWith('No loop')
+          ? 'Type /loop, a pace if you want one, and what to do, for example: /loop 10m check whether the deploy is live'
+          : loops
+      this.emit({ type: 'toast', level: 'info', text: say })
+      return
+    }
+    // Go crazy is Ultra at full scale: it goes only while Ultra is on, or with a message sent in Ultra.
+    if (mode === 'gocrazy' && !chat.ultra && req.mode !== 'ultra') {
+      this.emit({ type: 'toast', level: 'info', text: GOCRAZY_NEEDS_ULTRA })
+      return
+    }
+    // While Ultra is on, a message sent with no other way of working goes in Ultra.
+    if (!mode && chat.ultra && !loopIn) mode = 'ultra'
+    const files = attachments.length ? `\n\nAttached files:\n${attachments.map((a) => `- ${a.path}`).join('\n')}` : ''
+    if (loopIn) {
+      const prompt = (loopIn.prompt?.trim() || text) + files
+      this.auto.addLoop(chat, { ...loopIn, prompt, to: loopIn.to || account.id })
+      this.nameChat(chat, text)
+      this.touch(chat, text)
+      return
+    }
+    // A goal is the lead's to carry, whoever the message box happened to point at.
+    const goalLead = goalIn ? this.lead(chat) : null
+    if (goalLead && goalLead.id !== account.id && this.accounts.statuses.get(goalLead.id)?.state !== 'signed-out') return this.send({ ...req, to: goalLead.id, text, mode, goal: goalIn })
 
     const session = this.session(chat, account)
     const item: Item = {
@@ -1107,8 +1258,7 @@ export class Hub implements SessionHost {
       attachments: attachments.length ? attachments : undefined,
       queued: session.busy,
     }
-    let body = text
-    if (attachments.length) body += `\n\nAttached files:\n${attachments.map((a) => `- ${a.path}`).join('\n')}`
+    let body = text + files
     const images = attachments.filter((a) => a.kind === 'image').map((a) => a.path)
     const cut = chat.recovery
     const toLead = this.lead(chat)?.id === account.id
@@ -1119,6 +1269,26 @@ export class Hub implements SessionHost {
       return
     }
     session.add(item)
+    // Ultra and Go crazy raise the chat's agent cap for as long as the lead works that way.
+    if (toLead) {
+      if (mode === 'ultra' || mode === 'gocrazy') this.ultraRun.set(chat.id, mode)
+      else this.ultraRun.delete(chat.id)
+    }
+    // How the user wants this one handled comes right before their words.
+    if (mode && (toLead || mode === 'quick' || mode === 'plan')) {
+      const ultra = mode === 'ultra' || mode === 'gocrazy'
+      body =
+        modeNote(mode, {
+          lead: toLead,
+          team: this.teamOf(chat).length > 1,
+          spawn: this.spawnRoom(chat, account) > 0,
+          cap: ultra ? this.spawnRoom(chat, account) : undefined,
+          models: ultra ? this.ultraTeam(chat) : undefined,
+        }) + body
+    }
+    if (goalIn && toLead) body = this.auto.setGoal(chat, { ...goalIn, text: goalIn.text?.trim() || text + files }).intro + body
+    // A goal that was waiting on the user has its answer now.
+    else if (toLead) body = this.auto.userSpoke(chat) + body
     if (cut && toLead && !cut.told) {
       cut.told = true
       this.saveChats()
@@ -1143,13 +1313,131 @@ export class Hub implements SessionHost {
       itemIds: [...pre.itemIds, item.id],
     })
 
+    this.nameChat(chat, text)
+    this.touch(chat, text)
+  }
+
+  /** A new chat is named after the first real thing said in it. */
+  private nameChat(chat: Chat, text: string): void {
     const first = chat.title === NEW_TITLE && !chat.titleLocked
     // A typed command says nothing about what the chat is about; wait for a real message.
     if (first && text && !text.startsWith('/')) {
       chat.title = truncate(text.split('\n')[0].replace(/\s+/g, ' '), 46)
       if (this.settings.smartTitles && !this.host.demo) void this.smartTitle(chat, text)
     }
-    this.touch(chat, text)
+  }
+
+  // ----- goals and loops -----
+
+  /** Why an agent cannot take a turn right now, and when it can again if that is known. */
+  private unavailable(a: Account): { why: string; until?: number } | null {
+    if (!a.spawned && !a.enabled) return { why: `${a.name} is switched off.` }
+    if (this.accounts.statuses.get(a.id)?.state === 'signed-out') return { why: `${a.name} is signed out.` }
+    const until = this.accounts.limitedUntil(a.id)
+    return until ? { why: `Waiting for ${a.name}'s allowance to refill`, until } : null
+  }
+
+  /** News the user should not miss: a notification when the window is not in front, a line in it when it is. */
+  private tell(title: string, body: string, chat: Chat, accountId?: string): void {
+    if (this.host.isFocused()) this.emit({ type: 'toast', level: 'info', text: body ? `${title}: ${body}` : title })
+    else if (this.settings.notifications) this.host.notify(title, body || chat.title, { chatId: chat.id, accountId })
+  }
+
+  /** One answer from a light model that knows nothing of the chat: a check, a rewrite. */
+  private async askLight(system: string, prompt: string, o: { model?: string; cwd?: string } = {}): Promise<string> {
+    const ok = (a: Account): boolean => a.provider === 'claude' && this.accounts.isReady(a.id) && !this.accounts.limitedUntil(a.id)
+    const lead = this.lead()
+    // Whoever has the most to spare pays for it, so the lead's allowance goes on the work.
+    const spare = this.accounts.accounts.filter((a) => ok(a) && a.id !== lead?.id).sort((a, b) => spendScore(budgetOf(this.accounts.usage.get(a.id))) - spendScore(budgetOf(this.accounts.usage.get(b.id))))[0]
+    const pick = spare || (lead && ok(lead) ? lead : null)
+    if (!pick) throw new Error('No Claude account is free to ask.')
+    return askClaudeOnce({ configDir: pick.configDir, cwd: o.cwd && exists(o.cwd) ? o.cwd : this.dataDir, executable: findClaude(this.settings.claudePath), system, prompt, model: o.model })
+  }
+
+  /** Sets the chat's goal and puts the lead to work on it; null takes the goal off the chat. */
+  async setGoal(chatId: string, input: GoalInput | null): Promise<Chat> {
+    const chat = this.need(chatId)
+    if (!input) {
+      await this.auto.goalAction(chat, 'clear')
+      return chat
+    }
+    const lead = this.lead(chat)
+    if (!lead) throw new Error('Add an account before setting a goal.')
+    if (!input.text?.trim()) throw new Error('Say what the goal is.')
+    this.send({ chatId, to: lead.id, text: input.text, goal: input })
+    return chat
+  }
+
+  async goalAction(chatId: string, action: GoalAction | 'clear'): Promise<Chat> {
+    const chat = this.need(chatId)
+    if (!chat.goal) this.emit({ type: 'toast', level: 'info', text: 'This chat has no goal.' })
+    else await this.auto.goalAction(chat, action)
+    return chat
+  }
+
+  /** Turns the chat's Ultra on or off. It stays as set until changed; off also ends a Go crazy run's raised cap. */
+  setUltra(chatId: string, on: boolean): Chat {
+    const chat = this.need(chatId)
+    if (on) chat.ultra = true
+    else {
+      delete chat.ultra
+      this.ultraRun.delete(chat.id)
+    }
+    this.saveChats()
+    this.emit({ type: 'chat', chat })
+    return chat
+  }
+
+  addLoop(chatId: string, input: LoopInput): Chat {
+    const chat = this.need(chatId)
+    this.auto.addLoop(chat, { ...input, prompt: String(input?.prompt || '') })
+    this.nameChat(chat, String(input?.prompt || ''))
+    this.touch(chat)
+    return chat
+  }
+
+  updateLoop(chatId: string, loopId: string, patch: Partial<Pick<Loop, 'prompt' | 'every' | 'maxRuns' | 'until'>> & { status?: 'active' | 'paused' }): Chat {
+    const chat = this.need(chatId)
+    this.auto.updateLoop(chat, String(loopId), patch || {})
+    return chat
+  }
+
+  removeLoop(chatId: string, loopId: string): Chat {
+    const chat = this.need(chatId)
+    this.auto.removeLoop(chat, String(loopId))
+    return chat
+  }
+
+  runLoop(chatId: string, loopId: string): void {
+    this.auto.runLoop(this.need(chatId), String(loopId))
+  }
+
+  /**
+   * Rewrites a rough message into a clear one without changing what it asks for. Comes back
+   * unchanged when there is nobody to ask or the answer is not usable.
+   */
+  async enhance(text: string, chatId?: string | null): Promise<string> {
+    const raw = String(text || '').trim()
+    if (raw.length < 8 || raw.startsWith('/')) return raw
+    if (this.host.demo) {
+      await new Promise((r) => setTimeout(r, 700))
+      const s = raw.replace(/\s+/g, ' ')
+      return `${s[0].toUpperCase()}${s.slice(1).replace(/[.!?]*$/, '')}.\n\nDone when: it works end to end, you have run it and looked at the result yourself, and anything you could not check is listed.`
+    }
+    const chat = chatId ? this.chats.get(chatId) : undefined
+    // What the chat is about helps read a vague message the right way; it is not to be repeated back.
+    const about = chat && chat.title !== NEW_TITLE ? `\n\n(Only to help you read it, never to be mentioned: the conversation so far is titled "${chat.title}".)` : ''
+    try {
+      const out = (await this.askLight(ENHANCE_SYSTEM, `The message to improve:\n<<<\n${truncate(raw, 6000)}\n>>>${about}`, { model: 'sonnet' }))
+        .replace(/^<<<\s*|\s*>>>$/g, '')
+        .replace(/^["\u201c]|["\u201d]$/g, '')
+        .trim()
+      // An answer that is empty, or has turned a line into an essay, is not an improvement.
+      if (!out || out.length > Math.max(900, raw.length * 4)) return raw
+      return out
+    } catch {
+      return raw
+    }
   }
 
   private async smartTitle(chat: Chat, firstMessage: string): Promise<void> {
@@ -1179,6 +1467,9 @@ export class Hub implements SessionHost {
   async stop(chatId: string, accountId?: string): Promise<void> {
     const targets = this.sessionsOf(chatId).filter((s) => !accountId || s.account.id === accountId)
     if (!accountId) this.quiet.add(chatId)
+    const stopped = this.chats.get(chatId)
+    // The goal is paused here, whatever the lead is doing, and a stop of the whole chat holds its loops too.
+    if (stopped) this.auto.userStopped(stopped, accountId)
     try {
       for (const t of this.tasksOf(chatId)) {
         if (accountId && t.to !== accountId) continue
@@ -1633,7 +1924,9 @@ export class Hub implements SessionHost {
 
     const lead = this.lead(chat)
     if (ev.status === 'done' && session.account.id === lead?.id) this.noteSoon(chat)
-    const worthTelling = pending.kind === 'user' || session.account.id === lead?.id
+    // A goal in play, or a loop's run, brings its own news: the check's verdict, the loop ending.
+    const ownNews = this.auto.afterTurn(session, pending, ev) || pending.auto?.of === 'loop'
+    const worthTelling = !ownNews && (pending.kind === 'user' || session.account.id === lead?.id)
     if (worthTelling && ev.status !== 'interrupted' && this.settings.notifications && !this.host.isFocused()) {
       this.host.notify(
         ev.status === 'done' ? `${session.account.name} finished` : `${session.account.name} stopped with a problem`,
@@ -1758,9 +2051,9 @@ export class Hub implements SessionHost {
       to = [...mine].sort((a, b) => Number(this.session(chat, a).busy) - Number(this.session(chat, b).busy) || this.session(chat, a).state.queued - this.session(chat, b).state.queued)[0]
     } else if (auto) {
       // A model named for the task decides which kind of teammate can take it.
-      const wantsGpt = /^gpt|^o\d|codex/i.test((args.model || '').trim())
+      const provider = this.providerOfModel(args.model)
       const wantsTop = this.isTop(args.model)
-      to = this.pick(chat, { exclude: [from.id], provider: wantsGpt ? 'chatgpt' : 'claude', wantsTop }) || (args.model ? null : this.pick(chat, { exclude: [from.id] }))
+      to = this.pick(chat, { exclude: [from.id], provider: provider || 'claude', wantsTop }) || (provider ? null : this.pick(chat, { exclude: [from.id] }))
       if (!to) return this.spawnRoom(chat, from) > 0 ? 'No other account can take work right now. Start an agent for it with spawn_agent (it works on your account), or do it yourself.' : 'Nobody on the team can take work right now (signed out or out of allowance). Do this yourself, or tell the user.'
     } else {
       to = this.accounts.byName(asked, chat.id)
@@ -1824,18 +2117,20 @@ export class Hub implements SessionHost {
    */
   private spawn(chat: Chat, by: Account, args: SpawnArgs): string {
     const depth = this.depthOf(chat, by)
-    if (this.maxAgents() <= 0) return 'Starting extra agents is switched off in Settings. Hand the work to a teammate, or do it yourself.'
+    const cap = this.agentCap(chat)
+    if (cap <= 0) return 'Starting extra agents is switched off in Settings. Hand the work to a teammate, or do it yourself.'
     if (depth >= MAX_DEPTH) {
       const parent = by.spawned ? this.accounts.get(by.spawned.by)?.name : undefined
       return `You are a sub-agent, and sub-agents do not start agents of their own. Do the work yourself, or tell ${parent || 'whoever started you'} in your report what else is needed.`
     }
     const live = (chat.agents || []).filter((a) => !a.spawned?.gone)
-    if (live.length >= this.maxAgents()) {
+    if (live.length >= cap) {
       const idle = live.filter((a) => !this.sessions.get(`${chat.id}:${a.id}`)?.busy).map((a) => a.name)
       return `This chat already has ${live.length} extra agents, which is the limit.${idle.length ? ` These are free and can take more work: ${idle.join(', ')}.` : ''} Give the work to one of them, or send one home with dismiss_agent first.`
     }
     const own = this.agentsOf(chat, by)
-    const perAgent = Math.max(1, this.settings.maxPerAgent || 4)
+    // In Ultra one agent may fill the whole chat's cap: the lead runs the swarm itself.
+    const perAgent = this.ultraOf(chat) ? cap : Math.max(1, this.settings.maxPerAgent || 4)
     if (own.length >= perAgent) {
       const idle = own.filter((a) => !this.sessions.get(`${chat.id}:${a.id}`)?.busy).map((a) => a.name)
       return `You already have ${own.length} agents of your own, the most one agent may start.${idle.length ? ` Free right now: ${idle.join(', ')}.` : ''} Give the work to one of them, or send one home with dismiss_agent first.`
@@ -1854,9 +2149,17 @@ export class Hub implements SessionHost {
       const until = this.accounts.limitedUntil(base.id)
       if (until) return `${base.name} has no usage allowance left until ${clock(until)}. Leave account out to have the best one picked.`
     } else {
-      const wantsGpt = /^gpt|^o\d|codex/i.test((args.model || '').trim())
+      // A model named by family ("luna", "astra", "haiku") says which provider's account it needs.
+      const m = (args.model || '').trim()
+      const provider = this.providerOfModel(m)
       // Claude accounts do the building; with none to spare (a ChatGPT-only team), any account will do.
-      base = this.pick(chat, { exclude: [], provider: wantsGpt ? 'chatgpt' : 'claude', wantsTop: this.isTop(args.model) }) || (args.model ? null : this.pick(chat, { exclude: [] }))
+      base = this.pick(chat, { exclude: [], provider: provider || 'claude', wantsTop: this.isTop(m) }) || (provider ? null : this.pick(chat, { exclude: [] }))
+      if (!base && provider) {
+        const has = this.accounts.accounts.some((a) => a.enabled && a.provider === provider)
+        return has
+          ? `No ${provider === 'claude' ? 'Claude' : 'ChatGPT'} account can take on another agent right now (signed out or out of allowance). Name a model of another provider, or leave model out.`
+          : `The team has no ${provider === 'claude' ? 'Claude' : 'ChatGPT'} account, so "${m}" cannot run here. Call roster for the models the team has, or leave model out.`
+      }
       if (!base) return 'No account can take on another agent right now (signed out or out of allowance). Do this yourself, or tell the user.'
     }
     const how = this.runFor(base, args.model, args.effort)
@@ -2027,6 +2330,7 @@ export class Hub implements SessionHost {
       '',
       '## Where it ended',
       truncate(outcome, 3000) || '(no answer yet)',
+      ...(chat.goal ? ['', '## Goal', `- ${truncate(chat.goal.text.replace(/\s+/g, ' '), 300)}${chat.goal.doneWhen ? ` (done when: ${truncate(chat.goal.doneWhen, 200)})` : ''}`, `- ${chat.goal.status === 'met' ? 'Met' : chat.goal.status === 'stopped' ? 'Stopped before it was met' : chat.goal.status === 'blocked' ? 'Waiting on the user' : chat.goal.status === 'paused' ? 'Paused' : 'Under way'} after ${chat.goal.round + 1} ${chat.goal.round ? 'rounds' : 'round'}${chat.goal.note ? `: ${truncate(chat.goal.note.replace(/\s+/g, ' '), 300)}` : ''}`] : []),
       ...(tasks.length ? ['', '## Work handed out', ...tasks.slice(-30).map((t) => `- ${t.title} (${name(t.to)}${t.ranOn ? `, ${familyOf(t.ranOn)?.name || t.ranOn}` : ''}): ${t.status}`)] : []),
       ...(board.length ? ['', '## Agreed', ...board.map((b) => `- **${b.title}**: ${truncate(b.text.replace(/\s+/g, ' '), 300)}`)] : []),
       ...(files.size ? ['', '## Files changed', ...[...files].slice(-30).map((f) => `- \`${f}\``)] : []),
@@ -2333,6 +2637,8 @@ export class Hub implements SessionHost {
     if (prev?.id === next.id) return chat
 
     if (prev) {
+      // A goal under way waits for the user rather than going on with a lead in the middle of changing.
+      this.auto.leadChanged(chat, next)
       const old = this.sessions.get(`${id}:${prev.id}`)
       if (old?.busy) await old.stop()
       // Offers to switch that were on screen have been taken.
@@ -2538,7 +2844,7 @@ export class Hub implements SessionHost {
     const self = `You are ${me.name}${me.id === lead?.id ? ', the team lead' : me.spawned ? `, started by ${name(me.spawned.by)}` : ''}.${own ? ` ${me.spawned ? `${name(me.spawned.base)}'s account, which you work on, has` : 'Your account has'} ${own}.` : ''}`
     if (!accounts.length && !agents.length) return `${self}\n\nNobody else is on the team yet.`
     const room = this.spawnRoom(chat, me)
-    const spawn = this.maxAgents() > 0 && this.depthOf(chat, me) < MAX_DEPTH ? `\n\nYou can start ${room} more ${room === 1 ? 'agent' : 'agents'} in this chat with spawn_agent.` : ''
+    const spawn = this.agentCap(chat) > 0 && this.depthOf(chat, me) < MAX_DEPTH ? `\n\nYou can start ${room} more ${room === 1 ? 'agent' : 'agents'} in this chat with spawn_agent.` : ''
     const learnt = this.depthOf(chat, me) < MAX_DEPTH ? this.learning.summary() : ''
     const lessons = learnt ? `\n\nWhat the team has learned about its models so far (from finished tasks and from rate_work):\n${learnt}` : ''
     const menus = this.depthOf(chat, me) < MAX_DEPTH ? [this.menu('claude') && `A Claude teammate can run:\n${this.menu('claude')}`, this.menu('chatgpt') && `A ChatGPT teammate can run:\n${this.menu('chatgpt')}`].filter(Boolean).join('\n') : ''
@@ -2562,7 +2868,7 @@ export class Hub implements SessionHost {
   private toolsFor(session: AgentSession): TeamTool[] {
     const { chat, account: me } = session
     const isLead = this.lead(chat)?.id === me.id
-    const canSpawn = this.maxAgents() > 0 && this.depthOf(chat, me) < MAX_DEPTH
+    const canSpawn = this.agentCap(chat) > 0 && this.depthOf(chat, me) < MAX_DEPTH
     const tools: TeamTool[] = [
       {
         name: 'roster',
@@ -2611,7 +2917,7 @@ export class Hub implements SessionHost {
       tools.push(
         {
           name: 'spawn_agent',
-          description: `Start a new agent in this chat: a full agent with a conversation and tools of its own that answers to ${who}. Use it when the work needs more hands than the team has, or a specialist that keeps its context across several tasks (a researcher on one angle, a tester, a reviewer, the owner of one part of a build). It works on one of the team's accounts and uses that account's allowance; leave account out and the one with the most allowance to spare is picked. Pass brief to hand it its first task in the same call. ${isLead ? 'The agents you start can start sub-agents of their own for parts of their work.' : 'Your sub-agents report to you, and you report to whoever gave you your task.'} Everyone in the chat can message and ask everyone else. Up to ${this.maxAgents()} extra agents can be in a chat at once, so reuse one that is free before starting another.`,
+          description: `Start a new agent in this chat: a full agent with a conversation and tools of its own that answers to ${who}. Use it when the work needs more hands than the team has, or a specialist that keeps its context across several tasks (a researcher on one angle, a tester, a reviewer, the owner of one part of a build). It works on one of the team's accounts and uses that account's allowance; leave account out and the one with the most allowance to spare is picked. Pass brief to hand it its first task in the same call. ${isLead ? 'The agents you start can start sub-agents of their own for parts of their work.' : 'Your sub-agents report to you, and you report to whoever gave you your task.'} Everyone in the chat can message and ask everyone else. Up to ${this.agentCap(chat)} extra agents can be in a chat at once (more while it is in Ultra), so reuse one that is free before starting another.`,
           schema: {
             name: z.string().optional().describe('A short name the team will call it by, for example "Scout" or "Tester". Leave out to have one picked'),
             role: z.string().describe('What it is for, in a few words. The whole team sees this, for example "researches competitor pricing" or "owns the API tests"'),
@@ -2735,6 +3041,80 @@ export class Hub implements SessionHost {
         },
       )
     }
+    if (isLead) {
+      tools.push(
+        {
+          name: 'goal_report',
+          description:
+            'Say where the chat\'s goal stands, while a goal is set (a <goal> block started it). "met": you believe it is done; give the evidence (what you ran or looked at and what it showed). "blocked": the only thing in the way is something the user alone can give or decide; say exactly what you need. The app checks when your reply ends and either closes the goal, waits for the user, or sends you back with what is missing.',
+          schema: {
+            state: z.enum(['met', 'blocked', 'working']).describe('met, blocked, or working (still on it)'),
+            note: z.string().describe('For met: the evidence. For blocked: exactly what you need from the user. One to four sentences'),
+          },
+          run: async (a) => this.auto.report(chat, me, a as { state?: string; note?: string }),
+        },
+        {
+          name: 'goal_set',
+          description:
+            'Make something the goal of this chat when the user asks, in their own words, for work to be kept at until it is done ("do not stop until the tests pass", "keep going until it is perfect"). From then on the app checks after each of your replies whether it is met and sends you back if it is not. Setting it replaces a goal that is already there. Do not set one for an ordinary request.',
+          schema: {
+            goal: z.string().describe("What is to be achieved, in the user's terms"),
+            done_when: z.string().optional().describe('How to tell it is done, when the user said or it follows plainly from the goal'),
+            max_rounds: z.number().optional().describe("How many times you may be sent back before the app stops and asks. Leave out for the usual number, which is also the most you can set: more is the user's call"),
+            minutes: z.number().optional().describe('A time limit in minutes, when the user gave one'),
+          },
+          run: async (a) => {
+            const text = String(a.goal || '').trim()
+            if (!text) return 'Say what the goal is.'
+            const { goal } = this.auto.setGoal(chat, { text, doneWhen: a.done_when ? String(a.done_when) : undefined, maxRounds: typeof a.max_rounds === 'number' ? a.max_rounds : undefined, minutes: typeof a.minutes === 'number' ? a.minutes : undefined }, true)
+            return `The goal is set (up to ${goal.maxRounds} rounds). Tell the user in a line, then work on it now and keep going until it is done. End each reply with what is done, the evidence, and what is left of the goal (say 'nothing' when it is done); call goal_report with "met" and the evidence when it is, or with "blocked" if only the user can unblock it.`
+          },
+        },
+        {
+          name: 'loop_start',
+          description:
+            'Start a loop when the user asks for something to be done again and again ("check the deploy every ten minutes", "watch for replies and tell me", "each morning summarise..."): the message is sent to you again by itself, at a fixed pace or whenever you say the next run is due, until its stop condition is met. Do the first run yourself in this reply; the loop takes over from the second. Loops run while Ensemble is open.',
+          schema: {
+            prompt: z.string().describe('What to do on each run, written so it makes sense on its own every time'),
+            every_minutes: z.number().optional().describe('Minutes between runs (at least 5). Leave out to set the pace yourself after each run with loop_update'),
+            until: z.string().optional().describe('The condition that ends the loop, when there is one, for example "the deploy is live"'),
+            max_runs: z.number().optional().describe('Stop after this many runs. Leave out for 20'),
+          },
+          run: async (a) => {
+            const prompt = String(a.prompt || '').trim()
+            if (!prompt) return 'Say what the loop should do each time.'
+            try {
+              const loop = this.auto.addLoop(chat, { prompt, every: typeof a.every_minutes === 'number' && a.every_minutes > 0 ? a.every_minutes * 60_000 : null, until: a.until ? String(a.until) : undefined, maxRuns: typeof a.max_runs === 'number' ? a.max_runs : null, to: me.id }, false, true)
+              return `Loop ${loop.id} is going (${everyLabel(loop.every)}); its next run is in ${span((loop.nextAt || Date.now()) - Date.now())}. Tell the user in a line what will happen and how to stop it (the loop bar above the message box, or /loop stop).`
+            } catch (e) {
+              return (e as Error).message
+            }
+          },
+        },
+        {
+          name: 'notify_user',
+          description:
+            'Get the user\'s attention right now with a short notice: a desktop notification when Ensemble is in the background, a line in the window when it is in front. For news they are waiting on (what a loop was watching for has happened, long work is finished or stuck), not for routine progress.',
+          schema: { title: z.string().describe('A few words'), text: z.string().describe('One sentence with the news') },
+          run: async (a) => {
+            this.tell(truncate(String(a.title || 'News from the team'), 60), truncate(String(a.text || ''), 200), chat, me.id)
+            return 'The user has been told.'
+          },
+        },
+      )
+    }
+    tools.push({
+      name: 'loop_update',
+      description:
+        'For a loop (a message that reaches you again by itself in a <loop> block): say when the next run is due with next_in_minutes, or end the loop with stop when its condition is met or it no longer serves its purpose. Called with neither, it lists the loops in this chat.',
+      schema: {
+        id: z.string().optional().describe('The loop id from the <loop> block. Leave out during a run to mean that loop'),
+        next_in_minutes: z.number().optional().describe('Minutes until the next run, 1 to 1440'),
+        stop: z.boolean().optional().describe('true to end the loop'),
+        reason: z.string().optional().describe('Why it ends, in a sentence. The user sees it'),
+      },
+      run: async (a) => (a.stop || a.next_in_minutes !== undefined ? this.auto.loopUpdate(chat, me, a as { id?: string; next_in_minutes?: number; stop?: boolean; reason?: string }) : this.auto.loopsText(chat)),
+    })
     if (this.settings.memoryEnabled) {
       tools.push(
         {
@@ -2974,6 +3354,7 @@ export class Hub implements SessionHost {
         if (it.kind === 'user' && it.text.trim()) out.push(`**You:** ${it.text.trim()}`, '')
         else if (it.kind === 'assistant' && it.text.trim()) out.push(it.text.trim(), '')
         else if (it.kind === 'delegate') out.push(`> Handed to ${name(it.to)}: **${it.title}**`, '')
+        else if (it.kind === 'auto') out.push(`> ${it.title}${it.text ? `: ${it.text.replace(/\s+/g, ' ')}` : ''}`, '')
         else if (it.kind === 'peer') {
           const head = it.tag === 'task' ? `Task from ${name(it.from)}: ${it.title || ''}` : it.tag === 'result' ? `${name(it.from)} reported on "${it.title || 'a task'}"` : `Note from ${name(it.from)}`
           out.push(`> **${head}**`, ...it.text.trim().split('\n').map((l) => `> ${l}`), '')
@@ -3042,6 +3423,7 @@ export class Hub implements SessionHost {
   }
 
   async dispose(): Promise<void> {
+    this.auto.dispose()
     if (this.renewTimer) clearInterval(this.renewTimer)
     this.connectors.cancelSignIn()
     if (this.timer) clearInterval(this.timer)

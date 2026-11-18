@@ -557,6 +557,7 @@ export async function askClaudeOnce(o: {
   system: string
   prompt: string
   model?: string
+  effort?: 'low' | 'medium' | 'high'
 }): Promise<string> {
   const q = query({
     prompt: o.prompt,
@@ -571,7 +572,7 @@ export async function askClaudeOnce(o: {
       settingSources: [],
       persistSession: false,
       maxTurns: 1,
-      effort: 'low',
+      effort: o.effort || 'low',
       stderr: () => {},
       ...(o.executable ? { pathToClaudeCodeExecutable: o.executable } : {}),
     },

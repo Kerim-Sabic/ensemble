@@ -147,6 +147,10 @@ export interface Settings {
   recall: boolean
   /** Keep a note in the vault of every substantial chat: what was asked, what came of it, what was decided. */
   chatNotes: boolean
+  /** How many times the lead is sent back to a goal before the app stops and asks. */
+  goalRounds: number
+  /** Who says a goal is met: a fresh checker that did not do the work, or the lead's own word. */
+  goalCheck: GoalCheck
 }
 
 /** What the team has learned about one model family. */
@@ -211,6 +215,116 @@ export interface Chat {
    * conversation; otherwise it is told what was said, once, with the first message (`told`).
    */
   imported?: { from: 'claude-code'; sessionId: string; resumed: boolean; told?: boolean; at: number }
+  /** What the team keeps working towards in this chat until it is met, when one was set. */
+  goal?: Goal | null
+  /** Messages that repeat by themselves in this chat. */
+  loops?: Loop[]
+  /**
+   * Ultra is on for this chat: every message sent with no other mode goes as 'ultra' (many agents,
+   * the strongest models, full effort). It stays on until it is turned off. '/gocrazy' needs it.
+   */
+  ultra?: boolean
+}
+
+// ───────────── goals, loops and ways of working ─────────────
+
+/**
+ * How the lead goes about one message.
+ * 'chat': the lead decides. 'quick': the lead answers alone, no handoffs. 'plan': a plan first,
+ * work starts once the user approves it. 'thorough': the whole team from the start, and a fresh
+ * reviewer before the answer. 'council': every model answers on its own and the lead compares
+ * them. 'research': angles, sources, and a check of the claims. 'ultra': a staged pipeline of many
+ * agents on the strongest models at full effort (scouts, builders, judges, refinement), spending
+ * allowance freely. 'gocrazy': ultra at full scale; only allowed while the chat's Ultra is on.
+ */
+export type WorkMode = 'chat' | 'quick' | 'plan' | 'thorough' | 'council' | 'research' | 'ultra' | 'gocrazy'
+export const WORK_MODES: WorkMode[] = ['chat', 'quick', 'plan', 'thorough', 'council', 'research', 'ultra', 'gocrazy']
+
+export type GoalCheck = 'fresh' | 'self'
+
+/**
+ * 'active': being worked on. 'paused': waits for the user to resume it. 'met': done, and checked.
+ * 'blocked': the lead needs something only the user can give. 'stopped': ended without being met
+ * (the user stopped it, or it ran out of rounds or time).
+ */
+export type GoalStatus = 'active' | 'paused' | 'met' | 'blocked' | 'stopped'
+
+/** Something the team keeps working on until it is done: after each reply the app checks, and sends the lead back if it is not. */
+export interface Goal {
+  id: string
+  /** What is to be achieved, in the user's words. */
+  text: string
+  /** How to tell it is done, when the user said. */
+  doneWhen?: string
+  status: GoalStatus
+  /** How many times the lead has been sent back to it so far. 0 while the first reply is under way. */
+  round: number
+  /** After this many rounds the app stops and asks. */
+  maxRounds: number
+  /** Stop at this time whatever the state. Epoch ms. */
+  deadline?: number | null
+  check: GoalCheck
+  createdAt: number
+  endedAt?: number
+  /** Why it stands where it stands: the latest verdict, what is missing, or why it stopped. */
+  note?: string
+  /** One line for each check made so far, oldest first. */
+  log: { round: number; ts: number; met: boolean; note: string }[]
+  /** A check is being made right now. */
+  checking?: boolean
+}
+
+export interface GoalInput {
+  text: string
+  doneWhen?: string
+  maxRounds?: number
+  /** A time limit, in minutes from now. */
+  minutes?: number | null
+  check?: GoalCheck
+}
+
+/** 'more' gives a goal that ran out of rounds or time another batch and carries on. */
+export type GoalAction = 'pause' | 'resume' | 'stop' | 'more'
+
+/** A message that is sent again by itself: every so often, or whenever the agent says the next run is due. */
+export interface Loop {
+  id: string
+  /** What is said to the agent each time. */
+  prompt: string
+  /** Who it is said to. An account or agent id; normally the lead. */
+  to: string
+  /** Milliseconds between the start of one run and the next. null: the agent sets the pace itself after each run. */
+  every: number | null
+  /** 'done' means it ended for good: it met its stop condition, ran out of runs, or the agent ended it. */
+  status: 'active' | 'paused' | 'done'
+  /** Runs started so far. */
+  runs: number
+  /** Stop after this many runs. null or absent: no limit. */
+  maxRuns?: number | null
+  /** Stop once this is true. The agent judges it after each run. */
+  until?: string
+  /** When the next run is due. Epoch ms. null while paused or done. */
+  nextAt: number | null
+  lastAt?: number
+  /** A line on how the last run went. */
+  last?: string
+  /** Why it is paused or done, when the app or the agent did that. */
+  note?: string
+  /** A run is under way right now. */
+  running?: boolean
+  createdAt: number
+}
+
+export interface LoopInput {
+  prompt: string
+  /** Milliseconds between runs, at least 60000. null or absent: the agent paces itself. */
+  every?: number | null
+  maxRuns?: number | null
+  until?: string
+  /** Who runs it. Absent: the chat's lead. */
+  to?: string
+  /** Run once right away (the default), or wait one interval first. */
+  startNow?: boolean
 }
 
 export type AgentPhase = 'idle' | 'starting' | 'thinking' | 'responding' | 'tool' | 'waiting' | 'error'
@@ -323,6 +437,24 @@ export type Item =
       text: string
       /** A one-click way out of the problem the notice describes. */
       action?: { kind: 'switch-lead'; to: string; done?: boolean } | { kind: 'resume'; done?: boolean }
+    })
+  | (ItemBase & {
+      /**
+       * Something the app did by itself for a goal or a loop: set it, checked it, sent the lead
+       * back, ran it again, ended it. Shown as a slim card in the transcript.
+       */
+      kind: 'auto'
+      of: 'goal' | 'loop'
+      event: 'set' | 'check' | 'met' | 'blocked' | 'paused' | 'resumed' | 'stopped' | 'run' | 'done'
+      /** The goal's or the loop's id. */
+      ref: string
+      /** One line, e.g. "Goal set" or "Check 2 of 12: not there yet". */
+      title: string
+      /** The detail: what is still missing, the loop's message, why it ended. */
+      text?: string
+      /** Which round or run this was, and out of how many when there is a limit. */
+      round?: number
+      max?: number
     })
   /** Something an agent made or found: a picture, or with `media` set, a sound or a video. */
   | (ItemBase & { kind: 'image'; path: string; caption?: string; media?: 'audio' | 'video' })
@@ -652,6 +784,15 @@ export interface SendRequest {
   to: string
   text: string
   attachments?: Attachment[]
+  /** How the lead should go about this message. Absent means 'chat'. */
+  mode?: WorkMode
+  /**
+   * Makes this message the chat's goal: the lead works on it, the app checks after each reply,
+   * and sends the lead back until it is met. `goal.text` may be left empty to use `text`.
+   */
+  goal?: Partial<GoalInput>
+  /** Makes this message a loop: it runs now and then again by itself. `loop.prompt` may be left empty to use `text`. */
+  loop?: Partial<LoopInput>
 }
 
 export type PermissionDecision = 'allow' | 'always' | 'deny'
@@ -753,6 +894,23 @@ export interface EnsembleApi {
 
   send(req: SendRequest): Promise<void>
   stop(chatId: string, accountId?: string): Promise<void>
+
+  /** Sets the chat's goal and puts the lead to work on it. null takes the goal off the chat (it stops if it was running). */
+  setGoal(chatId: string, input: GoalInput | null): Promise<Chat>
+  goalAction(chatId: string, action: GoalAction): Promise<Chat>
+  addLoop(chatId: string, input: LoopInput): Promise<Chat>
+  /** Changes a loop. `status` pauses it or sets it going again. */
+  updateLoop(chatId: string, loopId: string, patch: Partial<Pick<Loop, 'prompt' | 'every' | 'maxRuns' | 'until'>> & { status?: 'active' | 'paused' }): Promise<Chat>
+  removeLoop(chatId: string, loopId: string): Promise<Chat>
+  /** Runs a loop right now without waiting for its time. */
+  runLoop(chatId: string, loopId: string): Promise<void>
+  /**
+   * Rewrites a rough message into a clear one (what is wanted, what done looks like, what to
+   * watch out for) without changing what it asks for. Returns the text unchanged when it cannot.
+   */
+  enhance(text: string, chatId?: string | null): Promise<string>
+  /** Turns the chat's Ultra on or off. The chat also arrives through the usual `chat` event. */
+  setUltra(chatId: string, on: boolean): Promise<Chat>
   respondPermission(requestId: string, decision: PermissionDecision, note?: string): Promise<void>
   respondQuestion(requestId: string, answers: Record<string, string> | null): Promise<void>
   cancelTask(chatId: string, taskId: string): Promise<void>

@@ -44,6 +44,8 @@ export type RuntimeEvent =
       resultText: string
       durationMs: number
       steps?: number
+      /** Top-level tool steps the session counted this turn (set by the session, not the provider). */
+      tools?: number
       /** Tokens the model wrote this turn. */
       tokens?: number
       /** Set when the turn changed files and the provider can put them back. */

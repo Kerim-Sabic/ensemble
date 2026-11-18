@@ -10,7 +10,7 @@ import { Orb } from '../Orb'
 import { Markdown } from '../Markdown'
 import { ActivityGroup, type ActivityItem } from './ToolRows'
 import { ScreenCard } from '../screen/ScreenCard'
-import { AskCard, DelegateCard, ImageCard, NoticeRow, OutgoingRow, PeerCard, PermissionCard, QuestionCard, SignInCard, SpawnCard, TurnFooter, UserBubble, WorkingLine } from './Cards'
+import { AutoRow, AskCard, DelegateCard, ImageCard, NoticeRow, OutgoingRow, PeerCard, PermissionCard, QuestionCard, SignInCard, SpawnCard, TurnFooter, UserBubble, WorkingLine } from './Cards'
 
 type Delegate = Extract<Item, { kind: 'delegate' }>
 type ScreenStep = Extract<Item, { kind: 'screen' }>
@@ -24,6 +24,9 @@ type Block =
   | { type: 'item'; key: string; item: Item }
 
 const EMPTY: Item[] = []
+
+/** A goal check, a loop run, a goal set or resumed: the app speaking for you, so the next reply answers it. */
+const autoTurn = (it: Item): boolean => it.kind === 'auto' && (it.event === 'check' || it.event === 'run' || it.event === 'set' || it.event === 'resumed')
 
 function build(items: Item[]): { blocks: Block[]; children: Map<string, number> } {
   const blocks: Block[] = []
@@ -44,6 +47,13 @@ function build(items: Item[]): { blocks: Block[]; children: Map<string, number> 
         blocks.push({ type: 'item', key: it.id, item: it })
         needLabel = true
         cards = {}
+        break
+      case 'auto':
+        blocks.push({ type: 'item', key: it.id, item: it })
+        if (autoTurn(it)) {
+          needLabel = true
+          cards = {}
+        }
         break
       case 'screen': {
         label(it.id)
@@ -122,7 +132,7 @@ const MORE = 120
 const MOST = 420
 
 /** Somewhere a reader would expect a stretch of chat to begin. */
-const startsTurn = (b: Block): boolean => b.type === 'label' || (b.type === 'item' && (b.item.kind === 'user' || b.item.kind === 'peer'))
+const startsTurn = (b: Block): boolean => b.type === 'label' || (b.type === 'item' && (b.item.kind === 'user' || b.item.kind === 'peer' || autoTurn(b.item)))
 
 const SenderLabel = memo(function SenderLabel({ account, lead }: { account: Account | undefined; lead: boolean }) {
   return (
@@ -134,7 +144,7 @@ const SenderLabel = memo(function SenderLabel({ account, lead }: { account: Acco
   )
 })
 
-export function Transcript({ chatId, accountId, compact }: { chatId: string; accountId: string; compact?: boolean }) {
+export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: string; accountId: string; compact?: boolean; fadeTop?: boolean }) {
   const k = agentKey(chatId, accountId)
   const items = useStore((s) => s.items[k] ?? EMPTY)
   const state = useStore((s) => s.agents[k])
@@ -209,6 +219,8 @@ export function Transcript({ chatId, accountId, compact }: { chatId: string; acc
       if (stick.current) toBottom()
     })
     ro.observe(el)
+    // The window onto the chat gets shorter too, when something opens above or below it.
+    if (ref.current) ro.observe(ref.current)
     return () => ro.disconnect()
   }, [toBottom])
 
@@ -245,7 +257,12 @@ export function Transcript({ chatId, accountId, compact }: { chatId: string; acc
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={ref} className="h-full overflow-y-auto [scrollbar-gutter:stable_both-edges]" style={accentVars(account?.accent)}>
+      <div
+        ref={ref}
+        className="h-full overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+        // Under the network strip, lines that scroll up fade out before its edge instead of being cut by it.
+        style={{ ...accentVars(account?.accent), ...(fadeTop ? { maskImage: 'linear-gradient(to bottom, transparent 0, #000 20px)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 20px)' } : null) }}
+      >
         <div ref={inner} data-view-scope className={cn('mx-auto w-full', compact ? 'px-4 pt-3 pb-4' : 'max-w-[780px] px-7 pt-6 pb-10')}>
           {start > 0 && (
             <button
@@ -294,6 +311,8 @@ export function Transcript({ chatId, accountId, compact }: { chatId: string; acc
                 return <NoticeRow key={b.key} item={it} chatId={chatId} />
               case 'image':
                 return <ImageCard key={b.key} item={it} />
+              case 'auto':
+                return <AutoRow key={b.key} item={it} />
               case 'turn':
                 return <TurnFooter key={b.key} item={it} chatId={chatId} accountId={accountId} />
               default:

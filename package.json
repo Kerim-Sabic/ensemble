@@ -1,7 +1,7 @@
 {
   "name": "ensemble",
   "productName": "Ensemble",
-  "version": "3.4.3",
+  "version": "3.5.0",
   "description": "Every AI account you have, working as one team: a lead that plans, agents that build in parallel, and a live map of all of it.",
   "author": "Kerim Sabic",
   "license": "MIT",
@@ -18,6 +18,7 @@
     "icon": "electron scripts/make-icon.mjs",
     "hands": "node scripts/build-hands.mjs",
     "engine": "rolldown scripts/engine-test.ts --platform node --format esm --file out/test/engine-test.mjs --external @anthropic-ai/claude-agent-sdk --external @openai/codex-sdk --external zod --external @modelcontextprotocol/sdk/server/mcp.js --external @modelcontextprotocol/sdk/server/streamableHttp.js --external @modelcontextprotocol/sdk/client/index.js --external @modelcontextprotocol/sdk/client/stdio.js --external @modelcontextprotocol/sdk/client/streamableHttp.js --external @modelcontextprotocol/sdk/client/sse.js && node out/test/engine-test.mjs",
+    "auto-test": "rolldown scripts/auto-test.ts --platform node --format esm --file out/test/auto-test.mjs --external electron --external @anthropic-ai/claude-agent-sdk --external @openai/codex-sdk --external zod --external @modelcontextprotocol/sdk/server/mcp.js --external @modelcontextprotocol/sdk/server/streamableHttp.js --external @modelcontextprotocol/sdk/client/index.js --external @modelcontextprotocol/sdk/client/stdio.js --external @modelcontextprotocol/sdk/client/streamableHttp.js --external @modelcontextprotocol/sdk/client/sse.js && node out/test/auto-test.mjs",
     "pack": "node scripts/build-hands.mjs && electron-vite build && electron-builder --win --dir",
     "dist": "node scripts/build-hands.mjs && electron-vite build && electron-builder --win"
   },

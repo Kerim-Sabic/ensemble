@@ -1,106 +1,33 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUp, ChevronDown, CornerDownLeft, FileText, Gauge, Paperclip, Slash, Square, TriangleAlert, X } from 'lucide-react'
-import type { Account, Attachment, UsageWindow } from '@shared/types'
+import { AnimatePresence, motion } from 'motion/react'
+import { ArrowUp, ChevronDown, CornerDownLeft, FileText, Flame, Paperclip, Repeat, Rocket, Square, Target, TriangleAlert, WandSparkles, X } from 'lucide-react'
+import type { Attachment, UsageWindow, WorkMode } from '@shared/types'
+import { goalOpen, parseEvery } from '@shared/auto'
 import { IMAGE_EXT } from '@shared/tools'
-import { agentKey, focusOf, isBusy, leadOf, uiBus, useStore, useTeam } from '@/store'
-import { accentVars, api, baseName, cn, prettyModel, until } from '@/lib/util'
-import { IconButton, Kbd, Menu, MenuItem, MenuLabel, MenuSeparator, Tip } from '../ui'
+import { agentKey, focusOf, isBusy, leadOf, uiBus, useStore, useTeam, type SendOptions } from '@/store'
+import { accentVars, api, baseName, cn, errorText, until } from '@/lib/util'
+import { IconButton, Kbd, Menu, MenuItem, MenuLabel, Spinner, Tip } from '../ui'
 import { Orb } from '../Orb'
+import { ModelPill } from './composer/ModelPill'
+import { GoalOptions, LoopOptions, ModePill } from './composer/Options'
+import { ComposerPopup, popupFor } from './composer/Popup'
+import { NudgeChip, PreviewChip, UndoChip } from './composer/Chips'
+import { NO_EXTRAS, commandOf, goalOf, gocrazyAllowed, loopOf, nudgeOf, previewOf, type Extras } from './composer/extras'
+import './composer/ultra'
 
 /** Lets other parts of the screen put text into the message box. */
 export const composerBus = new EventTarget()
 export const seedComposer = (text: string): void => void composerBus.dispatchEvent(new CustomEvent('seed', { detail: text }))
 
-// What you were typing in each chat survives switching away and back.
-const drafts = new Map<string, { text: string; attachments: Attachment[] }>()
+// What you were typing in each chat survives switching away and back, with what goes with it.
+type Draft = { text: string; attachments: Attachment[]; extras: Extras; undo: string | null }
+const drafts = new Map<string, Draft>()
 
-const EFFORT_LABEL: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' }
-const EFFORT_HINT: Record<string, string> = {
-  low: 'Quick answers, least allowance',
-  medium: 'Balanced',
-  high: 'Thinks things through',
-  xhigh: 'Thinks hard about difficult work',
-  max: 'Everything it has. Slow and costly.',
-}
+/** A message needs about this much to it before it is worth improving. */
+const ENHANCE_MIN = 12
 
 const limitedWindow = (u: { session?: UsageWindow; weekly?: UsageWindow } | undefined): UsageWindow | undefined =>
   [u?.session, u?.weekly].find((w) => w && (w.status === 'rejected' || w.utilization >= 1) && w.resetsAt && w.resetsAt > Date.now())
-
-/** The model and effort the next message will run with, changeable in place. */
-function ModelPill({ account }: { account: Account }) {
-  const status = useStore((s) => s.statuses[account.id])
-  const live = useStore((s) => (s.chatId ? s.agents[agentKey(s.chatId, account.id)]?.model : undefined))
-  // Why the app chose the model it is running, when nobody picked one by hand.
-  const why = useStore((s) => (s.chatId && !account.model ? s.agents[agentKey(s.chatId, account.id)]?.modelWhy : undefined))
-  const smart = useStore((s) => s.settings.smartModels)
-  const run = useStore((s) => s.run)
-  // An agent started inside a chat has no settings of its own: it shows what it runs, and why.
-  if (account.spawned) {
-    const label = prettyModel(live) || 'Picked when it starts'
-    return (
-      <Tip side="top" label={why || 'The app picks the strongest model its account can afford each time it starts.'}>
-        <span className="flex h-7 min-w-0 items-center gap-1.5 rounded-[8px] px-1.5 text-[12.5px] text-ink-3">
-          <Gauge className="size-[14px] shrink-0" strokeWidth={1.75} />
-          <span className="truncate">{label}</span>
-        </span>
-      </Tip>
-    )
-  }
-  const models = (status?.models || []).filter((m) => m.value)
-  const chosen = models.find((m) => m.value === account.model)
-  const efforts = (chosen?.efforts || models.find((m) => m.value === 'default')?.efforts || models.find((m) => m.isDefault)?.efforts || (account.provider === 'claude' ? ['low', 'medium', 'high', 'xhigh', 'max'] : ['low', 'medium', 'high'])).filter((e) => e !== 'ultra')
-  const name = chosen?.label.replace(/\s*\(.*\)$/, '') || prettyModel(live) || models.find((m) => m.isDefault)?.label || (account.provider === 'chatgpt' ? 'ChatGPT' : 'Default model')
-  const set = (patch: { model?: string | null; effort?: string | null }): void => void run(api.updateAccount(account.id, patch))
-
-  return (
-    <Menu
-      side="top"
-      width={272}
-      trigger={
-        <button className="flex h-7 min-w-0 items-center gap-1.5 rounded-[8px] px-1.5 text-[12.5px] text-ink-3 transition-colors hover:bg-hover hover:text-ink">
-          <Gauge className="size-[14px] shrink-0" strokeWidth={1.75} />
-          <span className="truncate">
-            {name}
-            {account.effort && <span className="text-ink-4"> · {EFFORT_LABEL[account.effort] || account.effort}</span>}
-          </span>
-          <ChevronDown className="size-3 shrink-0 text-ink-4" />
-        </button>
-      }
-    >
-      {models.length > 0 && (
-        <>
-          <MenuLabel>Model for {account.name}</MenuLabel>
-          <MenuItem
-            checked={!account.model}
-            hint={smart && account.provider === 'claude' ? why || 'The strongest model the allowance can afford, chosen each time it starts' : 'Whatever this account is set to use'}
-            onSelect={() => set({ model: null })}
-          >
-            {smart && account.provider === 'claude' ? 'Best for the allowance' : 'Account default'}
-          </MenuItem>
-          {models
-            .filter((m) => m.value !== 'default')
-            .map((m) => (
-              <MenuItem key={m.value} checked={m.value === account.model} hint={m.description} onSelect={() => set({ model: m.value })}>
-                {m.label}
-              </MenuItem>
-            ))}
-          <MenuSeparator />
-        </>
-      )}
-      <MenuLabel>Effort</MenuLabel>
-      <MenuItem checked={!account.effort} onSelect={() => set({ effort: null })}>
-        Default
-      </MenuItem>
-      {efforts.map((e) => (
-        <MenuItem key={e} checked={e === account.effort} hint={EFFORT_HINT[e]} onSelect={() => set({ effort: e })}>
-          {EFFORT_LABEL[e] || e}
-        </MenuItem>
-      ))}
-    </Menu>
-  )
-}
-
-type Popup = { kind: 'mention'; items: Account[] } | { kind: 'command'; items: { name: string; description: string; hint?: string }[] } | null
 
 export function Composer() {
   const chatId = useStore((s) => s.chatId)
@@ -112,26 +39,50 @@ export function Composer() {
   const focusId = useStore(focusOf)
   const leadId = useStore((s) => leadOf(s)?.id)
   const state = useStore((s) => (s.chatId && focusId ? s.agents[agentKey(s.chatId, focusId)] : undefined))
+  const hasGoal = useStore((s) => goalOpen(s.chats.find((c) => c.id === s.chatId)?.goal))
+  const chatUltra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
+  const storeUltra = useStore((s) => s.setUltra)
+  const settings = useStore((s) => s.settings)
   const setFocus = useStore((s) => s.setFocus)
   const send = useStore((s) => s.send)
   const setModal = useStore((s) => s.setModal)
   const run = useStore((s) => s.run)
+  const toast = useStore((s) => s.toast)
 
   const slot = chatId || 'new'
   const [text, setText] = useState(() => drafts.get(slot)?.text || '')
   const [attachments, setAttachments] = useState<Attachment[]>(() => drafts.get(slot)?.attachments || [])
+  const [extras, setExtras] = useState<Extras>(() => drafts.get(slot)?.extras || NO_EXTRAS)
+  // Ultra belongs to the chat and stays on until turned off. Before the chat exists, the draft keeps it.
+  const ultra = chatId ? chatUltra : extras.ultra
+  // What was written before it was improved, while it can still be put back.
+  const [undo, setUndo] = useState<string | null>(() => drafts.get(slot)?.undo ?? null)
+  // The chat whose message is being improved right now. The result goes back to that chat's draft.
+  const [improving, setImproving] = useState<string | null>(null)
+  const enhancing = improving === slot
   const [dragging, setDragging] = useState(false)
   const [at, setAt] = useState(0)
   const ref = useRef<HTMLTextAreaElement>(null)
+  const slotRef = useRef(slot)
+  slotRef.current = slot
+
+  const patch = useCallback((p: Partial<Extras>) => setExtras((x) => ({ ...x, ...p })), [])
 
   // An agent that was sent home is no longer on the team, but what it did can still be read.
   const former = useStore((s) => (focusId ? s.members[focusId] : undefined))
   const target = team.find((a) => a.id === focusId) || former
+  const lead = team.find((a) => a.id === leadId)
   const gone = !!target?.spawned?.gone
   const busy = isBusy(state)
   const signedOut = target ? statuses[target.id]?.state === 'signed-out' : false
   const limited = target ? limitedWindow(usage[target.id]) : undefined
-  const suggestion = !text && !busy && attachments.length === 0 ? state?.suggestion : undefined
+  const suggestion = !text && !busy && attachments.length === 0 && !extras.kind ? state?.suggestion : undefined
+
+  const command = useMemo(() => commandOf(text), [text])
+  const preview = useMemo(() => previewOf(command, ultra), [command, ultra])
+  const nudge = useMemo(() => (extras.kind || extras.nudgeOff || command ? null : nudgeOf(text)), [text, extras.kind, extras.nudgeOff, command])
+  // A goal is the lead's to carry: whoever is selected, it goes to them.
+  const notLead = extras.kind === 'goal' && !!target && !!leadId && target.id !== leadId
 
   // When whoever you are writing to has run dry, the best person to take over.
   const standIn = useMemo(() => {
@@ -147,23 +98,38 @@ export function Composer() {
     const d = drafts.get(slot)
     setText(d?.text || '')
     setAttachments(d?.attachments || [])
+    setExtras(d?.extras || NO_EXTRAS)
+    setUndo(d?.undo ?? null)
     ref.current?.focus()
   }, [slot])
   useEffect(() => {
-    drafts.set(slot, { text, attachments })
-  }, [slot, text, attachments])
+    drafts.set(slot, { text, attachments, extras, undo })
+  }, [slot, text, attachments, extras, undo])
+
+  const focusEnd = useCallback((): void => {
+    requestAnimationFrame(() => {
+      const el = ref.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+  }, [])
 
   useEffect(() => {
-    const focusEnd = (): void => {
-      requestAnimationFrame(() => {
-        const el = ref.current
-        if (!el) return
-        el.focus()
-        el.setSelectionRange(el.value.length, el.value.length)
-      })
-    }
     const onSeed = (e: Event): void => {
-      setText((e as CustomEvent<string>).detail)
+      const seed = (e as CustomEvent<string>).detail
+      // A bare "/goal ", "/loop 15m " or "/plan " from a starter turns the switch on instead,
+      // so the options are there to see and the message is written in plain words.
+      const bare = /^\/(goal|loop|plan|quick|thorough|council|research)(?:\s+(\S+))?\s*$/i.exec(seed)
+      const pace = bare?.[2] ? parseEvery(bare[2]) : undefined
+      if (bare && (!bare[2] || (bare[1].toLowerCase() === 'loop' && pace))) {
+        const name = bare[1].toLowerCase()
+        setExtras((x) =>
+          name === 'goal' ? { ...x, kind: 'goal' } : name === 'loop' ? { ...x, kind: 'loop', every: pace ?? x.every } : { ...x, mode: name as WorkMode },
+        )
+        setText('')
+      } else setText(seed)
+      setUndo(null)
       focusEnd()
     }
     composerBus.addEventListener('seed', onSeed)
@@ -172,7 +138,7 @@ export function Composer() {
       composerBus.removeEventListener('seed', onSeed)
       uiBus.removeEventListener('focus-composer', focusEnd)
     }
-  }, [])
+  }, [focusEnd])
 
   useLayoutEffect(() => {
     const el = ref.current
@@ -184,6 +150,8 @@ export function Composer() {
   const submit = useCallback(async () => {
     let body = text.trim()
     if (!body && !attachments.length) return
+    // "/loop 15m" and nothing more would start a loop whose whole job is "15m"; "/gocrazy" needs Ultra on.
+    if (previewOf(commandOf(body), ultra)?.incomplete) return
     // "@Name do this" sends straight to that teammate.
     let to: string | undefined
     if (body.startsWith('@')) {
@@ -194,21 +162,104 @@ export function Composer() {
         body = body.slice(match.name.length + 1).replace(/^[\s,:]+/, '')
       }
     }
-    const sentText = text
-    const sentFiles = attachments
+    // A typed command says it all: the engine reads it, and the switches below stay out of its way.
+    const opts: SendOptions = {}
+    if (!commandOf(body)) {
+      if (extras.mode !== 'chat' && extras.mode !== 'ultra' && (extras.mode !== 'gocrazy' || gocrazyAllowed(ultra))) opts.mode = extras.mode
+      if (extras.kind === 'goal' && body) {
+        opts.goal = goalOf(extras, { rounds: settings.goalRounds ?? 12, check: settings.goalCheck ?? 'fresh' })
+        if (leadId) to = leadId
+      } else if (extras.kind === 'loop' && body) opts.loop = loopOf(extras)
+    }
+    const sent: Draft = { text, attachments, extras, undo }
     setText('')
     setAttachments([])
+    setExtras(NO_EXTRAS)
+    setUndo(null)
     drafts.delete(slot)
-    const ok = await send(body, sentFiles, to)
+    if (!chatId && extras.ultra) opts.ultra = true
+    const ok = await send(body, sent.attachments, to, opts.mode || opts.goal || opts.loop || opts.ultra ? opts : undefined)
     if (!ok) {
-      setText(sentText)
-      setAttachments(sentFiles)
+      setText(sent.text)
+      setAttachments(sent.attachments)
+      setExtras(sent.extras)
+      setUndo(sent.undo)
     }
-  }, [text, attachments, team, send, slot])
+  }, [text, attachments, extras, undo, team, send, slot, chatId, leadId, ultra, settings.goalRounds, settings.goalCheck])
 
   const stop = useCallback(() => {
     if (chatId && focusId) void api.stop(chatId, focusId)
   }, [chatId, focusId])
+
+  const enhance = useCallback(async () => {
+    const original = text
+    if (improving || original.trim().length < ENHANCE_MIN) return
+    const from = slot
+    setImproving(from)
+    try {
+      const better = (await api.enhance(original, chatId))?.trim()
+      if (!better || better === original.trim()) {
+        toast('It already reads clearly.')
+        return
+      }
+      if (slotRef.current === from) {
+        setText(better)
+        setUndo(original)
+        focusEnd()
+      } else {
+        // The chat was switched while it worked: the result waits in that chat's draft.
+        const d = drafts.get(from)
+        if (d && d.text === original) drafts.set(from, { ...d, text: better, undo: original })
+      }
+    } catch (e) {
+      const why = errorText(e)
+      toast(/unknown method|not a function/i.test(why) ? 'Improving a message is not available in this version yet.' : why, /unknown method|not a function/i.test(why) ? 'warn' : 'error')
+    } finally {
+      setImproving(null)
+    }
+  }, [text, improving, slot, chatId, toast, focusEnd])
+
+  const toggle = useCallback(
+    (kind: 'goal' | 'loop') => {
+      setExtras((x) => ({ ...x, kind: x.kind === kind ? null : kind }))
+      ref.current?.focus()
+    },
+    [],
+  )
+
+  const flipUltra = useCallback(
+    (on: boolean) => {
+      if (chatId) void storeUltra(chatId, on)
+      else patch({ ultra: on })
+      ref.current?.focus()
+    },
+    [chatId, storeUltra, patch],
+  )
+  // Go crazy only goes out in Ultra: once Ultra is off, however that happened, it falls back.
+  useEffect(() => {
+    if (!ultra && extras.mode === 'gocrazy') patch({ mode: 'chat' })
+  }, [ultra, extras.mode, patch])
+
+  // Alt+G, Alt+L, Alt+U and Ctrl+Shift+E work wherever the focus is, as long as nothing is open on top.
+  const keys = useRef({ toggle, enhance, ultra: () => flipUltra(!ultra) })
+  keys.current = { toggle, enhance, ultra: () => flipUltra(!ultra) }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (useStore.getState().modal || e.defaultPrevented) return
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.code === 'KeyG' || e.code === 'KeyL')) {
+        e.preventDefault()
+        keys.current.toggle(e.code === 'KeyG' ? 'goal' : 'loop')
+      } else if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === 'KeyU') {
+        e.preventDefault()
+        keys.current.ultra()
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === 'KeyE') {
+        e.preventDefault()
+        void keys.current.enhance()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const attach = (next: Attachment[]): void => {
     if (next.length) setAttachments((a) => [...a, ...next.filter((n) => !a.some((x) => x.path === n.path))])
@@ -225,45 +276,76 @@ export function Composer() {
     attach(next)
   }
 
-  // "@" at the start offers the team; "/" offers the commands the teammate knows.
-  const popup: Popup = useMemo(() => {
-    const mention = /^@([^\s]*)$/.exec(text)?.[1]
-    if (mention !== undefined) {
-      const items = team.filter((a) => a.name.toLowerCase().replace(/\s+/g, '').startsWith(mention.toLowerCase()))
-      return items.length ? { kind: 'mention', items } : null
-    }
-    const cmd = /^\/([\w:-]*)$/.exec(text)?.[1]
-    if (cmd !== undefined && target) {
-      const all = statuses[target.id]?.commands || []
-      const q = cmd.toLowerCase()
-      const items = [...all.filter((c) => c.name.toLowerCase().startsWith(q)), ...all.filter((c) => !c.name.toLowerCase().startsWith(q) && c.name.toLowerCase().includes(q))].slice(0, 8)
-      return items.length ? { kind: 'command', items } : null
-    }
-    return null
-  }, [text, team, statuses, target])
+  const popup = useMemo(() => popupFor(text, team, target ? statuses[target.id]?.commands : undefined, ultra), [text, team, statuses, target, ultra])
   const count = popup?.items.length || 0
   const index = Math.min(at, Math.max(0, count - 1))
 
   const choose = (i: number): void => {
     if (!popup) return
+    if (popup.kind === 'command' && popup.items[i].disabled) return
     if (popup.kind === 'mention') setText(`@${popup.items[i].name} `)
     else setText(`/${popup.items[i].name} `)
     setAt(0)
     ref.current?.focus()
   }
 
-  const canSend = (!!text.trim() || attachments.length > 0) && !!target && !signedOut && !gone
+  const canSend = (!!text.trim() || attachments.length > 0) && !!target && !signedOut && !gone && !enhancing && !preview?.incomplete
+  const canEnhance = text.trim().length >= ENHANCE_MIN && !!target && !gone
+  const kind = command ? null : extras.kind
   const placeholder = !target
     ? 'Add an account to get started'
     : gone
       ? `${target.name} was sent home and takes no more messages`
       : signedOut
-      ? `${target.name} is signed out`
-      : suggestion
-        ? suggestion
-        : target.id === leadId
-          ? `Ask ${target.name} anything. It can bring in the rest of the team.`
-          : `Message ${target.name} directly`
+        ? `${target.name} is signed out`
+        : extras.kind === 'goal'
+          ? 'Describe what done looks like. The team keeps going until it is.'
+          : extras.mode === 'gocrazy' && ultra
+            ? 'Go crazy: describe what to make. Every top model builds its own version, then the best one wins.'
+          : extras.kind === 'loop'
+            ? 'What should happen each time? It runs now, then again by itself.'
+            : suggestion
+              ? suggestion
+              : target.id === leadId
+                ? ultra
+                  ? `Ultra is on. Ask ${target.name} anything and the whole team goes all out.`
+                  : `Ask ${target.name} anything. It can bring in the rest of the team.`
+                : `Message ${target.name} directly`
+
+  // One quiet thing at a time beside the buttons: what is happening, or what could.
+  const status = enhancing ? (
+    <span className="shimmer-text truncate text-[11.5px] font-medium">Improving your message</span>
+  ) : undo !== null ? (
+    <UndoChip
+      onUndo={() => {
+        setText(undo)
+        setUndo(null)
+        focusEnd()
+      }}
+    />
+  ) : preview ? (
+    <PreviewChip preview={preview} />
+  ) : nudge ? (
+    <NudgeChip
+      kind={nudge.kind}
+      onTake={() => {
+        patch({ kind: nudge.kind, ...(nudge.every ? { every: nudge.every } : {}) })
+        ref.current?.focus()
+      }}
+      onDismiss={() => {
+        patch({ nudgeOff: true })
+        ref.current?.focus()
+      }}
+    />
+  ) : !text && !busy && !suggestion && !extras.kind ? (
+    <span className="mr-1 hidden items-center gap-1 text-[11.5px] text-ink-4 lg:flex">
+      <Kbd>@</Kbd> teammate <Kbd className="ml-1.5">/</Kbd> command
+    </span>
+  ) : null
+
+  const crazy = !kind && !command && extras.mode === 'gocrazy' && gocrazyAllowed(ultra)
+  const sendLabel = kind === 'goal' ? 'Start goal' : kind === 'loop' ? 'Start loop' : crazy ? 'Go crazy' : busy ? 'Send when the current reply ends' : ultra ? 'Send in Ultra' : 'Send'
+  const SendIcon = kind === 'goal' ? Target : kind === 'loop' ? Repeat : ArrowUp
 
   return (
     <div className="mx-auto w-full max-w-[780px] px-7 pb-5">
@@ -301,51 +383,39 @@ export function Composer() {
           setDragging(false)
           addFiles(e.dataTransfer.files)
         }}
-        style={accentVars(target?.accent)}
+        style={accentVars((notLead ? lead : target)?.accent)}
         data-busy={busy ? 'true' : undefined}
-        className={cn('composer relative rounded-[22px] bg-surface shadow-float transition-shadow duration-200', dragging && 'shadow-[0_0_0_2px_var(--a2)]')}
+        data-auto={extras.kind || undefined}
+        data-ultra={ultra || undefined}
+        className={cn('composer relative rounded-[22px] bg-surface shadow-float transition-shadow duration-200', ultra && 'cu-card', dragging && 'shadow-[0_0_0_2px_var(--a2)]')}
       >
-        {popup && (
-          <div className={cn('absolute bottom-full left-3 z-20 mb-2 animate-pop rounded-[12px] bg-raised p-1 shadow-pop', popup.kind === 'mention' ? 'w-[240px]' : 'w-[420px] max-w-[calc(100%-24px)]')}>
-            <div className="px-2.5 pt-1.5 pb-1 text-[11px] font-medium text-ink-3">{popup.kind === 'mention' ? 'Send to' : `Commands ${target?.name} knows`}</div>
-            {popup.kind === 'mention'
-              ? popup.items.map((a, i) => (
-                  <button
-                    key={a.id}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      choose(i)
-                    }}
-                    onMouseEnter={() => setAt(i)}
-                    className={cn('flex h-8 w-full items-center gap-2.5 rounded-[8px] px-2.5 text-left text-[13px]', i === index && 'bg-hover')}
-                  >
-                    <Orb account={a} size={15} />
-                    <span className="flex-1 truncate">{a.name}</span>
-                    {a.id === leadId && <span className="text-[11px] text-ink-3">Lead</span>}
-                  </button>
-                ))
-              : popup.items.map((c, i) => (
-                  <button
-                    key={c.name}
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      choose(i)
-                    }}
-                    onMouseEnter={() => setAt(i)}
-                    className={cn('flex min-h-9 w-full items-center gap-2.5 rounded-[8px] px-2.5 py-1.5 text-left', i === index && 'bg-hover')}
-                  >
-                    <Slash className="size-3.5 shrink-0 text-ink-3" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[12.5px]">
-                        {c.name}
-                        {c.hint && <span className="ml-1.5 text-ink-4">{c.hint}</span>}
-                      </span>
-                      {c.description && <span className="block truncate text-[11.5px] text-ink-3">{c.description}</span>}
-                    </span>
-                  </button>
-                ))}
-          </div>
+        {ultra && (
+          <span aria-hidden className="cu-ring">
+            <span className="cu-spin" />
+          </span>
         )}
+        {popup && <ComposerPopup popup={popup} index={index} onPick={choose} onHover={setAt} who={target?.name} leadId={leadId} />}
+        <AnimatePresence initial={false}>
+          {extras.kind && (
+            <motion.div
+              key="auto"
+              initial={{ height: 0, opacity: 0 }}
+              // A typed command overrides the switches: the row stays, faded, until the command goes.
+              animate={{ height: 'auto', opacity: command ? 0.45 : 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="pb-1">
+                {extras.kind === 'goal' ? (
+                  <GoalOptions x={extras} set={patch} onSubmit={() => void submit()} onDone={focusEnd} replaces={hasGoal} lead={lead} notLead={notLead} />
+                ) : (
+                  <LoopOptions x={extras} set={patch} onSubmit={() => void submit()} onDone={focusEnd} />
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 px-3.5 pt-3">
             {attachments.map((a) => (
@@ -365,11 +435,14 @@ export function Composer() {
             value={text}
             rows={1}
             autoFocus
+            readOnly={enhancing}
+            aria-busy={enhancing || undefined}
             disabled={!target || gone}
             placeholder={placeholder}
             onChange={(e) => {
               setText(e.target.value)
               setAt(0)
+              if (undo !== null) setUndo(null)
             }}
             onPaste={(e) => {
               if (e.clipboardData.files.length) {
@@ -403,8 +476,10 @@ export function Composer() {
               }
             }}
             className={cn(
-              'selectable block max-h-[240px] w-full resize-none bg-transparent px-[18px] pt-[15px] pb-1 text-[14.5px] leading-[1.5] text-ink outline-none placeholder:text-ink-3',
+              'selectable block max-h-[240px] w-full resize-none bg-transparent px-[18px] pb-1 text-[14.5px] leading-[1.5] text-ink outline-none transition-[color,padding] duration-200 placeholder:text-ink-3',
+              extras.kind ? 'pt-[9px]' : 'pt-[15px]',
               suggestion && 'pr-[70px] placeholder:text-ink-4',
+              enhancing && 'text-ink-3',
             )}
           />
           {suggestion && (
@@ -452,40 +527,121 @@ export function Composer() {
             })}
           </Menu>
 
-          {target && !signedOut && <ModelPill account={target} />}
+          <ModePill
+            ultra={ultra}
+            onUltra={flipUltra}
+            mode={extras.mode}
+            onChange={(mode) => {
+              patch({ mode })
+              focusEnd()
+            }}
+          />
 
-          <span className="flex-1" />
-          {!text && !busy && !suggestion && (
-            <span className="mr-2 hidden items-center gap-1 text-[11.5px] text-ink-4 lg:flex">
-              <Kbd>@</Kbd> teammate <Kbd className="ml-1.5">/</Kbd> command
-            </span>
-          )}
-          {busy && canSend && (
+          {/* Ultra runs every agent on the strongest model at full effort, so a model picked here would not apply. */}
+          {target && !signedOut && !ultra && <ModelPill account={target} />}
+
+          {/* The model pill gives way first (down to its icon and a few letters), then this. */}
+          <span className="flex min-w-0 flex-1 basis-auto items-center justify-end pl-1.5">{status}</span>
+          {busy && canSend && !status && (
             <Tip label="Sends when the current reply ends" side="top">
-              <span className="mr-2 flex items-center gap-1 text-[11.5px] text-ink-4">
+              <span className="ml-1.5 flex shrink-0 items-center gap-1 text-[11.5px] text-ink-4">
                 <CornerDownLeft className="size-3" /> queues
               </span>
             </Tip>
           )}
+
+          <span className="ml-1 flex shrink-0 items-center gap-0.5">
+            {ultra ? (
+              <Tip label="Ultra is on for this chat. Click to turn it off" kbd="Alt+U" side="top">
+                <button
+                  type="button"
+                  aria-pressed
+                  aria-label="Ultra is on"
+                  onClick={() => flipUltra(false)}
+                  className="cu-pill mr-1 flex h-7 shrink-0 animate-pop items-center gap-1.5 rounded-full pr-2.5 pl-2 text-[12.5px] font-semibold transition-colors"
+                >
+                  <Rocket className="cu-icon size-[14px]" strokeWidth={2} />
+                  <span className="cu-text">Ultra</span>
+                </button>
+              </Tip>
+            ) : (
+              <Tip
+                label={
+                  <span>
+                    <span className="font-semibold">Ultra.</span> Many agents on the strongest models at full effort. Uses allowance very fast.
+                  </span>
+                }
+                kbd="Alt+U"
+                side="top"
+              >
+                <button
+                  type="button"
+                  aria-pressed={false}
+                  aria-label="Turn Ultra on"
+                  onClick={() => flipUltra(true)}
+                  className="no-drag inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] text-ink-2 transition-colors duration-150 hover:bg-hover hover:text-ink active:bg-active"
+                >
+                  <Rocket className="size-[15px]" strokeWidth={1.75} />
+                </button>
+              </Tip>
+            )}
+            <IconButton label="Improve this message" kbd="Ctrl+Shift+E" side="top" disabled={!canEnhance && !enhancing} aria-busy={enhancing || undefined} onClick={() => void enhance()}>
+              {enhancing ? <Spinner className="text-accent" /> : <WandSparkles className="size-[15px]" strokeWidth={1.75} />}
+            </IconButton>
+            <IconButton
+              label="Goal: keep working until it is done"
+              kbd="Alt+G"
+              side="top"
+              aria-pressed={extras.kind === 'goal'}
+              onClick={() => toggle('goal')}
+              className={cn(extras.kind === 'goal' && 'bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent')}
+            >
+              <Target className="size-[15px]" strokeWidth={1.75} />
+            </IconButton>
+            <IconButton
+              label="Loop: send this again by itself"
+              kbd="Alt+L"
+              side="top"
+              aria-pressed={extras.kind === 'loop'}
+              onClick={() => toggle('loop')}
+              className={cn(extras.kind === 'loop' && 'bg-accent-soft text-accent hover:bg-accent-soft hover:text-accent')}
+            >
+              <Repeat className="size-[15px]" strokeWidth={1.75} />
+            </IconButton>
+          </span>
+
           {busy && !canSend ? (
             <Tip label="Stop" kbd="Esc" side="top">
               <button
                 onClick={stop}
                 aria-label="Stop"
-                className="flex size-8 items-center justify-center rounded-full bg-ink text-inverse transition-transform duration-150 hover:scale-105 active:scale-95"
+                className="ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-ink text-inverse transition-transform duration-150 hover:scale-105 active:scale-95"
               >
                 <Square className="size-3 fill-current" strokeWidth={0} />
               </button>
             </Tip>
           ) : (
-            <button
-              onClick={() => void submit()}
-              disabled={!canSend}
-              aria-label="Send"
-              className="flex size-8 items-center justify-center rounded-full bg-ink text-inverse transition-all duration-150 hover:scale-105 active:scale-95 disabled:scale-100 disabled:bg-active disabled:text-ink-4"
-            >
-              <ArrowUp className="size-4" strokeWidth={2.4} />
-            </button>
+            <Tip label={sendLabel} kbd="Enter" side="top">
+              <button
+                onClick={() => void submit()}
+                disabled={!canSend}
+                aria-label={sendLabel}
+                className={cn(
+                  'ml-1.5 flex h-8 shrink-0 items-center justify-center rounded-full transition-all duration-150 hover:scale-105 active:scale-95 disabled:scale-100 disabled:bg-active disabled:text-ink-4 disabled:shadow-none disabled:[background-image:none]',
+                  crazy ? 'gap-1.5 pr-3.5 pl-3 text-[12.5px] font-semibold hover:scale-[1.03]' : 'w-8',
+                  kind ? 'bg-accent text-white' : ultra ? 'cu-send' : 'bg-ink text-inverse',
+                )}
+              >
+                {crazy ? (
+                  <>
+                    <Flame key="crazy" className="size-[15px] animate-pop" strokeWidth={2.2} />
+                    Go crazy
+                  </>
+                ) : (
+                  <SendIcon key={kind || 'send'} className="size-4 animate-pop" strokeWidth={kind ? 2.2 : 2.4} />
+                )}
+              </button>
+            </Tip>
           )}
         </div>
       </div>

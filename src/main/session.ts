@@ -7,8 +7,13 @@ import type { AgentRuntime, PermissionAsk, RuntimeEvent, RuntimeHost, TurnInput 
 
 /** A turn waiting to run (or running). */
 export interface Pending {
-  /** 'ask' is a teammate's question: someone is waiting on the answer. */
-  kind: 'user' | 'task' | 'team' | 'ask'
+  /**
+   * 'ask' is a teammate's question: someone is waiting on the answer. 'auto' is something the
+   * app sends by itself on the user's standing instruction: the next round of a goal, a loop's run.
+   */
+  kind: 'user' | 'task' | 'team' | 'ask' | 'auto'
+  /** For an 'auto' turn that belongs to a loop: which one. */
+  auto?: { of: 'goal' | 'loop'; ref: string }
   /** What the model reads. */
   text: string
   images?: string[]
@@ -479,6 +484,8 @@ export class AgentSession implements RuntimeHost {
           this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'error', text: this.explain(ev), action })
         }
         const failed = ev.status === 'error' && !retry
+        // The tool steps counted during the turn, kept before the state below forgets them.
+        ev.tools = this.state.steps || 0
         this.add({ id: uid('e'), kind: 'turn', ts: Date.now(), status: retry ? 'interrupted' : ev.status, durationMs: ev.durationMs, steps: ev.steps, tokens: ev.tokens, checkpoint: ev.checkpoint, model: this.state.model })
         // A finished reply is the moment to be fully on disk.
         this.unfinished = null

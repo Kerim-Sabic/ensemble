@@ -52,6 +52,14 @@ One chat with one model is one pair of hands. Real work splits: research from th
 - **A map you can move around.** Drag to pan, scroll to zoom, drag cards to arrange them. A new agent joining out of sight brings the view to it. Replay a whole chat's exchanges from the start.
 - **Claude and ChatGPT together.** Claude accounts build; a ChatGPT teammate draws images and gives a second opinion.
 
+### Work that keeps going
+
+- **Goals.** Say what done looks like and the team works until it is: after every reply a fresh checker that did none of the work reads the evidence, and sends the lead back with what is missing. It stops when the goal is met, when it needs you, or after the rounds or time you allowed. `/goal all tests pass and the build is green`
+- **Loops.** A message that sends itself again: every ten minutes, every morning, or at the agent's own pace, until its stop condition is true. "Check the deploy and tell me when it is live" ends by itself and notifies you. `/loop 10m check whether the deploy is live`
+- **Ways of working.** Per message: *Quick* (the lead answers alone), *Plan first* (you approve a plan before anything starts), *Thorough* (the whole team plus a fresh reviewer), *Council* (every model answers on its own and the lead compares them), *Deep research* (angles, sources, a check of the facts).
+- **Improve this message.** One click turns a rough request into a clear brief, without adding anything you did not ask for.
+- **Just say it.** "Don't stop until every test passes" or "check this every hour" in plain words is enough: the lead sets the goal or the loop itself.
+
 ### Spending allowance wisely
 
 - **A cascade of models.** The lead gets the strongest model the allowance allows. Teammates run a step below, sub-agents cheaper still. Three modes: Save most, Ensemble decides, Best quality.
@@ -96,11 +104,11 @@ Ensemble never talks to a model itself and never reads a sign-in token. Each tea
 - **Claude accounts** run through the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview) on the Claude Code installed on your computer.
 - **ChatGPT accounts** run through the [Codex SDK](https://www.npmjs.com/package/@openai/codex-sdk).
 
-A hub in the app's main process gives every agent the team's tools (`roster`, `assign_task`, `spawn_agent`, `message`, `ask`, `board_post`, `rate_work`, the vault, the browser and more), routes tasks and reports between them, and picks the model and the account for each piece of work.
+A hub in the app's main process gives every agent the team's tools (`roster`, `assign_task`, `spawn_agent`, `message`, `ask`, `board_post`, `rate_work`, `goal_report`, `loop_update`, the vault, the browser and more), routes tasks and reports between them, and picks the model and the account for each piece of work.
 
 ```
 src/
-  main/        the engine: hub, sessions, providers, browser and computer, vault, connectors, learning
+  main/        the engine: hub, sessions, providers, goals and loops, browser and computer, vault, connectors, learning
   preload/     the bridge to the window
   renderer/    the interface (React, Tailwind)
   shared/      types, the model budget, the connector catalog
@@ -118,7 +126,7 @@ pnpm dev        # run with hot reload
 pnpm dist       # build the installer into dist/
 ```
 
-`ENSEMBLE_DEMO=1 pnpm dev` runs the whole app with scripted stand-in agents, without touching any account.
+`ENSEMBLE_DEMO=1 pnpm dev` runs the whole app with scripted stand-in agents, without touching any account. `pnpm auto-test` checks goals, loops and the ways of working against that scripted team from a terminal.
 
 ### Releasing
 

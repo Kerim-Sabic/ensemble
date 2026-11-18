@@ -1,0 +1,130 @@
+[
+ {
+  "size": [
+   1380,
+   880
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nwindow.__auto = {\n  lead() { const s = window.__ensemble.getState(); return (s.chats.find(c => c.id === s.chatId)?.leadId) || s.settings.leadId || s.accounts.find(a => a.enabled)?.id },\n  want: null,\n  patch(goal, loops) {\n    const st = window.__ensemble; const A = window.__auto;\n    const cur = st.getState().chats.find(c => c.id === A.chatId) || {};\n    A.want = { goal: goal === undefined ? (A.want ? A.want.goal : cur.goal) : goal, loops: loops === undefined ? (A.want ? A.want.loops : cur.loops) : loops };\n    A.apply();\n    if (!A.sub) A.sub = st.subscribe(s => { const c = s.chats.find(c => c.id === A.chatId); if (c && A.want && (c.goal !== A.want.goal || c.loops !== A.want.loops)) setTimeout(A.apply, 0); });\n  },\n  apply() {\n    const A = window.__auto;\n    window.__ensemble.setState(s => ({ chats: s.chats.map(c => c.id === A.chatId && (c.goal !== A.want.goal || c.loops !== A.want.loops) ? { ...c, goal: A.want.goal, loops: A.want.loops } : c) }));\n  },\n  goal(extra) {\n    const now = Date.now();\n    return Object.assign({ id: 'g1', text: 'Get the whole test suite green and the build passing on Windows and Linux', doneWhen: 'pnpm test passes with no skipped tests and CI is green', status: 'active', round: 2, maxRounds: 12, deadline: now + 47 * 60000, check: 'fresh', createdAt: now - 14 * 60000, note: 'Still missing: two date tests fail on Linux (timezone), and CI has not run yet.', log: [ { round: 0, ts: now - 9 * 60000, met: false, note: 'Seven tests fail in src/date and src/sync.' }, { round: 1, ts: now - 3 * 60000, met: false, note: 'Sync tests pass now. Two date tests still fail on Linux.' } ] }, extra || {});\n  },\n  loops() {\n    const now = Date.now();\n    return [\n      { id: 'l1', prompt: 'Check the deploy and tell me when it is live', to: window.__auto.lead(), every: 15 * 60000, status: 'active', runs: 3, maxRuns: 10, until: 'the site answers on the new version', nextAt: now + 252000, lastAt: now - 648000, last: 'Still building: 4 of 6 steps done', createdAt: now - 3600000 },\n      { id: 'l2', prompt: 'Look through new issues and sort them by how urgent they are', to: window.__auto.lead(), every: null, status: 'paused', runs: 5, nextAt: null, last: 'Sorted 3 new issues, one marked urgent', createdAt: now - 7200000 },\n    ];\n  },\n};\nreturn 'setup';",
+  "wait": 100
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/) || find(/^Let /);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ') + ' | onboarded=' + window.__ensemble.getState().settings.onboarded;\n",
+  "wait": 1200
+ },
+ {
+  "js": "\nconst s = window.__ensemble.getState();\nawait s.send('Get the whole test suite green and the build passing on Windows and Linux');\nreturn 'chat ' + window.__ensemble.getState().chatId;\n",
+  "wait": 9000
+ },
+ {
+  "js": "\nconst st = window.__ensemble; const s = st.getState();\nwindow.__auto.chatId = s.chatId;\nwindow.__auto.addItems = (tag) => {\nconst k = window.__auto.chatId + ':' + window.__auto.lead();\nconst now = Date.now(); let n = 0;\nconst id = () => 'fake-' + tag + (n++);\nconst mk = (o, ago) => Object.assign({ id: id(), ts: now - ago * 60000 }, o);\nconst add = [\n  mk({ kind: 'auto', of: 'goal', event: 'set', ref: 'g1', title: 'Goal set', text: 'Get the whole test suite green and the build passing on Windows and Linux. Done when pnpm test passes with no skipped tests and CI is green.' }, 14),\n  mk({ kind: 'assistant', text: 'I ran the suite: **7 tests fail**, in `src/date` and `src/sync`. Fixing the sync ones first.' }, 13),\n  mk({ kind: 'turn', status: 'done', durationMs: 240000 }, 10),\n  mk({ kind: 'auto', of: 'goal', event: 'check', ref: 'g1', title: 'Check 1 of 12: not there yet', text: 'Sync tests pass now. Two date tests still fail on Linux: formatDay and parseRange assume the local timezone.', round: 1, max: 12 }, 9),\n  mk({ kind: 'assistant', text: 'Both date helpers now take the timezone from the caller. Running the suite on the Linux image next.' }, 8),\n  mk({ kind: 'turn', status: 'done', durationMs: 300000 }, 4),\n  mk({ kind: 'auto', of: 'loop', event: 'run', ref: 'l1', title: 'Run 3 of 10', text: 'Check the deploy and tell me when it is live', round: 3, max: 10 }, 3.5),\n  mk({ kind: 'assistant', text: 'Still building: 4 of 6 steps done. I will look again at the next run.' }, 3.4),\n  mk({ kind: 'turn', status: 'done', durationMs: 20000 }, 3.3),\n  mk({ kind: 'auto', of: 'loop', event: 'paused', ref: 'l2', title: 'Loop paused', text: 'You paused \"Look through new issues\".' }, 3.2),\n  mk({ kind: 'auto', of: 'goal', event: 'blocked', ref: 'g1', title: 'Needs you', text: 'CI needs a token to publish the Linux build. Add LINUX_DEPLOY_TOKEN to the repository secrets, then say carry on.' }, 3),\n  mk({ kind: 'auto', of: 'goal', event: 'resumed', ref: 'g1', title: 'Goal resumed' }, 2),\n  mk({ kind: 'auto', of: 'goal', event: 'met', ref: 'g1', title: 'Goal met after 3 rounds', text: 'A fresh checker ran pnpm test (412 passed, 0 skipped) and saw CI green on both systems.' }, 1),\n  mk({ kind: 'auto', of: 'loop', event: 'done', ref: 'l1', title: 'Loop ended after 4 runs', text: 'The site answers on the new version.' }, 0.5),\n];\nst.setState(x => ({ items: { ...x.items, [k]: [...(x.items[k] || []), ...add] } }));\nreturn k;\n};\nconst k = window.__auto.addItems('a');\nwindow.__auto.patch(window.__auto.goal(), window.__auto.loops());\nconst chat = st.getState().chats.find(c => c.id === s.chatId);\nreturn 'items for ' + k + ': ' + st.getState().items[k].length + ' | goal=' + !!chat.goal + ' loops=' + (chat.loops||[]).length + ' | bar=' + !!document.querySelector('[data-auto-bar]');\n",
+  "wait": 1500,
+  "shot": "auto-surfaces-01-bar-light.png"
+ },
+ {
+  "js": "\nconst st = window.__ensemble; const now = Date.now();\nconst base = st.getState().chats.find(c => c.id === window.__auto.chatId);\nconst fake = (id, title, extra) => Object.assign({}, base, { id, title, createdAt: now - 3600000, updatedAt: now - 600000, goal: null, loops: [], snippet: '' }, extra);\nst.setState(s => ({ chats: [\n  ...s.chats,\n  fake('fake-a', 'Pricing page and checkout', { goal: window.__auto.goal({ id: 'ga', text: 'Checkout works end to end with a test card', status: 'blocked', round: 4, note: 'Needs the Stripe test key', deadline: null }) }),\n  fake('fake-b', 'Morning inbox sweep', { loops: [ Object.assign(window.__auto.loops()[0], { id: 'lb', prompt: 'Sort my inbox and draft replies to anything urgent', every: 3600000, nextAt: now + 38 * 60000, runs: 6, maxRuns: null, until: '' }) ] }),\n  fake('fake-c', 'Docs rewrite', { goal: window.__auto.goal({ id: 'gc', text: 'Every page of the docs uses the new API names', status: 'paused', round: 1, note: '', deadline: null }) }),\n] }));\nwindow.__auto.patch(window.__auto.goal({ checking: true })); return 'chats: ' + st.getState().chats.length;",
+  "wait": 900,
+  "shot": "auto-surfaces-02-checking-light.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal({ status: 'blocked', note: 'CI needs a token to publish the Linux build. Add LINUX_DEPLOY_TOKEN to the repository secrets.' }));",
+  "wait": 700,
+  "shot": "auto-surfaces-03-blocked-light.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal({ status: 'stopped', round: 11, note: 'Ran out of rounds: 12 of 12 used. Two date tests still fail on Linux.', deadline: null }));",
+  "wait": 700,
+  "shot": "auto-surfaces-04-stopped-light.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal({ status: 'met', note: 'pnpm test: 412 passed, 0 skipped. CI is green on both systems.', endedAt: Date.now(), deadline: null }));",
+  "wait": 1400,
+  "shot": "auto-surfaces-05-met-light.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal({})); await new Promise(r => setTimeout(r, 300)); const b = document.querySelector('[data-auto-bar] button'); b && b.click(); return 'expanded goal: ' + !!b;",
+  "wait": 900,
+  "shot": "auto-surfaces-06-goal-open-light.png"
+ },
+ {
+  "js": "const b = document.querySelector('[data-auto-bar] button'); b && b.click(); const l = window.__auto.loops(); l.push(Object.assign({}, l[0], { id: 'l3', prompt: 'Run the nightly benchmark and compare with yesterday', every: 86400000, nextAt: Date.now() + 5 * 3600000, runs: 12, maxRuns: null, until: '', last: 'No change beyond noise' })); window.__auto.patch(window.__auto.goal(), l); return 'three loops';",
+  "wait": 900,
+  "shot": "auto-surfaces-07-three-loops-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('[data-auto-bar] button')].find(b => /3 loops/.test(b.textContent)); b && b.click(); return 'unfold: ' + !!b;",
+  "wait": 900,
+  "shot": "auto-surfaces-08-loops-open-light.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal(), window.__auto.loops()); await new Promise(r => setTimeout(r, 500)); const b = document.querySelector('[data-auto-bar] button[aria-label=\"Edit\"]'); b && b.click(); return 'edit: ' + !!b;",
+  "wait": 900,
+  "shot": "auto-surfaces-09-edit-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Cancel'); b && b.click(); return 'closed edit: ' + !!b;",
+  "wait": 400
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "wait": 900,
+  "shot": "auto-surfaces-10-narrow-light.png"
+ },
+ {
+  "size": [
+   1380,
+   880
+  ],
+  "theme": "dark",
+  "wait": 900,
+  "shot": "auto-surfaces-11-bar-dark.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal({ status: 'met', note: 'pnpm test: 412 passed, 0 skipped. CI is green on both systems.', endedAt: Date.now() - 60000, deadline: null }));",
+  "wait": 700,
+  "shot": "auto-surfaces-12-met-dark.png"
+ },
+ {
+  "js": "window.__auto.patch(window.__auto.goal({ status: 'blocked', note: 'CI needs a token to publish the Linux build.' })); window.__auto.addItems('b');await new Promise(r => setTimeout(r, 300)); const t = [...document.querySelectorAll('span')].filter(s => s.textContent === 'Check 1 of 12: not there yet').pop(); if (t) t.scrollIntoView({ block: 'start' }); const sc = t && t.closest('.overflow-y-auto'); if (sc) sc.scrollTop -= 60; return 'scrolled: ' + !!t;",
+  "wait": 700,
+  "shot": "auto-surfaces-13-transcript-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "await new Promise(r => setTimeout(r, 300)); const t = [...document.querySelectorAll('span')].filter(s => s.textContent === 'Check 1 of 12: not there yet').pop(); if (t) t.scrollIntoView({ block: 'start' }); const sc = t && t.closest('.overflow-y-auto'); if (sc) sc.scrollTop -= 60; return 'light: ' + !!t;",
+  "wait": 700,
+  "shot": "auto-surfaces-14-transcript-light.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('now'); return 'now';",
+  "wait": 1200,
+  "shot": "auto-surfaces-15-mission-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 700,
+  "shot": "auto-surfaces-16-mission-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "window.__ensemble.getState().setView('chat'); window.__ensemble.getState().setModal({ kind: 'settings' }); await new Promise(r => setTimeout(r, 600)); const h = [...document.querySelectorAll('div')].find(d => d.textContent === 'Goals'); h && h.scrollIntoView({ block: 'start' }); return 'settings goals: ' + !!h;",
+  "wait": 800,
+  "shot": "auto-surfaces-17-settings-light.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setModal(null); window.__ensemble.getState().newChat(); return 'new chat';",
+  "wait": 1500,
+  "shot": "auto-surfaces-18-newchat-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Start a loop'); b && b.click(); await new Promise(r => setTimeout(r, 300)); const t = document.querySelector('textarea'); return 'seeded: ' + JSON.stringify(t && t.value);",
+  "wait": 500,
+  "shot": "auto-surfaces-19-newchat-seeded.png"
+ }
+]

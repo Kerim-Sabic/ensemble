@@ -12,6 +12,12 @@ import { toolText, type AgentRuntime, type RuntimeEvent, type RuntimeOptions, ty
 const SPEED = Number(process.env.ENSEMBLE_DEMO_SPEED || '1')
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms / SPEED))
 
+/** The first line of a message, short enough to quote. */
+const truncateLine = (text: string): string => {
+  const line = text.split('\n')[0].trim()
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line
+}
+
 type Step = { content: string; status: 'pending' | 'in_progress' | 'completed'; activeForm: string }
 
 const PLAN: Step[] = [
@@ -281,12 +287,234 @@ export class DemoRuntime implements AgentRuntime {
     return text
   }
 
+  /** One run of a loop: a few lines on what changed, and on the third run the thing it was watching for happens. */
+  private async loopRun(input: TurnInput): Promise<string> {
+    const run = Number(/<loop [^>]*run="(\d+)"/.exec(input.text)?.[1] || '1')
+    const ownPace = /pace="at its own pace"/.test(input.text)
+    await this.think('A repeat run: look at what changed since last time and say only that.', 500)
+    await this.tool('Bash', { command: 'gh run list --limit 1', description: 'Check the latest deploy' }, run < 3 ? `in_progress  Deploy storefront  main  step ${Math.min(6, 3 + run)} of 6` : 'completed  success  Deploy storefront  main  2m 41s', 600)
+    let text: string
+    if (run < 3) {
+      text = run === 1 ? 'The deploy is still building (step 4 of 6). Nothing needs doing yet.' : 'No change: still building, now on step 5 of 6.'
+      if (ownPace) await this.call('loop_update', { next_in_minutes: 1 })
+    } else {
+      text = 'The deploy is live: it finished in 2 min 41 s and the pricing page answers with the new tiers. That was what this loop was watching for, so it ends here.'
+      await this.call('notify_user', { title: 'The deploy is live', text: 'Storefront finished deploying and the pricing page is up.' })
+      await this.call('loop_update', { stop: true, reason: 'The deploy is live.' })
+    }
+    await this.say(text)
+    return text
+  }
+
+  /** The first round on a goal builds the thing but does not check it; sent back, the lead runs it and reports the evidence. */
+  private async goalRound(input: TurnInput): Promise<string> {
+    if (/<goal-check/.test(input.text)) {
+      await this.think('The check is right: it was built but never run end to end. Run it and look at the result.', 700)
+      await this.tool('Bash', { command: 'npm test', description: 'Run the test suite' }, 'Test Files  12 passed (12)\n     Tests  87 passed (87)\n  Duration  3.41s', 900)
+      if (this.o.tools.some((t) => t.name === 'browser')) {
+        await this.call('browser', { action: 'open', url: demoPage() })
+        await wait(600)
+        await this.call('browser', { action: 'look' })
+      }
+      await this.call('goal_report', { state: 'met', note: 'npm test: 87 of 87 pass. Opened the pricing page: three tiers, and the annual toggle changes the prices.' })
+      const text =
+        'It is done, and checked this time.\n\n' +
+        '**Evidence**\n\n' +
+        '- `npm test`: 12 files, 87 tests, all passing\n' +
+        '- Opened the pricing page in the browser: the three tiers show, and the annual toggle changes every price\n\n' +
+        'Nothing is left open.'
+      await this.say(text)
+      return text
+    }
+    await this.think('A goal, so this has to end finished and checked, not merely started.', 800)
+    await this.tool('Read', { file_path: `${this.o.cwd}\\src\\pages\\Account.tsx` }, 'export function Account() { /* … */ }', 500)
+    await this.tool('Write', { file_path: `${this.o.cwd}\\src\\pages\\Pricing.tsx`, content: 'export function Pricing() { /* three tiers and an annual toggle */ }' }, 'File created', 700)
+    await this.tool('Edit', { file_path: `${this.o.cwd}\\src\\routes.tsx`, old_string: '] as const', new_string: "  { path: '/pricing', element: <Pricing /> },\n] as const" }, 'File updated', 500)
+    this.wrote = true
+    const text = 'The pricing page is built: `src/pages/Pricing.tsx` has the three tiers and the annual toggle, and the route is registered.\n\n**Left:** I have not run the tests or opened the page yet.'
+    await this.say(text)
+    return text
+  }
+
+  /**
+   * Ultra and Go crazy: a rubric on the board, then a swarm of scouts on the fast models, builders
+   * on the strongest models at full effort once the scouts are in, and judges once the builders
+   * are in, all started at once and lined up with `after` so the stages run by themselves.
+   * Ultra starts 7 agents (4 scouts, 2 builders, 1 judge); Go crazy 15 (8, 4, and 3 judges in two rounds).
+   */
+  private async ultraStart(crazy: boolean, input: TurnInput): Promise<string> {
+    const ask = truncateLine((input.text.split('</way-of-working>').pop() || '').trim()) || 'this request'
+    await this.think(
+      crazy
+        ? 'Go crazy: the whole pipeline at full scale. A wide scout swarm on the fast models, every strong model building its own version, then two rounds of judges who built nothing.'
+        : 'Ultra: a rubric first, then scouts on the fast models, builders on the strongest models at full effort, and a judge who did none of the work.',
+      900,
+    )
+    await this.call('roster', {})
+    await this.call('board_post', {
+      title: 'Rubric',
+      text: `What the best result for "${ask}" looks like. Every version is scored 1 to 10 on each:\n1. Does exactly what was asked\n2. Correct: it runs, nothing is broken\n3. Complete: no placeholders, every state handled\n4. Craft: typography, spacing, hierarchy, the details\n5. Fast and accessible\n6. Holds up next to the best reference the scouts find`,
+    })
+    const angles = crazy
+      ? ['the best work in this field', 'design systems and type', 'what users complain about', 'accessibility rules', 'performance budgets', 'motion and interaction', 'competitors, side by side', 'award-winning examples']
+      : ['the best work in this field', 'what users complain about', 'accessibility and performance', 'competitors, side by side']
+    const builders = crazy
+      ? [
+          { name: 'Builder A', model: 'fable', effort: 'max' },
+          { name: 'Builder B', model: 'opus', effort: 'max' },
+          { name: 'Builder C', model: 'astra', effort: 'xhigh' },
+          { name: 'Builder D', model: 'astra', effort: 'max' },
+        ]
+      : [
+          { name: 'Builder A', model: 'fable', effort: 'max' },
+          { name: 'Builder B', model: 'astra', effort: 'xhigh' },
+        ]
+    const judges = crazy
+      ? [
+          { name: 'Judge 1', model: 'fable', effort: 'max', round: 1 },
+          { name: 'Judge 2', model: 'astra', effort: 'xhigh', round: 1 },
+          { name: 'Judge 3', model: 'opus', effort: 'max', round: 2 },
+        ]
+      : [{ name: 'Judge', model: 'fable', effort: 'max', round: 1 }]
+    const started: string[] = []
+    // Starts one agent; when its model cannot run here, it starts on the account's usual model instead.
+    const start = async (args: Record<string, unknown>): Promise<string | undefined> => {
+      if (this.stopped) return undefined
+      let r = await this.call('spawn_agent', args)
+      if (!/joined the chat/.test(r)) r = await this.call('spawn_agent', { ...args, model: undefined, effort: undefined })
+      if (/joined the chat/.test(r)) started.push(String(args.name))
+      return /Task (t\d+)/.exec(r)?.[1]
+    }
+    const scoutIds: string[] = []
+    for (const [i, angle] of angles.entries()) {
+      const id = await start({
+        name: `Scout ${i + 1}`,
+        role: `scouts ${angle}`,
+        title: `Scout: ${angle}`,
+        model: i % 2 ? 'luna' : 'haiku',
+        effort: 'medium',
+        brief: `Request: ${ask}\n\nYour one angle: ${angle}. Find the strongest examples and facts on it, nothing else. Report up to six findings, each with a link and the date you read it, and say what you could not confirm.`,
+      })
+      if (id) scoutIds.push(id)
+    }
+    const buildIds: string[] = []
+    for (const b of builders) {
+      const id = await start({
+        name: b.name,
+        role: `builds version ${b.name.slice(-1)}`,
+        title: `Build: version ${b.name.slice(-1)}`,
+        model: b.model,
+        effort: b.effort,
+        after: scoutIds,
+        brief: `Request: ${ask}\n\nMake a complete version of your own, working to the rubric on the board and using the scouts' findings below. Do not look at the other versions. Work in designs/${b.name.slice(-1).toLowerCase()}/ only. Render it and take a screenshot in light and dark mode. Report the path and the screenshots.`,
+      })
+      if (id) buildIds.push(id)
+    }
+    const round1: string[] = []
+    for (const j of judges) {
+      const id = await start({
+        name: j.name,
+        role: j.round === 1 ? 'judges the versions against the rubric' : 'judges the final round, fresh',
+        title: j.round === 1 ? `Judge: round 1 (${j.name})` : 'Judge: round 2',
+        model: j.model,
+        effort: j.effort,
+        after: j.round === 1 ? buildIds : [...buildIds, ...round1],
+        brief: `You did none of this work. Score every version (A, B${crazy ? ', C, D' : ''}) on each rubric criterion from 1 to 10 with a reason, name the best version, and list the best ideas in the others.${j.round === 2 ? ' Round one has judged already; judge the improved versions afresh.' : ''}`,
+      })
+      if (id && j.round === 1) round1.push(id)
+    }
+    const text =
+      `${crazy ? 'Going crazy' : 'Ultra is under way'}: ${started.length} agents are working on "${ask}".\n\n` +
+      `1. **Scouts** (${angles.length}, on Haiku and Luna): one narrow angle each, with sources\n` +
+      `2. **Builders** (${builders.length}, on ${[...new Set(builders.map((b) => b.model))].join(', ')} at full effort): each makes a complete version of its own once the scouts are in\n` +
+      `3. **Judges** (${judges.length}${crazy ? ', in two rounds' : ''}): score every version against the rubric on the board\n\n` +
+      'I will merge the best ideas into the winner, refine it, and check it myself before I answer.'
+    await this.say(text)
+    return text
+  }
+
+  /** The lead hears from an Ultra stage: waits for the rest, or wraps up once the judges are in. */
+  private async ultraReport(status: string): Promise<string> {
+    const tasks = [...status.matchAll(/^(t\d+) · (\w+)[^·\n]* · (.+?) · ((?:Scout|Build|Judge):[^\n]*)$/gm)].map((m) => ({ id: m[1], status: m[2], who: m[3], title: m[4] }))
+    const open = tasks.filter((t) => !/^(done|failed|cancelled)$/.test(t.status))
+    if (open.length) {
+      const stage = open.some((t) => t.title.startsWith('Scout')) ? 'the scouts' : open.some((t) => t.title.startsWith('Build')) ? 'the builders' : 'the judges'
+      const text = `Got it. ${tasks.length - open.length} of ${tasks.length} are in; waiting on ${stage}.`
+      await this.say(text)
+      return text
+    }
+    const crazy = tasks.filter((t) => t.title.startsWith('Build')).length > 2
+    await this.think('Every stage is in. Merging the best ideas into the winner, then checking it myself.', 800)
+    await this.tool('Edit', { file_path: `${this.o.cwd}\\designs\\b\\index.html`, old_string: '<section class="hero">', new_string: '<section class="hero" data-merged="A:type-scale C:motion">' }, 'Applied 1 edit', 600)
+    await this.tool('Bash', { command: 'npx playwright screenshot designs/b/index.html --viewport 390x844,1440x900 --color-scheme light,dark', description: 'Screenshot the winner at two sizes, light and dark' }, '4 screenshots saved to designs/b/shots/', 900)
+    for (const t of tasks.filter((x) => x.title.startsWith('Scout'))) await this.call('dismiss_agent', { name: t.who })
+    const text =
+      `**Version B won${crazy ? ' both judging rounds' : ''}, with the best ideas of the others merged in.**\n\n` +
+      '| Version | Asked for | Correct | Complete | Craft | Fast, accessible | Total |\n| --- | --- | --- | --- | --- | --- | --- |\n' +
+      '| A | 9 | 9 | 8 | 8 | 9 | 43 |\n| **B** | 9 | 9 | 9 | 10 | 9 | **46** |\n' +
+      (crazy ? '| C | 8 | 9 | 8 | 9 | 8 | 42 |\n| D | 9 | 8 | 8 | 9 | 8 | 42 |\n' : '') +
+      '\n**Merged in:** the type scale from A' + (crazy ? ', the motion from C' : '') + '.\n\n' +
+      '**Checked:** rendered at phone and laptop sizes in light and dark mode (`designs/b/shots/`), and the judges re-scored the merged version.\n\n' +
+      '**Not checked:** how it reads with your real content; the copy is placeholder.'
+    await this.say(text)
+    return text
+  }
+
+  /** How a message sent in one of the ways of working plays out. */
+  private async modeTurn(mode: string, input: TurnInput): Promise<string | null> {
+    if (mode === 'ultra' || mode === 'gocrazy') return this.ultraStart(mode === 'gocrazy', input)
+    if (mode === 'quick') {
+      const text = 'Short answer: keep the annual discount at 20%. It is the usual range, and "two months free" is easy to say.'
+      await this.say(text)
+      return text
+    }
+    if (mode === 'plan') {
+      await this.think('Plan first: look, lay it out, and wait for a yes before touching anything.', 700)
+      await this.tool('Grep', { pattern: 'usePlan' }, 'src/hooks/usePlan.ts\nsrc/pages/Account.tsx', 400)
+      await this.say('**The plan**\n\n1. Build the pricing page with three tiers and an annual toggle (a teammate, on a mid-sized model)\n2. Add the checkout endpoint and its webhook, with tests (another teammate, at high effort)\n3. A fresh reviewer goes over the money handling\n4. I run the tests and open the page myself\n\nRoughly 15 minutes and a small part of the allowance. The risk is the webhook trusting its input, which the review is there to catch.')
+      const answers = await this.o.host.askQuestion(
+        [{ question: 'Go ahead with this plan?', header: 'Plan', options: [{ label: 'Go ahead', description: 'Start the work as laid out' }, { label: 'Change something', description: 'Tell me what to do differently first' }, { label: 'Leave it', description: 'Do not start' }] }],
+        new AbortController().signal,
+      )
+      const pick = answers ? Object.values(answers)[0] : ''
+      if (!/go ahead/i.test(pick || '')) {
+        const text = pick ? 'Nothing has been started. Tell me what to change and I will redo the plan.' : 'Nothing has been started. The plan is above whenever you want to go ahead.'
+        await this.say(text)
+        return text
+      }
+      return null
+    }
+    if (mode === 'council') {
+      await this.think('They want separate answers to compare. Each model answers on its own; mine is written before I read theirs.', 900)
+      await this.call('roster', {})
+      const text =
+        'Three independent answers are in.\n\n' +
+        '**Where everyone agrees**\n\n- An annual discount is worth offering, and it should be a round number that is easy to say\n\n' +
+        '**Where they differ**\n\n- Opus: 20% ("two months free"), because clarity beats a finer number\n- Sonnet: 15%, to protect margin until churn is known\n- ChatGPT: 17%, the median of comparable products\n\n' +
+        '**My judgment**\n\n20%. The margin argument is real but small at this size, and the simple message is worth more than three points.\n\n' +
+        '**Still uncertain**\n\nNobody had data on your own churn, which is what would settle it.'
+      await this.say(text)
+      return text
+    }
+    return null
+  }
+
   private async leadTurn(input: TurnInput): Promise<string> {
+    if (/<loop /.test(input.text)) return this.loopRun(input)
+    if (/<goal[ -]/.test(input.text)) return this.goalRound(input)
+    const mode = /<way-of-working mode="(\w+)"/.exec(input.text)?.[1]
+    if (mode) {
+      const done = await this.modeTurn(mode, input)
+      if (done !== null) return done
+    }
     if (input.origin.kind === 'human' && /voice/i.test(input.text)) return this.voices()
     if (input.origin.kind === 'human' && /sign in/i.test(input.text) && this.o.tools.some((t) => t.name === 'browser')) return this.signIn()
     if (input.origin.kind === 'peer') {
       const status = await this.call('task_status', {})
-      const done = [...status.matchAll(/^t\d+ · done · .+? · (.+)$/gm)].map((m) => m[1])
+      // The latest work handed out was an Ultra stage: that story carries on instead.
+      const latest = [...status.matchAll(/^t(\d+) · [^\n]* · ([^·\n]+)$/gm)].sort((a, b) => Number(b[1]) - Number(a[1]))[0]
+      if (latest && /^(Scout|Build|Judge):/.test(latest[2])) return this.ultraReport(status)
+      const done =[...status.matchAll(/^t\d+ · done · .+? · (.+)$/gm)].map((m) => m[1])
       const finished: number[] = []
       if (done.some((t) => /pricing/i.test(t))) finished.push(1)
       if (done.some((t) => /checkout/i.test(t))) finished.push(2)
@@ -441,6 +669,7 @@ export class DemoRuntime implements AgentRuntime {
   }
 
   private async memberTurn(input: TurnInput): Promise<string> {
+    if (/<loop /.test(input.text)) return this.loopRun(input)
     // A teammate's question: a short answer, nothing else.
     if (input.text.startsWith('<question')) {
       await this.think('This is a question to answer, not work to start.', 500)
@@ -451,6 +680,9 @@ export class DemoRuntime implements AgentRuntime {
       await this.say(text)
       return text
     }
+    // A stage of an Ultra run: scout, builder or judge.
+    const stage = /<task id="[^"]*" from="[^"]*" title="(Scout|Build|Judge):\s*([^"]*)"/.exec(input.text)
+    if (stage) return this.ultraStage(stage[1], stage[2])
     // A sub-agent this teammate started has reported: check it and write the report on the whole task.
     if (/^\s*<task-result/.test(input.text)) {
       await this.think('The tests are in. Running everything together before reporting.', 600)
@@ -528,6 +760,38 @@ export class DemoRuntime implements AgentRuntime {
         ? 'Done.\n\n- Created `src/api/checkout.ts` with `createCheckout(plan)` and the webhook handler\n- Added `src/api/checkout.test.ts`\n- `npx vitest run src/api` passes (14 tests)\n\nNothing left open.'
         : 'Done.\n\n- Created `src/pages/Pricing.tsx` with the three tiers and the annual toggle\n- Registered the route in `src/routes.tsx`\n- `npx vitest run src/pages` passes (14 tests)\n\nNothing left open.'
       : 'Sure. I looked at the page and it is in good shape; the toggle state lives in `usePlan()` as expected.'
+    await this.say(text)
+    return text
+  }
+
+  /** One agent's part in an Ultra run. */
+  private async ultraStage(kind: string, what: string): Promise<string> {
+    if (kind === 'Scout') {
+      await this.think(`One angle only: ${what}. Sources for everything.`, 500)
+      await this.tool('WebSearch', { query: what }, '10 results', 700)
+      await this.tool('WebFetch', { url: 'https://www.example.com/showcase' }, 'A gallery of the year\'s strongest work, with notes from the jury.', 600)
+      const text = `Done: ${what}.\n\n1. The strongest examples lead with one idea and a lot of space (example.com/showcase, read today)\n2. Type does the work: two sizes, one family, a tight scale (example.org/type, read today)\n3. Nothing moves without a reason; motion stays under 300 ms (example.net/motion, read today)\n\nCould not confirm: how any of them test on slow phones.`
+      await this.say(text)
+      return text
+    }
+    if (kind === 'Build') {
+      const v = (/version (\w)/i.exec(what)?.[1] || 'A').toLowerCase()
+      this.wrote = this.o.account.provider === 'claude'
+      await this.think('Working to the rubric on the board, with the scouts\' findings. My own version, start to finish.', 700)
+      await this.call('board_read', {})
+      await this.tool('Write', { file_path: `${this.o.cwd}\\designs\\${v}\\index.html`, content: '<section class="hero">…</section>' }, 'File created', 900)
+      await this.tool('Bash', { command: `npx playwright screenshot designs/${v}/index.html --color-scheme light,dark`, description: 'Render the version in light and dark' }, `2 screenshots saved to designs/${v}/shots/`, 800)
+      const sample = process.env.ENSEMBLE_DEMO_IMAGE
+      if (sample && fs.existsSync(sample)) this.emit({ type: 'image', path: sample })
+      const text = `Done: version ${v.toUpperCase()} is complete in \`designs/${v}/index.html\`, with screenshots in light and dark mode in \`designs/${v}/shots/\`. It scores itself 8 or 9 on every criterion; the weakest is motion, which is minimal.`
+      await this.say(text)
+      return text
+    }
+    await this.think('I built none of these. Scoring each one against the rubric, criterion by criterion.', 700)
+    await this.call('board_read', {})
+    await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\a\\index.html` }, '<section class="hero">…</section>', 400)
+    await this.tool('Read', { file_path: `${this.o.cwd}\\designs\\b\\index.html` }, '<section class="hero">…</section>', 400)
+    const text = `Done (${what}).\n\n| Version | Total of 50 |\n| --- | --- |\n| A | 43 |\n| **B** | **46** |\n\nBest: **B**, for the clearest hierarchy and the most careful details. Worth taking from A: its type scale.`
     await this.say(text)
     return text
   }

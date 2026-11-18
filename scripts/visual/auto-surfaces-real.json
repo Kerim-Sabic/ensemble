@@ -1,0 +1,149 @@
+[
+ {
+  "size": [
+   1380,
+   880
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nwindow.__r = {\n  chat() { const s = window.__ensemble.getState(); return s.chats.find(c => c.id === s.chatId) },\n  state() {\n    const c = window.__r.chat(); if (!c) return 'no chat';\n    const g = c.goal; const ls = c.loops || [];\n    return (g ? `goal ${g.status} r${g.round}/${g.maxRounds}${g.checking ? ' checking' : ''} log${g.log.length}${g.note ? ' note=\"' + g.note.slice(0, 60) + '\"' : ''}` : 'no goal') +\n      ' | ' + ls.map(l => `loop ${l.status} runs${l.runs}${l.running ? ' running' : ''} next=${l.nextAt ? Math.round((l.nextAt - Date.now()) / 1000) + 's' : '-'}${l.last ? ' last=\"' + l.last.slice(0, 40) + '\"' : ''}`).join(', ') +\n      ' | bar=' + !!document.querySelector('[data-auto-bar]');\n  },\n  async until(fn, ms = 20000) {\n    const t0 = Date.now();\n    while (Date.now() - t0 < ms) { try { if (fn(window.__r.chat())) return Date.now() - t0 } catch (e) {} await new Promise(r => setTimeout(r, 100)); }\n    return 'TIMEOUT';\n  },\n  click(label) {\n    const b = document.querySelector('[data-auto-bar] button[aria-label=\"' + label + '\"]') || [...document.querySelectorAll('[data-auto-bar] button')].find(b => b.textContent.trim() === label);\n    if (b) b.click();\n    return !!b;\n  },\n  top() { const el = document.querySelector('.overflow-y-auto.h-full'); if (el) el.scrollTop = 0; return !!el },\n};\nreturn 'setup';",
+  "wait": 50
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ') + ' | onboarded=' + window.__ensemble.getState().settings.onboarded;\n",
+  "wait": 1200
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); await s.send('Add a pricing page', undefined, undefined, { goal: { doneWhen: 'the tests pass and the page was opened' } }); const w = await window.__r.until(c => c.goal && c.goal.status === 'active', 20000); await new Promise(r => setTimeout(r, 1500)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r01-goal-round1.png"
+ },
+ {
+  "js": "const w = await window.__r.until(c => c.goal.checking, 20000); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 250,
+  "shot": "auto-surfaces-r02-checking.png"
+ },
+ {
+  "js": "const w = await window.__r.until(c => c.goal.round === 1 && !c.goal.checking, 20000); await new Promise(r => setTimeout(r, 1800)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r03-round2.png"
+ },
+ {
+  "js": "const w = await window.__r.until(c => c.goal.status === 'met', 30000); await new Promise(r => setTimeout(r, 1300)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r04-met.png"
+ },
+ {
+  "js": "const ok = window.__r.click('More about this goal'); return 'expand ' + ok;",
+  "wait": 700,
+  "shot": "auto-surfaces-r05-met-open.png"
+ },
+ {
+  "js": "window.__r.click('Less'); return 'top ' + window.__r.top();",
+  "wait": 600,
+  "shot": "auto-surfaces-r06-transcript-goal.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); await s.send('Check whether the deploy is live', undefined, undefined, { loop: { every: 600000, until: 'the deploy is live' } }); const w = await window.__r.until(c => (c.loops || []).some(l => l.running), 20000); await new Promise(r => setTimeout(r, 300)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r07-loop-running.png"
+ },
+ {
+  "js": "const w = await window.__r.until(c => (c.loops || []).some(l => l.runs === 1 && !l.running && l.nextAt), 20000); await new Promise(r => setTimeout(r, 1500)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r08-loop-countdown.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 800,
+  "shot": "auto-surfaces-r09-loop-countdown-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "wait": 900,
+  "shot": "auto-surfaces-r09b-narrow-dark.png"
+ },
+ {
+  "size": [
+   1380,
+   880
+  ],
+  "wait": 600
+ },
+ {
+  "theme": "light",
+  "js": "const ok = window.__r.click('Run now'); const w = await window.__r.until(c => (c.loops || []).some(l => l.runs === 2 && !l.running && l.nextAt), 20000); await new Promise(r => setTimeout(r, 1000)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r10-run2.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('now'); return window.__r.state();",
+  "wait": 1200,
+  "shot": "auto-surfaces-r11-mission.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 800)); const ok = window.__r.click('Pause'); const w = await window.__r.until(c => (c.loops || []).some(l => l.status === 'paused'), 20000); await new Promise(r => setTimeout(r, 600)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r12-loop-paused.png"
+ },
+ {
+  "js": "const ok = window.__r.click('Resume'); await window.__r.until(c => c.loops.some(l => l.status === 'active'), 5000); await new Promise(r => setTimeout(r, 400)); window.__r.click('Run now'); const w = await window.__r.until(c => (c.loops || []).every(l => l.status === 'done'), 20000); await new Promise(r => setTimeout(r, 1500)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r13-loop-ended.png"
+ },
+ {
+  "js": "const ok = window.__r.click('Take the goal off'); const w = await window.__r.until(c => !c.goal, 20000); await new Promise(r => setTimeout(r, 900)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r14-cleared.png"
+ },
+ {
+  "js": "const el = document.querySelector('.overflow-y-auto.h-full'); if (el) el.scrollTop = el.scrollHeight; return 'bottom';",
+  "wait": 500,
+  "shot": "auto-surfaces-r15-transcript-loop.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 800,
+  "shot": "auto-surfaces-r16-transcript-loop-dark.png"
+ },
+ {
+  "theme": "light",
+  "js": "const s = window.__ensemble.getState(); s.newChat(); await new Promise(r => setTimeout(r, 600)); await window.__ensemble.getState().send('Add a pricing page', undefined, undefined, { goal: { maxRounds: 1 } }); const w = await window.__r.until(c => c.goal && c.goal.status === 'stopped', 30000); await new Promise(r => setTimeout(r, 900)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r17-stopped.png"
+ },
+ {
+  "js": "const ok = window.__r.click('Give it more rounds'); const w = await window.__r.until(c => c.goal.status === 'active', 20000); await new Promise(r => setTimeout(r, 1200)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r18-more-rounds.png"
+ },
+ {
+  "js": "const ok = window.__r.click('Pause'); const w = await window.__r.until(c => c.goal.status === 'paused', 20000); await new Promise(r => setTimeout(r, 600)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r19-paused.png"
+ },
+ {
+  "js": "const ok = window.__r.click('Stop working on this goal'); const w = await window.__r.until(c => c.goal.status === 'stopped', 20000); await new Promise(r => setTimeout(r, 600)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50,
+  "shot": "auto-surfaces-r20-stopped-by-hand.png"
+ },
+ {
+  "js": "const ok = window.__r.click('Pick it up again'); const w = await window.__r.until(c => c.goal.status === 'active', 20000); await new Promise(r => setTimeout(r, 800)); return 'waited ' + w + ' ms | ' + window.__r.state();",
+  "wait": 50
+ },
+ {
+  "js": "window.__ensemble.getState().setView('now'); return window.__r.state();",
+  "wait": 1200,
+  "shot": "auto-surfaces-r21-mission-goal.png"
+ },
+ {
+  "js": "window.__ensemble.getState().setView('chat'); const st = window.__ensemble; const id = st.getState().chatId; st.setState(s => ({ chats: s.chats.map(c => c.id === id ? { ...c, goal: { ...c.goal, status: 'blocked', checking: false, note: 'Needs the Stripe test key to run the checkout test. Add it to .env, then say carry on.' } } : c) })); return 'faked blocked';",
+  "wait": 900,
+  "shot": "auto-surfaces-r22-blocked-faked.png"
+ }
+]

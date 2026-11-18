@@ -1,0 +1,82 @@
+[
+ {
+  "size": [
+   1200,
+   820
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+  "wait": 1200
+ },
+ {
+  "js": "await window.__ensemble.getState().send('Add a pricing page with a checkout flow, and a hero image for it.'); return 'sent';",
+  "wait": 400
+ },
+ {
+  "js": "\nconst st = window.__ensemble;\nwindow.__u = { chatId: st.getState().chatId, agents: null, tasks: null };\nconst U = window.__u;\nconst apply = () => st.setState(s => {\n  const out = {};\n  out.chats = s.chats.map(c => {\n    if (c.id !== U.chatId) return c;\n    let n = c;\n    if (!c.ultra) n = { ...n, ultra: true };\n    if (U.agents && !U.agents.every(a => (c.agents || []).some(x => x.id === a.id))) n = { ...n, agents: [...(c.agents || []).filter(x => !U.agents.some(a => a.id === x.id)), ...U.agents] };\n    return n;\n  });\n  if (U.tasks) {\n    const cur = s.tasks[U.chatId] || [];\n    if (!U.tasks.every(t => cur.some(x => x.id === t.id))) out.tasks = { ...s.tasks, [U.chatId]: [...cur.filter(x => !U.tasks.some(t => t.id === x.id)), ...U.tasks] };\n  }\n  return out;\n});\nU.apply = apply;\nst.subscribe(s => { const c = s.chats.find(c => c.id === U.chatId); if (!c) return; const miss = !c.ultra || (U.agents && !U.agents.every(a => (c.agents || []).some(x => x.id === a.id))) || (U.tasks && !U.tasks.every(t => (s.tasks[U.chatId] || []).some(x => x.id === t.id))); if (miss) setTimeout(apply, 0); });\napply();\nreturn 'ultra on for ' + U.chatId;\n",
+  "wait": 6500
+ },
+ {
+  "js": "\nconst st = window.__ensemble; const U = window.__u; const s = st.getState(); const now = Date.now();\nconst lead = s.chats.find(c => c.id === U.chatId).leadId || s.settings.leadId || s.accounts.find(a => a.enabled).id;\nconst accents = ['teal', 'blue', 'violet', 'green', 'amber', 'rose', 'slate', 'teal'];\nconst roles = ['Pricing of five rivals', 'Checkout patterns', 'Payment provider docs', 'Accessibility rules', 'Tax and VAT', 'Annual discounts', 'Conversion studies', 'Refund policies'];\nconst agents = [];\nconst mk = (id, name, by, depth, accent, role, base) => ({ id, name, provider: 'claude', accent, enabled: true, role, spawned: { chatId: U.chatId, base: base || lead, by, depth, at: now } });\nfor (let i = 0; i < 8; i++) agents.push(mk('scout-' + i, 'Scout ' + (i + 2), lead, 1, accents[i], roles[i]));\nagents.push(mk('builder-a', 'Builder A', lead, 1, 'clay', 'Version A of the page'));\nagents.push(mk('builder-b', 'Builder B', lead, 1, 'blue', 'Version B of the page'));\nagents.push(mk('judge', 'Judge', lead, 1, 'slate', 'Scores every version'));\nagents.push(mk('sub-1', 'Tester', 'builder-a', 2, 'green', 'Runs the checkout tests'));\nagents.push(mk('sub-2', 'Reviewer', 'builder-a', 2, 'rose', 'Reads the diff cold'));\nagents.push(mk('sub-3', 'Renderer', 'builder-b', 2, 'amber', 'Renders each direction'));\nconst tasks = [];\nconst t = (id, from, to, status, title) => tasks.push({ id, chatId: U.chatId, title, brief: title, from, to, status, createdAt: now - 60000 });\nagents.forEach((a, i) => t('ft-' + i, a.spawned.by, a.id, i < 3 ? 'done' : i % 3 === 0 ? 'queued' : 'running', a.role));\nU.agents = agents; U.tasks = tasks; U.apply();\nconst busy = ['scout-3', 'scout-4', 'scout-5', 'scout-6', 'builder-a', 'builder-b', 'sub-1', 'sub-3'];\nconst acts = { 'scout-3': 'Reading the WCAG checklist', 'builder-a': 'Writing src/pages/Pricing.tsx', 'builder-b': 'Trying a three-column layout', 'sub-1': 'Running the checkout tests', 'sub-3': 'Rendering direction 2' };\nst.setState(x => ({ agents: { ...x.agents, ...Object.fromEntries(busy.map(id => [U.chatId + ':' + id, { chatId: U.chatId, accountId: id, phase: id === 'sub-3' ? 'tool' : 'thinking', activity: acts[id] || 'Searching the web', queued: 0, turnStartedAt: now - 30000 }])) } }));\nreturn 'agents ' + agents.length + ', tasks ' + tasks.length;\n",
+  "wait": 1500
+ },
+ {
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = 0; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s01-1200-light-top.png"
+ },
+ {
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = s0.scrollHeight; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s02-1200-light-bottom.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = 0; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 600,
+  "shot": "auto-surfaces-s03-1200-dark-top.png"
+ },
+ {
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = s0.scrollHeight; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s04-1200-dark-bottom.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = 0; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 700,
+  "shot": "auto-surfaces-s05-900-dark-top.png"
+ },
+ {
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = s0.scrollHeight; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s06-900-dark-bottom.png"
+ },
+ {
+  "theme": "light",
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = 0; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 600,
+  "shot": "auto-surfaces-s07-900-light-top.png"
+ },
+ {
+  "js": "const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = s0.scrollHeight; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s08-900-light-bottom.png"
+ },
+ {
+  "js": "document.querySelector('[data-network-strip] > button').click(); await new Promise(r => setTimeout(r, 600)); const s0 = document.querySelector('[data-view-scope]').parentElement; s0.scrollTop = 0; await new Promise(r => setTimeout(r, 400)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s09-900-light-folded-top.png"
+ },
+ {
+  "js": "document.querySelector('[data-network-strip] > button').click(); await new Promise(r => setTimeout(r, 700)); \nconst strip = document.querySelector('[data-network-strip]');\nconst sc = document.querySelector('[data-view-scope]')?.parentElement;\nif (!strip || !sc) return 'missing strip=' + !!strip + ' scroller=' + !!sc;\nconst a = strip.getBoundingClientRect(); const b = sc.getBoundingClientRect();\nconst probe = document.elementFromPoint(b.left + b.width / 2, Math.max(a.bottom, b.top) + 3);\nconst under = document.elementFromPoint(b.left + 60, a.bottom - 4);\nreturn `strip ${Math.round(a.top)}-${Math.round(a.bottom)} | scroller top ${Math.round(b.top)} | gap ${Math.round(b.top - a.bottom)} | below strip: ${probe && probe.closest('[data-network-strip]') ? 'STRIP' : probe && sc.contains(probe) ? 'transcript' : probe?.tagName} | inside strip bottom: ${under && sc.contains(under) ? 'TRANSCRIPT (overlap)' : 'strip'} | scrollTop ${Math.round(sc.scrollTop)}`;\n",
+  "wait": 300,
+  "shot": "auto-surfaces-s10-900-light-unfolded-at-top.png"
+ }
+]
