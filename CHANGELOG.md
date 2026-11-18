@@ -2,6 +2,12 @@
 
 What changed in each version of Ensemble. Earlier versions are described on the [releases page](https://github.com/Kerim-Sabic/ensemble/releases).
 
+## 3.7.1 (2026-11-18)
+
+### Fixed
+
+- **The whole team works in Ultra and Go crazy.** Agents are now spread evenly over every account that has allowance. Before, a lead could name its own account for every agent it started, which left the other accounts idle and ran that one dry. The app now counts the agents already living on each account when it places a new one, and an agent asked onto an account that already carries clearly more than another is placed on the other, with a line saying why. The lead is no longer told to choose accounts itself.
+
 ## 3.7.0 (2026-11-18)
 
 ### New

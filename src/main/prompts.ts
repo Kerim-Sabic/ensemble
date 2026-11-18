@@ -274,7 +274,7 @@ In your answer: the result, why this version won, what was checked and how, and 
   }
   const room = ctx.cap !== undefined ? `You can start up to ${ctx.cap} more agents in this chat${crazy ? ', as many as this machine and the accounts can carry right now' : ''}.` : ''
   const team = ctx.models?.trim()
-    ? `The accounts that can take work right now, with the strongest and the fastest model each offers:\n${ctx.models.trim()}\n${room ? `${room} ` : ''}Agents you start can run on any of these accounts (the \`account\` field of spawn_agent): spread them out so no single account runs dry first, and put more on the accounts \`roster\` marks as having plenty to use.`
+    ? `The accounts that can take work right now, with the strongest and the fastest model each offers:\n${ctx.models.trim()}\n${room ? `${room} ` : ''}Agents you start are placed on these accounts by the app, spread evenly so the whole team works and no single account runs dry first. Leave the \`account\` field of spawn_agent out; name an account only when the user asked for that one.`
     : `Call \`roster\` first to see the accounts, their models and their allowance.${room ? ` ${room}` : ''}`
   const depth = ctx.depth ?? (crazy ? 8 : 3)
   const word = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][depth] || String(depth)

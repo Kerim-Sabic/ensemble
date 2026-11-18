@@ -1380,6 +1380,11 @@ export class Hub implements SessionHost {
   }
 
   /** How much is already running on an account's sign-in: its own work and that of agents started on it. */
+  /** How many agents started in this chat are still here on an account's sign-in. */
+  private agentsOn(chat: Chat, accountId: string): number {
+    return (chat.agents || []).filter((a) => !a.spawned?.gone && a.spawned?.base === accountId).length
+  }
+
   private loadOf(chat: Chat, accountId: string): number {
     let load = 0
     for (const s of this.sessions.values()) {
@@ -1404,7 +1409,9 @@ export class Hub implements SessionHost {
         const noTop = opts.wantsTop && a.provider === 'claude' && this.topOut(a) ? 0.6 : 0
         // An account close to the end of its window takes new work only when nobody fine can.
         const low = this.settings.handover && this.accounts.supply(a.id).state === 'low' ? 40 : 0
-        return { a, score: this.loadOf(chat, a.id) * 10 + spendScore(budgetOf(this.accounts.usage.get(a.id))) + noTop + low }
+        // Agents that already live on the account count first, working or waiting: a swarm is spread over
+        // the whole team. Then what is running there right now, then whose allowance is best spent.
+        return { a, score: this.agentsOn(chat, a.id) * 10 + this.loadOf(chat, a.id) * 4 + spendScore(budgetOf(this.accounts.usage.get(a.id))) + noTop + low }
       })
       .sort((x, y) => x.score - y.score)
     return scored[0]?.a || null
@@ -2962,6 +2969,8 @@ export class Hub implements SessionHost {
     // Whose sign-in it works on: the account named, or the one with the most allowance to spare.
     const asked = (args.account || '').trim()
     let base: Account | null | undefined
+    /** Set when the account asked for was passed over to keep the team even. */
+    let moved = ''
     if (asked && !/^(auto|any|anyone)$/i.test(asked)) {
       const named = this.accounts.byName(asked, chat.id)
       base = named ? this.accounts.get(this.accounts.baseId(named.id)) : undefined
@@ -2969,6 +2978,17 @@ export class Hub implements SessionHost {
       if (this.accounts.statuses.get(base.id)?.state !== 'ready') return `${base.name} is not signed in right now. Leave account out to have the best one picked.`
       const until = this.accounts.limitedUntil(base.id)
       if (until) return `${base.name} has no usage allowance left until ${clock(until)}. Leave account out to have the best one picked.`
+      // A lead that names its own account for every agent would leave the rest of the team idle and
+      // run that one account dry. When the named account already carries clearly more of this chat's
+      // agents than another that could take this one, the agent goes there instead.
+      const wanted: Account = base
+      const even = this.accounts.accounts
+        .filter((a) => a.enabled && a.id !== wanted.id && a.provider === wanted.provider && this.accounts.statuses.get(a.id)?.state === 'ready' && !this.accounts.limitedUntil(a.id) && this.accounts.supply(a.id).state === 'ok')
+        .sort((a, b) => this.agentsOn(chat, a.id) - this.agentsOn(chat, b.id))[0]
+      if (even && this.agentsOn(chat, wanted.id) - this.agentsOn(chat, even.id) >= 2 && typeof this.runFor(even, args.model, args.effort) !== 'string') {
+        moved = wanted.name
+        base = even
+      }
     } else {
       // A model named by family ("luna", "astra", "haiku") says which provider's account it needs.
       const m = (args.model || '').trim()
@@ -3015,7 +3035,7 @@ export class Hub implements SessionHost {
     this.session(chat, by).add({ id: uid('w'), kind: 'spawn', ts: Date.now(), agentId: agent.id, name, role, base: base.id })
 
     const where = base.id === this.accounts.baseId(by.id) ? 'your own account' : `${base.name}'s account`
-    const started = `${name} has joined the chat, working on ${where}.`
+    const started = `${name} has joined the chat, working on ${where}.${moved ? ` (${moved}'s account already carries more of this chat's agents, so this one was placed on another to keep the whole team working. Leave account out and the app spreads them for you.)` : ''}`
     const brief = (args.brief || '').trim()
     if (!brief) return `${started} Hand them work with assign_task (to: "${name}"). They know nothing yet about what you are doing.`
     const handed = this.assign(chat, by, { to: name, title: args.title || role, brief, model: args.model, effort: args.effort, after: args.after })
@@ -3832,7 +3852,7 @@ export class Hub implements SessionHost {
           schema: {
             name: z.string().optional().describe('A short name the team will call it by, for example "Scout" or "Tester". Leave out to have one picked'),
             role: z.string().describe('What it is for, in a few words. The whole team sees this, for example "researches competitor pricing" or "owns the API tests"'),
-            account: z.string().optional().describe('Which account it works on, by name from the roster. Leave out to use the account with the most allowance to spare'),
+            account: z.string().optional().describe('Leave this out: the app spreads agents evenly over the accounts that have allowance. Name an account only when the user asked for that one'),
             title: z.string().optional().describe('A few words naming its first task. The user sees it'),
             brief: z
               .string()

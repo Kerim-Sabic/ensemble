@@ -1133,6 +1133,19 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     await until('the ChatGPT-only Go crazy run', () => gIdle(gc) && gRows(gc).some((i) => i.kind === 'assistant' && /both judging rounds/.test(i.text)), 120_000)
     const live = (gc.agents || []).filter((a) => a.spawned && a.spawned.at >= gFrom)
     console.log(`  (ChatGPT-only go crazy: ${((Date.now() - gFrom) / 1000).toFixed(1)} s, ${live.length} agents)`)
+    // The whole team works, not just the lead's account: the agents are spread over all four accounts.
+    const perAccount = gpt.accounts.accounts.map((a) => live.filter((x) => x.spawned?.base === a.id).length)
+    console.log(`  (agents per account, ${gpt.accounts.accounts.map((a) => a.name).join('/')}: ${perAccount.join('/')})`)
+    check('ChatGPT only: the agents are spread over all four accounts', perAccount.every((n) => n >= Math.floor(live.length / 4) - 2) && Math.max(...perAccount) - Math.min(...perAccount) <= 3, perAccount.join('/'))
+    // A lead that names its own account for every agent does not get to leave the rest of the team idle.
+    const pile = gpt.createChat({ cwd: work })
+    gpt.setUltra(pile.id, true)
+    gpt['markUltra'](pile, 'gocrazy')
+    const replies: string[] = []
+    for (let i = 0; i < 12; i++) replies.push(gpt['spawn'](pile, gLead, { name: `Piled ${i + 1}`, role: 'one of twelve the lead asked to put on its own account', account: gLead.name, model: 'luna' }) as string)
+    const piled = gpt.accounts.accounts.map((a) => (pile.agents || []).filter((x) => x.spawned?.base === a.id).length)
+    check('agents all asked onto the lead\'s own account are still spread over the team', (pile.agents || []).length === 12 && Math.max(...piled) - Math.min(...piled) <= 2, piled.join('/'))
+    check('and the lead is told why', replies.some((r) => /placed on another to keep the whole team working/.test(r)))
     check('ChatGPT only: the regions run, every agent on a ChatGPT account, down to depth 4', live.length >= 25 && live.every((a) => a.provider === 'chatgpt') && live.some((a) => a.spawned?.depth === 4) && live.filter((a) => a.spawned?.depth === 1).length >= 3, `${live.length} agents, deepest ${Math.max(...live.map((a) => a.spawned?.depth || 0))}`)
     const gtasks = gpt.tasksOf(gc.id).filter((t) => t.createdAt >= gFrom)
     check('ChatGPT only: scouts on Luna, builders on Astra', gtasks.filter((t) => t.title.startsWith('Scout')).every((t) => /luna/i.test(t.model || '')) && gtasks.filter((t) => t.title.startsWith('Build')).every((t) => /astra/i.test(t.model || '')), gtasks.map((t) => `${t.title}:${t.model}`).slice(0, 6).join(', '))
