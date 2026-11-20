@@ -132,7 +132,22 @@ export interface RuntimeOptions {
   suggestions?: boolean
   /** Demo only: when the account's allowance is used up, so a scripted turn fails as a real one would. */
   outUntil?: () => number | null
+  /**
+   * Set only for a run nobody is watching (src/main/guard.ts). The provider then runs under its
+   * strictest settings and asks nobody: every tool call it can see first goes through `check`.
+   */
+  guard?: ToolGate
   host: RuntimeHost
+}
+
+/** What a provider is handed for an unattended run: the check each tool call passes, and what the run may have at all. */
+export interface ToolGate {
+  /** Decides one tool call before it runs. `allow: false` comes with what to tell the agent. Never throws. */
+  check(tool: string, input: unknown): Promise<{ allow: boolean; message?: string }>
+  /** Whether this run may have a shell tool at all: only where the provider keeps commands inside a sandbox of its own. */
+  shell: boolean
+  /** Whether sandboxed commands may reach the network. */
+  network: boolean
 }
 
 export interface AgentRuntime {

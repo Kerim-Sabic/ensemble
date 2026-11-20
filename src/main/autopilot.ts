@@ -30,6 +30,17 @@ export interface AutoHost {
   session(chat: Chat, account: Account): AgentSession
   /** How many tasks this agent handed out are still under way. */
   out(chat: Chat, account: Account): number
+  /**
+   * What is under way in the chat besides this agent's own reply: tasks anyone handed out that
+   * have not ended, and teammates in the middle of a reply. A goal is checked when this is quiet,
+   * not merely when the lead stops typing.
+   */
+  under?(chat: Chat, account: Account): { tasks: number; agents: number }
+  /**
+   * Closes tasks that are marked as under way while nobody works on them, and returns how many.
+   * Left open, such a task keeps a goal's check (and whoever waits for its report) waiting for ever.
+   */
+  sweep?(chat: Chat): number
   /** Saves the chat and tells the window. */
   changed(chat: Chat): void
   /** What every turn of this agent starts with: what it missed, and notes that were waiting for it. */
@@ -44,12 +55,17 @@ export interface AutoHost {
   loopRun(account: Account, model?: string | null): Pending['run']
   /** What goes ahead of each round of a goal that keeps a way of working (Ultra, Go crazy): '' when it keeps none. */
   goalWay?(chat: Chat): string
+  /**
+   * What the app can check of a goal by itself, from the chat's trace (From GitHub goals: see ghProof).
+   * null when it has nothing to say about this goal; a goal is not met while this says not ok.
+   */
+  proof?(chat: Chat, goal: Goal): Promise<{ ok: boolean; why: string; next?: string } | null>
 }
 
 type AutoItem = Extract<Item, { kind: 'auto' }>
 type Verdict = { met: boolean; blocked?: boolean; why: string; next?: string; /** No fresh check could be made, so this is the lead's own word. */ fallback?: boolean }
-/** A round of the lead's work that still waits for its check: how it ended, and the app's record of it. */
-type Due = { ev: TurnEnd; record: string }
+/** A round of the lead's work that still waits for its check: how its last reply ended, and whose round it was. */
+type Due = { ev: TurnEnd; leadId: string }
 
 const MIN = 60_000
 /** A self-paced loop that was not told when to run next. */
@@ -61,13 +77,21 @@ const JUDGE_WAIT = 90_000
 const ADRIFT_MS = 30_000
 /** How long a check that is owed may wait for the lead to be free before the app makes it itself. */
 const DUE_GRACE_MS = 3_000
+/** How long a check waits for teammates who are mid-reply without a task (answering a note, a loop's run) before it goes ahead. */
+const OTHERS_WAIT_MS = 3 * MIN
+/** A reply of the lead that failed for a passing reason is tried again this many times, this far apart, before the goal is paused. */
+const RETRIES = 2
+const RETRY_MS = MIN
+/** How long a lead that ran out of allowance has to be replaced by the app before the goal is paused instead. */
+const HANDOVER_WAIT_MS = 45_000
 /** Loops an agent starts by itself: never faster than this, and a limit on runs unless it gave one. */
 const AGENT_MIN_EVERY = 5 * MIN
 const AGENT_MAX_RUNS = 20
 
-const CHECKER = `You check whether a goal has been met. You did none of the work and you cannot look at anything yourself. You are given the goal, the team lead's report after its latest round of work, and the app's own record of the steps taken in that round (the commands, reads, edits and reports, each with the start of what it returned).
+const CHECKER = `You check whether a goal has been met. You did none of the work and you cannot look at anything yourself. You are given the goal, what the team lead reported since the last check, and the app's own record of the steps taken since then (the commands, reads, edits and the reports that came back from the team, each with the start of what it returned).
 
 How to judge:
+- You are asked only once everything the team was doing has ended and reported. So go by where things stand at the end of the record: a line that says something was still running earlier is not a reason to answer "still in progress" if a later line shows it ended.
 - The record is fact: those steps happened and returned what is shown. The report is the lead's account of them. Take both as true unless they contradict each other, and go by the record where they do. Your job is to judge whether what was done covers the goal, not to doubt that it happened.
 - "met" is true when the goal, and its "done when" if there is one, is achieved in full. Where the goal can be checked (tests pass, a page works, a file holds something, a number is reached), the record or the report must show that it was checked and what the check showed. A bare "it works" with no step behind it is not enough when checking was possible.
 - An open-ended goal ("make it as good as you can", "improve X") is met when substantial finished work covers what was asked and no clear, worthwhile next step is left that the team could take without the user.
@@ -118,6 +142,20 @@ export class Autopilot {
   private fellBack = new Set<string>()
   /** Goals resumed while the lead was busy: the lead is sent back to them once free. */
   private wake = new Set<string>()
+  /** Why each goal in `wake` is being sent to its lead, when it is not the user's resume. */
+  private wakeWhy = new Map<string, 'lead' | 'retry' | 'refill'>()
+  /** Since when a goal's check has waited only for teammates mid-reply without a task, by goal id. */
+  private others = new Map<string, number>()
+  /** Replies of the lead in a row that failed for a passing reason, by goal id. */
+  private errs = new Map<string, number>()
+  /** When a failed reply is tried again, and what went wrong, by goal id. */
+  private retryAt = new Map<string, { at: number; why: string }>()
+  /** Since when a goal's lead has been out of allowance with the app due to replace it, by goal id. */
+  private limited = new Map<string, number>()
+  /** Goals paused because the lead ran out of allowance: they carry on by themselves when it is back. */
+  private refill = new Set<string>()
+  /** Chats whose lead is being changed right now: who is taking over, and since when. */
+  private handing = new Map<string, { to: string; at: number }>()
   /** The chat whose stop the goal itself asked for (a goal being stopped), so it is not read as the user's Stop. */
   private ownStop: string | null = null
   private timer: NodeJS.Timeout | null = null
@@ -251,7 +289,57 @@ export class Autopilot {
     this.adrift.delete(goal.id)
     this.due.delete(goal.id)
     this.wake.delete(goal.id)
+    this.wakeWhy.delete(goal.id)
+    this.others.delete(goal.id)
+    this.errs.delete(goal.id)
+    this.retryAt.delete(goal.id)
+    this.limited.delete(goal.id)
+    this.refill.delete(goal.id)
+    goal.waiting = null
     this.stale(goal)
+  }
+
+  /**
+   * What the lead is waiting for before a check can be made: work the team still has under way,
+   * or (for a few minutes only) teammates in the middle of a reply. null when the chat is quiet.
+   */
+  private holding(chat: Chat, goal: Goal, lead: Account): 'team' | 'others' | null {
+    const u = this.host.under ? this.host.under(chat, lead) : { tasks: this.host.out(chat, lead), agents: 0 }
+    if (u.tasks > 0) {
+      this.others.delete(goal.id)
+      return 'team'
+    }
+    if (u.agents > 0) {
+      const now = Date.now()
+      const since = this.others.get(goal.id) ?? now
+      this.others.set(goal.id, since)
+      if (now - since <= this.wait(OTHERS_WAIT_MS)) return 'others'
+      return null
+    }
+    this.others.delete(goal.id)
+    return null
+  }
+
+  /** Says in the goal itself what it is waiting for, so the window can show it instead of looking stuck. */
+  private mark(chat: Chat, goal: Goal, waiting: Goal['waiting']): void {
+    if ((goal.waiting || null) === (waiting || null)) return
+    goal.waiting = waiting || null
+    this.host.changed(chat)
+  }
+
+  /** What a new lead is told about a goal that is in play, with the handover. */
+  brief(chat: Chat): string {
+    const goal = chat.goal
+    if (!goal || goal.status !== 'active') return ''
+    const last = goal.log[goal.log.length - 1]
+    const check = goal.check === 'fresh' ? 'someone who did none of the work checks whether it is met' : 'the app looks at whether you have said it is met'
+    return `<goal id="${goal.id}" rounds="${goal.maxRounds}">
+This chat has a goal in play, set by the user, and it is now yours to finish: ${goal.text}${goal.doneWhen ? `\nIt is done when: ${goal.doneWhen}` : ''}
+${last ? `The last check (round ${last.round + 1} of ${goal.maxRounds}) found: ${last.note}` : 'It has not been checked yet.'}
+Once the team's work is in and you have replied, ${check}; if it is not met you are sent back with what is missing. So keep going until it is done, do not end on a plan or a question, end every reply with what is done, the evidence, and what is left, and call \`goal_report\` with state "met" (with the evidence) when it is, or "blocked" if only the user can unblock it.
+</goal>
+
+`
   }
 
   /** Any check under way for this goal no longer counts. */
@@ -304,6 +392,13 @@ Carry on from where things stand: do the work, check it, and end with what is no
       this.due.delete(goal.id)
       return false
     }
+    // The lead is being changed, and this is the old lead's reply being cut short for it: that is
+    // not the user stopping the goal, and not a round of work.
+    const handing = this.handing.get(chat.id)
+    if (handing && Date.now() - handing.at < 60_000) {
+      if (session.account.id !== handing.to) return true
+      this.handing.delete(chat.id)
+    } else if (handing) this.handing.delete(chat.id)
     const lead = this.host.lead(chat)
     if (!lead || lead.id !== session.account.id) return false
     // A stop or a failure pauses the goal whatever the reply was about (a loop's run included):
@@ -313,25 +408,84 @@ Carry on from where things stand: do the work, check it, and end with what is no
       return true
     }
     if (ev.status === 'error') {
-      const why = ev.reason === 'limit' ? `${lead.name} ran out of allowance. Resume when it is back, or let another teammate lead.` : ev.reason === 'auth' ? `${lead.name} is signed out. Sign in again, then resume.` : `Paused after a problem: ${oneLine(ev.error || 'the reply stopped', 200)}`
+      if (ev.reason === 'limit') {
+        // With automatic handover on, the app is about to give the chat a lead that has allowance:
+        // the goal goes on with them. If nobody takes over, the timer pauses it (see tick).
+        if (this.host.settings().handover) {
+          if (!this.limited.has(goal.id)) this.limited.set(goal.id, Date.now())
+          return true
+        }
+        this.pauseForRefill(chat, goal, lead)
+        return true
+      }
+      // A reply that failed for a passing reason (the network, the provider) is tried again before the user is asked.
+      const n = (this.errs.get(goal.id) || 0) + 1
+      this.errs.set(goal.id, n)
+      if (ev.reason !== 'auth' && n <= RETRIES) {
+        const why = oneLine(ev.error || 'the reply stopped', 200)
+        this.retryAt.set(goal.id, { at: Date.now() + this.wait(RETRY_MS * n), why })
+        this.row(chat, lead, { of: 'goal', event: 'check', ref: goal.id, title: `A reply failed: trying again in ${n === 1 ? 'a minute' : `${n} minutes`}`, text: why, round: goal.round + 1, max: goal.maxRounds })
+        this.mark(chat, goal, 'retry')
+        return true
+      }
+      const why = ev.reason === 'auth' ? `${lead.name} is signed out. Sign in again, then resume.` : `Paused after ${n} replies in a row failed: ${oneLine(ev.error || 'the reply stopped', 200)}`
       this.pauseGoal(chat, goal, lead, why)
       this.host.tell('Goal paused', why, chat, lead.id)
       return true
     }
+    this.errs.delete(goal.id)
+    this.retryAt.delete(goal.id)
+    this.limited.delete(goal.id)
     // A loop's run, or an answer to a teammate's question, is not a round of work on the goal. But
     // a check that was owed from before is made at the end of it all the same.
     const aside = pending.auto?.of === 'loop' || pending.kind === 'ask'
     if (!aside) {
-      this.due.set(goal.id, { ev, record: this.record(session) })
+      this.due.set(goal.id, { ev, leadId: lead.id })
       this.wake.delete(goal.id)
+      this.wakeWhy.delete(goal.id)
     }
     const due = this.due.get(goal.id)
     if (!due) return pending.auto?.of === 'loop'
-    // Parts are still out with the team, or more is already waiting to be read: the check comes after.
-    if (this.host.out(chat, lead) > 0 || session.state.queued > 0) return true
+    // More is already waiting for the lead to read: the check comes after that reply.
+    if (session.state.queued > 0) return true
+    // The team still has work under way (anyone's, not only what the lead itself handed out): the
+    // check is made when that is in and the lead has answered it, so a round is never judged, or
+    // used up, while its work is still being done.
+    const hold = this.holding(chat, goal, lead)
+    if (hold) {
+      if (hold === 'team') this.mark(chat, goal, 'team')
+      return true
+    }
     this.due.delete(goal.id)
     void this.check(chat, goal, lead, due)
     return true
+  }
+
+  /** The lead is out of allowance and nobody takes over: the goal waits, and carries on by itself when it is back. */
+  private pauseForRefill(chat: Chat, goal: Goal, lead: Account): void {
+    const until = this.host.unavailable(lead)?.until
+    const when = until ? ` (about ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ''
+    const note = `${lead.name} ran out of allowance. The goal carries on by itself when it is back${when}, or let another teammate lead.`
+    this.pauseGoal(chat, goal, lead, note)
+    this.refill.add(goal.id)
+    this.limited.set(goal.id, Date.now())
+    goal.waiting = 'allowance'
+    this.host.changed(chat)
+    this.host.tell('Goal paused', note, chat, lead.id)
+  }
+
+  /** Puts a goal that was waiting (for allowance, or for a lead) back in play, and has its lead sent to it once free. */
+  private revive(chat: Chat, goal: Goal, lead: Account, title: string, why: 'lead' | 'retry' | 'refill'): void {
+    this.refill.delete(goal.id)
+    this.limited.delete(goal.id)
+    goal.status = 'active'
+    goal.endedAt = undefined
+    goal.note = undefined
+    goal.waiting = null
+    this.row(chat, lead, { of: 'goal', event: 'resumed', ref: goal.id, title, round: goal.round + 1, max: goal.maxRounds })
+    this.wake.add(goal.id)
+    this.wakeWhy.set(goal.id, why)
+    this.host.changed(chat)
   }
 
   /**
@@ -387,17 +541,44 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
         moved = true
       }
       if (moved) this.host.changed(chat)
+    }
+    if (!goal) return
+    // A goal that waited for the old lead's allowance has a lead with allowance now.
+    if (goal.status === 'paused' && this.refill.has(goal.id)) {
+      this.revive(chat, goal, next, `Goal going again with ${next.name} as lead`, 'lead')
       return
     }
-    if (goal?.status === 'active') this.pauseGoal(chat, goal, next, `Paused when ${next.name} took over as lead. Resume to carry on.`)
+    if (goal.status !== 'active') return
+    this.handing.set(chat.id, { to: next.id, at: Date.now() })
+    // A goal under way goes on with whoever leads now, whoever changed the lead: the user set it to
+    // be finished, and a change of lead is not a reason to stop. What the old lead said about it
+    // does not carry over; a check that is owed or being made still counts, and its outcome goes
+    // to the new lead. With neither, the new lead is sent to the goal once it is free.
+    this.claims.delete(goal.id)
+    this.limited.delete(goal.id)
+    this.retryAt.delete(goal.id)
+    this.errs.delete(goal.id)
+    this.adrift.delete(goal.id)
+    this.row(chat, next, { of: 'goal', event: 'resumed', ref: goal.id, title: `Goal carries on with ${next.name} as lead`, round: goal.round + 1, max: goal.maxRounds })
+    if (!this.due.has(goal.id) && !goal.checking) {
+      this.wake.add(goal.id)
+      this.wakeWhy.set(goal.id, 'lead')
+    }
+    this.host.changed(chat)
   }
 
   private pauseGoal(chat: Chat, goal: Goal, lead: Account, note: string): void {
     goal.status = 'paused'
     goal.checking = false
+    goal.waiting = null
     this.due.delete(goal.id)
     this.wake.delete(goal.id)
+    this.wakeWhy.delete(goal.id)
     this.adrift.delete(goal.id)
+    this.others.delete(goal.id)
+    this.retryAt.delete(goal.id)
+    this.limited.delete(goal.id)
+    this.refill.delete(goal.id)
     this.stale(goal)
     goal.note = note
     this.row(chat, lead, { of: 'goal', event: 'paused', ref: goal.id, title: 'Goal paused', text: note })
@@ -409,15 +590,11 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
    * returned, and the reports that came back from the team. This is what lets the checker go by
    * what was done rather than by what is claimed.
    */
-  private record(session: AgentSession): string {
-    const items = session.items
-    // The round is everything between the last two closing rows.
-    let end = items.length - 1
-    while (end >= 0 && items[end].kind !== 'turn') end--
-    let start = end - 1
-    while (start >= 0 && items[start].kind !== 'turn') start--
+  private record(session: AgentSession, since: number): string {
+    // The round is everything since the last check: the lead may have replied several times in it
+    // (once for each batch of reports that came back), and all of that is the work to be judged.
     const lines: string[] = []
-    for (const it of items.slice(start + 1, end < 0 ? items.length : end)) {
+    for (const it of this.since(session, since)) {
       if (it.kind === 'tool' && !it.parentId) {
         // Looking at the team or the board is not work on the goal.
         if (/^mcp__team__(roster|board_read|task_status|goal_report|memory_search|loop_update)$/.test(it.name)) continue
@@ -429,13 +606,45 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
     }
     if (!lines.length) return ''
     // The end of a round is where the checking happens, so that is what is kept when there is too much.
-    const kept = lines.slice(-45)
+    const kept = lines.slice(-60)
     let text = kept.join('\n')
-    if (text.length > 7000) text = `…\n${text.slice(-7000)}`
+    if (text.length > 9000) text = `…\n${text.slice(-9000)}`
     return `${lines.length > kept.length ? `(${lines.length - kept.length} earlier steps left out)\n` : ''}${text}`
   }
 
-  private async verdict(chat: Chat, goal: Goal, ev: TurnEnd, record: string): Promise<Verdict> {
+  /** An agent's rows from a moment on. */
+  private since(session: AgentSession, since: number): Item[] {
+    const items = session.items
+    let i = items.length
+    while (i > 0 && items[i - 1].ts >= since) i--
+    return items.slice(i)
+  }
+
+  /**
+   * What the lead reported since the last check. Its last reply may be empty (it ended on a step,
+   * or only acknowledged a report), so the last reply that says something is the report, with the
+   * start of the earlier ones ahead of it.
+   */
+  private reportOf(session: AgentSession, since: number, ev: TurnEnd): string {
+    const replies: string[] = []
+    let text = ''
+    for (const it of this.since(session, since)) {
+      if (it.kind === 'assistant' && it.text.trim()) text = it.text.trim()
+      else if (it.kind === 'turn') {
+        if (text) replies.push(text)
+        text = ''
+      }
+    }
+    if (text) replies.push(text)
+    const last = ev.resultText.trim()
+    if (last && replies[replies.length - 1] !== last) replies.push(last)
+    if (!replies.length) return ''
+    const final = truncate(replies[replies.length - 1], 8000)
+    const earlier = replies.slice(0, -1).slice(-5).map((r) => `- ${oneLine(r, 400)}`)
+    return earlier.length ? `Earlier replies since the last check, oldest first (the start of each):\n${earlier.join('\n')}\n\nThe latest reply:\n${final}` : final
+  }
+
+  private async verdict(chat: Chat, goal: Goal, report: string, record: string): Promise<Verdict> {
     const claim = this.claims.get(goal.id)
     if (claim?.state === 'blocked') return { met: false, blocked: true, why: claim.note || 'The lead needs something from you to go on.' }
     const own: Verdict = claim?.state === 'met' ? { met: true, why: claim.note || 'The lead reports it is done.' } : { met: false, why: 'The lead has not reported the goal as met.', next: 'Finish what is left, check it, and report it with goal_report.' }
@@ -453,9 +662,9 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
       `The team's folder: ${chat.cwd}`,
       `This was round ${goal.round + 1} of ${goal.maxRounds}.`,
       earlier.length ? `Earlier checks:\n${earlier.join('\n')}` : '',
-      record ? `The app's record of the steps taken in this round:\n${record}` : 'The app recorded no steps in this round: the lead only wrote.',
+      record ? `The app's record of the steps taken since the last check:\n${record}` : 'The app recorded no steps since the last check: the lead only wrote.',
       claim ? `What the lead put on record about the goal: ${claim.state}${claim.note ? `. ${truncate(claim.note, 1500)}` : ''}` : '',
-      `The lead's report after this round:\n<<<\n${truncate(ev.resultText.trim() || '(the reply had no text)', 9000)}\n>>>`,
+      `What the lead reported since the last check:\n<<<\n${truncate(report || '(the replies had no text)', 9000)}\n>>>`,
     ]
       .filter(Boolean)
       .join('\n\n')
@@ -475,28 +684,42 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
   }
 
   private async check(chat: Chat, goal: Goal, lead: Account, due: Due): Promise<void> {
-    const { ev, record } = due
+    const { ev } = due
+    // The round is judged from the transcript of whoever did it, even if someone else leads by now.
+    const worker = this.host.account(due.leadId) || lead
+    const from = goal.log.length ? goal.log[goal.log.length - 1].ts : goal.createdAt
+    const session = this.host.session(chat, worker)
+    const record = this.record(session, from)
+    const report = this.reportOf(session, from, ev)
     const seq = (this.seq.get(goal.id) || 0) + 1
     this.seq.set(goal.id, seq)
     goal.checking = true
+    goal.waiting = null
+    this.others.delete(goal.id)
     this.host.changed(chat)
     let v: Verdict
     try {
-      v = await this.verdict(chat, goal, ev, record)
+      v = await this.verdict(chat, goal, report, record)
     } catch {
       v = { met: false, why: 'The check could not be made.' }
+    }
+    // A "done when" the app can check itself is not met on anyone's word without its proof in the trace.
+    if (v.met && this.host.proof) {
+      const p = await this.host.proof(chat, goal).catch(() => null)
+      if (p && !p.ok) v = { met: false, why: `${p.why} (checked by the app from what was run)`, next: p.next }
     }
     // A later check was started, or the goal was paused, stopped or replaced meanwhile: this verdict is out of date.
     if (this.seq.get(goal.id) !== seq) return
     goal.checking = false
     const exists = !!this.host.chat(chat.id)
     const same = exists && chat.goal === goal && goal.status === 'active'
-    // The lead changed while the check was made: the new lead is not sent the old one's round.
+    // The lead changed while the check was made: the verdict stands, and whoever leads now carries on from it.
     const now_lead = same ? this.host.lead(chat) : null
-    if (same && now_lead?.id !== lead.id) {
-      this.pauseGoal(chat, goal, now_lead || lead, now_lead ? `Paused when ${now_lead.name} took over as lead. Resume to carry on.` : 'Paused: the chat has no lead. Resume to carry on.')
+    if (same && !now_lead) {
+      this.pauseGoal(chat, goal, lead, 'Paused: the chat has no lead. Resume to carry on.')
       return
     }
+    if (same && now_lead && now_lead.id !== lead.id) lead = now_lead
     // The lead was given something else to do meanwhile: the check is made again when that reply ends.
     if (!same || !this.free(chat, lead)) {
       if (same && !this.due.has(goal.id)) this.due.set(goal.id, due)
@@ -530,10 +753,11 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
     } else {
       // A round that ends without a single step of work and with next to nothing said, twice running,
       // is not going anywhere. (A goal that is all writing takes no steps, but it does say a lot.)
-      // Tool steps as the session counted them (a provider's own step count is no guide: Claude's is never 0),
-      // or nothing of substance in the app's record of the round.
-      const noWork = (ev.tools ?? ev.steps ?? 0) === 0 || !record
-      const idle = noWork && ev.resultText.trim().length < 600 ? (this.idle.get(goal.id) || 0) + 1 : 0
+      // What counts is the whole stretch since the last check, the team's work included: a lead that
+      // only acknowledged reports did not idle if the team did the work. So: nothing at all in the
+      // app's record (no step, nothing handed out, no report back) and next to nothing said.
+      const noWork = !record
+      const idle = noWork && report.trim().length < 600 ? (this.idle.get(goal.id) || 0) + 1 : 0
       this.idle.set(goal.id, idle)
       const stop = idle >= 2 ? 'Two rounds in a row ended with no work done, so it was stopped rather than left to spin.' : rounds >= goal.maxRounds ? `Not met after ${goal.maxRounds} ${goal.maxRounds === 1 ? 'round' : 'rounds'}.` : goal.deadline && now >= goal.deadline ? 'Time is up.' : ''
       if (stop) {
@@ -610,10 +834,15 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
         goal.status = 'active'
         goal.endedAt = undefined
         goal.note = undefined
+        goal.waiting = null
         this.idle.delete(goal.id)
+        this.errs.delete(goal.id)
+        this.refill.delete(goal.id)
+        this.limited.delete(goal.id)
         this.row(chat, lead, { of: 'goal', event: 'resumed', ref: goal.id, title: was === 'stopped' ? `Goal picked up again · up to round ${goal.maxRounds}` : 'Goal resumed', round: goal.round + 1, max: goal.maxRounds })
         this.host.changed(chat)
         // Someone in the middle of a reply, or waiting on the team, is sent back once they are free (see tick).
+        this.wakeWhy.delete(goal.id)
         if (this.free(chat, lead) && !this.host.out(chat, lead)) this.sendResume(chat, goal, lead)
         else this.wake.add(goal.id)
         return
@@ -621,15 +850,28 @@ Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
     }
   }
 
-  private sendResume(chat: Chat, goal: Goal, lead: Account): void {
+  /**
+   * Sends the lead back to a goal that is in play but has nothing under way. Carrying on after a
+   * pause, a change of lead, a failed reply or a refill is not a failed check, so it uses up no round.
+   */
+  private sendResume(chat: Chat, goal: Goal, lead: Account, retry?: string): void {
+    const why = this.wakeWhy.get(goal.id)
     this.wake.delete(goal.id)
-    goal.round++
+    this.wakeWhy.delete(goal.id)
+    const opening =
+      why === 'lead'
+        ? 'You lead this chat now, and its goal is in play. It is not met yet.'
+        : why === 'retry'
+          ? `Your last reply stopped with a problem before it finished${retry ? ` (${retry})` : ''}. Nothing is lost. The goal is not met yet.`
+          : why === 'refill'
+            ? 'The usage allowance is back, so the goal is going again. It is not met yet.'
+            : 'The user set the goal going again. It is not met yet.'
     this.host.changed(chat)
     this.send(
       chat,
       lead,
       `${this.way(chat)}<goal-check round="${goal.round + 1}" of="${goal.maxRounds}">
-The user set the goal going again. It is not met yet.
+${opening}
 Goal: ${goal.text}${goal.doneWhen ? `\nDone when: ${goal.doneWhen}` : ''}
 Look at where things stand (what the user said since, what is already done), carry on, check your work, and end with what is now done and the evidence. Call \`goal_report\` with state "met" when it is, or "blocked" if only the user can unblock it.
 </goal-check>`,
@@ -895,14 +1137,52 @@ ${lines.join(' ')}
   private tick(): void {
     const now = Date.now()
     for (const chat of this.host.chats()) {
+      // A task nobody is working on any more is closed and reported, so nothing waits on it for ever.
+      try {
+        this.host.sweep?.(chat)
+      } catch (e) {
+        console.error('[sweep]', (e as Error).message)
+      }
       const goal = chat.goal
+      const handing = this.handing.get(chat.id)
+      if (handing && (this.host.lead(chat)?.id === handing.to || now - handing.at >= 60_000)) this.handing.delete(chat.id)
+      // A goal that waits for its lead's allowance carries on by itself when the allowance is back.
+      if (goal?.status === 'paused' && this.refill.has(goal.id)) {
+        const lead = this.host.lead(chat)
+        const since = this.limited.get(goal.id) || now
+        if (lead && !this.host.unavailable(lead) && this.free(chat, lead) && now - since > this.wait(2 * MIN)) this.revive(chat, goal, lead, 'Goal going again: the allowance is back', 'refill')
+      }
       if (goal?.status === 'active' && !goal.checking) {
         const lead = this.host.lead(chat)
         // An active goal always has something under way: the lead replying, the team working, a check
         // being made, or one owed. One with none of those has fallen through a crack and would sit
         // there for ever, looking busy: it is paused, never sent back by itself.
-        const still = !!lead && this.free(chat, lead) && !this.host.out(chat, lead)
-        if (!still) this.adrift.delete(goal.id)
+        const idleLead = !!lead && this.free(chat, lead)
+        const hold = lead && idleLead ? this.holding(chat, goal, lead) : null
+        const still = idleLead && !hold
+        const retry = this.retryAt.get(goal.id)
+        const out = this.limited.get(goal.id)
+        this.mark(chat, goal, retry ? 'retry' : hold === 'team' ? 'team' : null)
+        if (lead && idleLead && out !== undefined) {
+          // The lead ran out of allowance and the app was to replace it. Nobody took over in time:
+          // the goal waits for the refill. (If the allowance is back already, the lead carries on.)
+          if (now - out > this.wait(HANDOVER_WAIT_MS)) {
+            this.limited.delete(goal.id)
+            if (this.host.unavailable(lead)) this.pauseForRefill(chat, goal, lead)
+            else {
+              this.wake.add(goal.id)
+              this.wakeWhy.set(goal.id, 'refill')
+            }
+          }
+        } else if (lead && idleLead && retry) {
+          // A reply failed for a passing reason: the lead is sent back to carry on, without using a round.
+          if (now >= retry.at) {
+            this.retryAt.delete(goal.id)
+            this.adrift.delete(goal.id)
+            this.wakeWhy.set(goal.id, 'retry')
+            this.sendResume(chat, goal, lead, retry.why)
+          }
+        } else if (!still) this.adrift.delete(goal.id)
         else if (goal.deadline && now >= goal.deadline) {
           // Time ran out between rounds.
           this.adrift.delete(goal.id)

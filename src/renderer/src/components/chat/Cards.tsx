@@ -14,6 +14,8 @@ import { seedComposer } from './Composer'
 import { describe } from '../ultra/groups'
 import { FanMark, StateDot } from '../ultra/neural/Marks'
 import { Markdown } from '../Markdown'
+import { began, Done, rendered } from '@/lib/perf'
+import { lapseLine } from '../watches/words'
 
 type Of<K extends Item['kind']> = Extract<Item, { kind: K }>
 
@@ -51,6 +53,7 @@ function Clamp({ text, lines = 5, compact, replyTo }: { text: string; lines?: nu
 // ───────────── you ─────────────
 
 export const UserBubble = memo(function UserBubble({ item, chatId, accountId }: { item: Of<'user'>; chatId?: string; accountId?: string }) {
+  rendered('UserBubble')
   const [taking, setTaking] = useState(false)
   // A message still waiting its turn can be taken back, or taken back into the box to change.
   const takeBack = async (edit: boolean): Promise<void> => {
@@ -260,6 +263,8 @@ export const DelegateCard = memo(function DelegateCard({
   chatId: string
   onOpen(accountId: string): void
 }) {
+  began('DelegateCard')
+  rendered('DelegateCard')
   const to = useAccountOf(item.to)
   const task = useStore((s) => s.tasks[chatId]?.find((t) => t.id === item.taskId))
   const agent = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, item.to)])
@@ -308,6 +313,7 @@ export const DelegateCard = memo(function DelegateCard({
           </span>
         )}
       </div>
+      <Done name="DelegateCard" />
     </button>
   )
 })
@@ -539,6 +545,46 @@ export const OutgoingRow = memo(function OutgoingRow({ item, onOpen }: { item: O
 
 // ───────────── asking you ─────────────
 
+/** The time now, refreshed every 30 s while `on`: enough for "Lapses in 38 min", and nothing runs while off. */
+function useMinuteNow(on: boolean): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!on) return
+    setNow(Date.now())
+    const t = setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [on])
+  return now
+}
+
+/** An unattended approval covers one exact call; this shows what it would send, folded away until asked. */
+function ExactCall({ input }: { input: unknown }) {
+  const [open, setOpen] = useState(false)
+  const text = useMemo(() => {
+    if (input === undefined || input === null) return ''
+    if (typeof input === 'object' && !Object.keys(input as object).length) return ''
+    try {
+      return JSON.stringify(input, null, 2)
+    } catch {
+      return ''
+    }
+  }, [input])
+  if (!text) return null
+  return (
+    <div className="mt-2.5">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-[12px] font-medium text-ink-2 hover:text-ink">
+        {open ? 'Hide the exact call' : 'Show the exact call'}
+        <ChevronDown className={cn('size-3.5 shrink-0 text-ink-3 transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <pre className="selectable mt-1.5 max-h-48 animate-fade-in overflow-auto rounded-[9px] bg-surface px-3 py-2 font-mono text-[11.5px] leading-[1.55] whitespace-pre-wrap text-ink shadow-[inset_0_0_0_1px_var(--line)]">
+          {text}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 export const PermissionCard = memo(function PermissionCard({ item }: { item: Of<'permission'> }) {
   const [busy, setBusy] = useState(false)
   const s = describeTool(item.toolName, item.input)
@@ -552,12 +598,29 @@ export const PermissionCard = memo(function PermissionCard({ item }: { item: Of<
     setBusy(true)
     void api.respondPermission(item.requestId, d)
   }
+  // Asked by the guard in a run nobody was watching: the user comes back to it later, so the card
+  // says why it asks, what the run has read, when it lapses and exactly what would be sent.
+  const away = !!item.unattended
+  const now = useMinuteNow(away && item.status === 'pending' && !!item.expiresAt)
+  // The guard's title is already the call in plain words ("Use github: create_issue {…}").
+  const what = hands ? 'control of this computer' : away && item.title ? item.title : `${s.doing}${s.target ? ` ${s.target}` : ''}`
 
   if (item.status !== 'pending') {
-    // Once allowed, the action's own row tells the story. Only a "no" needs a trace.
-    if (item.status === 'allowed' || item.status === 'expired') return null
+    // Once allowed, the action's own row tells the story. Only a "no" needs a trace, and so does an
+    // unattended ask that ended unanswered (lapsed, or the run was stopped): nothing was done.
+    if (item.status === 'allowed' || (item.status === 'expired' && !away)) return null
+    if (item.status === 'expired') {
+      return (
+        <div className="my-1.5 flex items-center gap-2 text-[13px] text-ink-2">
+          <Hourglass className="size-[15px] shrink-0 text-ink-3" strokeWidth={2} />
+          <span className="min-w-0 truncate">
+            The request ended and nothing was done
+            <span className="ml-1.5 text-ink-3">{what}</span>
+          </span>
+        </div>
+      )
+    }
     const always = item.status === 'always'
-    const what = hands ? 'control of this computer' : `${s.doing}${s.target ? ` ${s.target}` : ''}`
     return (
       <div className="my-1.5 flex items-center gap-2 text-[13px] text-ink-2">
         {always ? <Check className="size-[15px] shrink-0 text-ok" strokeWidth={2.25} /> : <X className="size-[15px] shrink-0 text-ink-3" strokeWidth={2.25} />}
@@ -575,7 +638,28 @@ export const PermissionCard = memo(function PermissionCard({ item }: { item: Of<
         {hands ? <MousePointerClick className="mt-px size-[18px] shrink-0 text-warn" strokeWidth={1.9} /> : <ShieldQuestion className="mt-px size-[18px] shrink-0 text-warn" strokeWidth={1.9} />}
         <div className="min-w-0 flex-1">
           <div className="text-[13.5px] leading-snug font-semibold">{item.title}</div>
-          {item.detail && <div className="mt-0.5 text-[12.5px] text-ink-2">{item.detail}</div>}
+          {away && (
+            <div className="mt-0.5 flex items-center gap-1.5 text-[12px] text-ink-3">
+              <Clock className="size-3 shrink-0" strokeWidth={2} />
+              <span>
+                Asked while nobody was watching this run
+                {item.expiresAt ? ` · ${lapseLine(item.expiresAt, now)}` : ''}
+              </span>
+            </div>
+          )}
+          {away && item.risk?.length ? (
+            <ul className="mt-2 space-y-1 text-[12.5px] leading-snug text-ink-2">
+              {item.risk.map((r, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="mt-[0.5em] size-1 shrink-0 rounded-full bg-warn" />
+                  <span className="selectable min-w-0">{r}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            item.detail && <div className="mt-0.5 text-[12.5px] text-ink-2">{item.detail}</div>
+          )}
+          {away && !command && !file && !plan && <ExactCall input={item.input} />}
           {(command || file) && (
             <pre className="selectable mt-2.5 max-h-40 overflow-auto rounded-[9px] bg-surface px-3 py-2 font-mono text-[12px] leading-[1.55] whitespace-pre-wrap text-ink shadow-[inset_0_0_0_1px_var(--line)]">
               {command || file}
@@ -923,6 +1007,7 @@ function PlainNotice({ item, chatId, accountId }: { item: Of<'notice'>; chatId: 
 }
 
 export const ImageCard = memo(function ImageCard({ item }: { item: Of<'image'> }) {
+  rendered('ImageCard')
   if (item.media) {
     return (
       <div className="my-2.5 animate-rise">
@@ -948,7 +1033,7 @@ const PictureCard = memo(function PictureCard({ item }: { item: Of<'image'> }) {
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/55 to-transparent px-3 pt-8 pb-2.5 text-[12px] text-white opacity-0 transition-opacity group-hover/img:opacity-100">
         <span className="min-w-0 flex-1 truncate">{baseName(item.path)}</span>
-        <button onClick={() => void api.showInFolder(item.path)} className="pointer-events-auto flex items-center gap-1.5 rounded-[7px] bg-white/20 px-2 py-1 backdrop-blur-sm hover:bg-white/30">
+        <button onClick={() => void api.showInFolder(item.path)} className="pointer-events-auto flex items-center gap-1.5 rounded-[7px] bg-white/20 px-2 py-1 group-hover/img:backdrop-blur-sm hover:bg-white/30">
           <FolderOpen className="size-3" /> Show in folder
         </button>
       </div>
@@ -1023,6 +1108,7 @@ function CheckButton({ chatId, accountId }: { chatId: string; accountId: string 
 }
 
 export const TurnFooter = memo(function TurnFooter({ item, chatId, accountId }: { item: Of<'turn'>; chatId: string; accountId: string }) {
+  rendered('TurnFooter')
   // Offered under the lead's latest finished reply, when there is anyone to do the checking.
   const canCheck = useStore((s) => {
     if (item.status !== 'done' || item.durationMs < 1500) return false

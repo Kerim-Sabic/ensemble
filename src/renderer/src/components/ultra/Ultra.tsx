@@ -11,6 +11,7 @@ import { IconButton, Menu, MenuItem, MenuLabel, Tip } from '../ui'
 import { useNet } from './AgentNetwork'
 import { NeuralNetwork } from './neural/Neural'
 import { openNetwork } from './neural/NetworkView'
+import { rendered } from '@/lib/perf'
 
 /** Three linked nodes in the Ultra colours: the mark of a chat that runs a whole network. */
 export function UltraGlyph({ size = 14, className }: { size?: number; className?: string }) {
@@ -53,7 +54,7 @@ export function UltraMark({ chatId }: { chatId: string }) {
       }
     >
       <MenuLabel>Ultra is on in this chat</MenuLabel>
-      <div className="px-2.5 pb-1.5 text-[11.5px] leading-snug text-ink-3">Many agents on the strongest models at full effort, cross-checked. Uses allowance very fast.</div>
+      <div className="px-2.5 pb-1.5 text-[11.5px] leading-snug text-ink-3">The strongest models at full effort, cross-checked. Uses allowance very fast.</div>
       <MenuItem
         hint="New messages go back to the usual way of working"
         onSelect={() => {
@@ -97,6 +98,7 @@ export function useStripShown(chatId: string | null | undefined): boolean {
  * (about 120 px in all); another folds it back to the line.
  */
 export function NetworkStrip({ chatId, onOpen, off }: { chatId: string; onOpen?(id: string): void; /** Hidden while the brain view stands in for it. */ off?: boolean }) {
+  rendered('NetworkStrip')
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === chatId)?.ultra)
   const { net, busy, tasks, finished } = useNet(chatId)
   const [open, setOpen] = useState(() => localStorage.getItem(OPEN_KEY) === '1')

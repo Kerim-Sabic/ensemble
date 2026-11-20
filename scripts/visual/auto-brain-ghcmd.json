@@ -1,0 +1,154 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');",
+  "wait": 1500
+ },
+ {
+  "theme": "light",
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 400
+ },
+ {
+  "js": "window.__ensemble.getState().newChat(); return 'new chat'",
+  "wait": 600
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/git\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/git\";",
+  "wait": 700,
+  "shot": "ghcmd-menu-light.png"
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/github\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/github\";",
+  "wait": 400
+ },
+ {
+  "js": "const ta = document.querySelector('textarea'); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'enter';",
+  "wait": 1300,
+  "shot": "ghcmd-open-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chatId ' + s.chatId + ' | chats ' + s.chats.length + ' | dialog ' + !!document.querySelector('[role=dialog]') + ' | toasts ' + s.toasts.map(t => t.text).join(' / ');",
+  "wait": 100
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "await window.__ensemble.getState().send('What is on the board right now?', undefined, undefined, { mode: 'quick' }); return 'in a chat';",
+  "wait": 2500
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/github https://github.com/acme/pricing-site/pull/145\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/github https://github.com/acme/pricing-site/pull/145\";",
+  "wait": 500,
+  "shot": "ghcmd-preview-light.png"
+ },
+ {
+  "js": "const ta = document.querySelector('textarea'); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'enter';",
+  "wait": 1400,
+  "shot": "ghcmd-inchat-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chatId ' + s.chatId + ' | chats ' + s.chats.length + ' | dialog ' + !!document.querySelector('[role=dialog]') + ' | toasts ' + s.toasts.map(t => t.text).join(' / ');",
+  "wait": 100
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/github https://gitlab.com/acme/site/-/issues/3\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/github https://gitlab.com/acme/site/-/issues/3\";",
+  "wait": 300
+ },
+ {
+  "js": "const ta = document.querySelector('textarea'); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'enter';",
+  "wait": 700,
+  "shot": "ghcmd-notgithub-light.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chatId ' + s.chatId + ' | chats ' + s.chats.length + ' | dialog ' + !!document.querySelector('[role=dialog]') + ' | toasts ' + s.toasts.map(t => t.text).join(' / ');",
+  "wait": 100
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"\";",
+  "wait": 200
+ },
+ {
+  "theme": "dark",
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 400
+ },
+ {
+  "js": "window.__ensemble.getState().newChat(); return 'new chat'",
+  "wait": 600
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/git\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/git\";",
+  "wait": 700,
+  "shot": "ghcmd-menu-dark.png"
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/github\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/github\";",
+  "wait": 400
+ },
+ {
+  "js": "const ta = document.querySelector('textarea'); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'enter';",
+  "wait": 1300,
+  "shot": "ghcmd-open-dark.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chatId ' + s.chatId + ' | chats ' + s.chats.length + ' | dialog ' + !!document.querySelector('[role=dialog]') + ' | toasts ' + s.toasts.map(t => t.text).join(' / ');",
+  "wait": 100
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "await window.__ensemble.getState().send('What is on the board right now?', undefined, undefined, { mode: 'quick' }); return 'in a chat';",
+  "wait": 2500
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/github https://github.com/acme/pricing-site/pull/145\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/github https://github.com/acme/pricing-site/pull/145\";",
+  "wait": 500,
+  "shot": "ghcmd-preview-dark.png"
+ },
+ {
+  "js": "const ta = document.querySelector('textarea'); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'enter';",
+  "wait": 1400,
+  "shot": "ghcmd-inchat-dark.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chatId ' + s.chatId + ' | chats ' + s.chats.length + ' | dialog ' + !!document.querySelector('[role=dialog]') + ' | toasts ' + s.toasts.map(t => t.text).join(' / ');",
+  "wait": 100
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"/github https://gitlab.com/acme/site/-/issues/3\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"/github https://gitlab.com/acme/site/-/issues/3\";",
+  "wait": 300
+ },
+ {
+  "js": "const ta = document.querySelector('textarea'); ta.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); return 'enter';",
+  "wait": 700,
+  "shot": "ghcmd-notgithub-dark.png"
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); return 'chatId ' + s.chatId + ' | chats ' + s.chats.length + ' | dialog ' + !!document.querySelector('[role=dialog]') + ' | toasts ' + s.toasts.map(t => t.text).join(' / ');",
+  "wait": 100
+ },
+ {
+  "js": "\nconst ta = document.querySelector('textarea');\nif (!ta) return 'no message box';\nta.focus();\nconst set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;\nset.call(ta, \"\");\nta.dispatchEvent(new Event('input', { bubbles: true }));\nreturn 'typed ' + \"\";",
+  "wait": 200
+ }
+]

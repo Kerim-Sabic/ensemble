@@ -90,7 +90,67 @@ await hub.accounts.refresh()
 log('accounts', hub.accounts.accounts.map((a) => `${a.id}(${a.provider})`).join(', '), 'lead=', hub.lead()?.id)
 
 try {
-  if (scenario === 'team') {
+  if (scenario === 'watch') {
+    // One real watch on a real account, on the cheapest model: a page that says nothing worth telling,
+    // the same page again (no model at all), then a page that changed.
+    const http = await import('node:http')
+    let page = '<html><body><h1>Shop status</h1><p>All systems normal. Orders today: 412.</p></body></html>'
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html' })
+      res.end(page)
+    })
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()))
+    const port = (server.address() as { port: number }).port
+    const w = hub.watches.saveWatch({ name: 'Shop status', prompt: 'Tell me when the checkout or payments are down or broken. Nothing else is worth telling.', trigger: { kind: 'url', url: `http://127.0.0.1:${port}/status` } })
+    const look = async (label: string): Promise<{ outcome?: string; model?: string; note?: string; tokens?: number }> => {
+      const r = (await hub.watches.runNow(w.id)).runs[0] || {}
+      log(label, JSON.stringify(r))
+      return r
+    }
+    const first = await look('look 1 (nothing worth telling)')
+    const second = await look('look 2 (unchanged)')
+    page = '<html><body><h1>Shop status</h1><p>Checkout is down in Europe since 10:02: card payments fail with error 502. Orders today: 412.</p></body></html>'
+    const third = await look('look 3 (the page changed)')
+    const inbox = hub.watches.inbox().filter((i) => i.watchId === w.id)
+    log('inbox', JSON.stringify(inbox.map((i) => ({ kind: i.kind, title: i.title, body: i.body.slice(0, 200) }))))
+    log('unattended runs counted today', JSON.stringify(hub.guard.today()))
+    const pass = first.outcome === 'quiet' && !!first.model && second.outcome === 'quiet' && !second.model && third.outcome === 'found' && !!third.model && inbox.some((i) => i.kind === 'found' && /checkout|payment/i.test(`${i.title} ${i.body}`))
+    log(pass ? 'REAL WATCH CHECK: PASS' : 'REAL WATCH CHECK: FAIL')
+    hub.watches.remove(w.id)
+    server.close()
+  } else if (scenario === 'guard') {
+    // The guard against the real Claude program: a run nobody is watching (a chat a watch started),
+    // led by Claude on the cheapest model. Reading a file in its folder must be allowed by the guard's
+    // hook, and a web request after reading untrusted content must be held for the user. The trace shows both.
+    const lead = hub.accounts.accounts.find((a) => a.id === (process.argv[3] || 'main') && a.provider === 'claude') || hub.accounts.accounts.find((a) => a.provider === 'claude')
+    if (!lead) throw new Error('no Claude account')
+    hub.updateSettings({ leadId: lead.id })
+    hub.updateAccount(lead.id, { model: 'haiku' })
+    fs.writeFileSync(path.join(work, 'notes.txt'), 'Release notes draft: watches, inbox, phone from anywhere.\n')
+    const chat = hub.createChat({ cwd: work, title: 'Guard check' })
+    chat.watchId = 'engine-guard-check'
+    chat.leadId = lead.id
+    hub.guard.begin(chat.id, { untrusted: 'the engine check' })
+    log('unattended:', hub.guard.unattended(chat), 'state:', JSON.stringify(hub.guard.state(chat.id)))
+    const busy = until((ev) => ev.type === 'agent' && ev.state.accountId === lead.id && ev.state.phase !== 'idle' && ev.state.phase !== 'error', 120000)
+    hub.send({
+      chatId: chat.id,
+      to: lead.id,
+      text: 'Do exactly these two steps, nothing else. 1. Use the Read tool on notes.txt in your working folder. 2. Use the WebFetch tool on https://example.com/ and ask it for the page title. Then reply in one sentence: the first line of notes.txt, and whether the fetch worked.',
+    })
+    await busy
+    await until((ev) => ev.type === 'agent' && ev.state.accountId === lead.id && (ev.state.phase === 'idle' || ev.state.phase === 'error'), 240000)
+    await new Promise((r) => setTimeout(r, 2000))
+    const guardLines = (await hub.trace(chat.id)).filter((r) => (r as { t?: string }).t === 'guard') as unknown as { tool?: string; v?: string; c?: string; why?: string }[]
+    for (const g of guardLines) log('trace guard', JSON.stringify({ tool: g.tool, v: g.v, c: g.c, why: g.why?.slice(0, 120) }))
+    for (const a of hub.guard.pending().filter((p) => p.chatId === chat.id)) {
+      log('approval waiting', JSON.stringify({ summary: a.summary, risk: a.risk }))
+      hub.respondPermission(a.requestId, 'deny')
+    }
+    const allowedRead = guardLines.some((g) => g.v === 'allowed' && /^Read$/i.test(g.tool || ''))
+    const heldFetch = guardLines.some((g) => (g.v === 'asked' || g.v === 'denied') && /WebFetch/i.test(g.tool || ''))
+    log(allowedRead && heldFetch ? 'REAL GUARD CHECK: PASS (Read allowed by the hook, WebFetch held)' : `REAL GUARD CHECK: FAIL (read allowed ${allowedRead}, fetch held ${heldFetch})`)
+  } else if (scenario === 'team') {
     // Lead on a cheap model hands one small task to a teammate.
     const leadId = process.argv[3] || 'hello'
     const memberId = process.argv[4] || 'claude-3'
@@ -615,6 +675,7 @@ try {
     hub.updateSettings({ leadId: lead.id, smartTitles: false, recall: false, chatNotes: false })
     const chat = hub.createChat({ cwd: work })
     hub.setUltra(chat.id, true)
+    for (const a of hub.accounts.accounts) log('supply', a.name, JSON.stringify(hub.accounts.supply(a.id)))
     // ENSEMBLE_TEST_ASK replaces the request, for trying one thing (for example a builder starting its own critic).
     const ask =
       process.env.ENSEMBLE_TEST_ASK ||
@@ -649,6 +710,16 @@ try {
           break
         }
       }
+      // ENSEMBLE_TEST_STOP_AT=<seconds>: press Stop that long after the request went out, whatever the lead is doing,
+      // so a Go crazy run can be watched growing (regions, their teams, the levels) without paying for all of it.
+      const stopAt = Number(process.env.ENSEMBLE_TEST_STOP_AT || 0)
+      if (stopAt && Date.now() - t1 > stopAt * 1000) {
+        log('>>> STOP at', stopAt, 's with', busy, 'busy,', open, 'tasks open,', (chat.agents || []).length, 'agents started, deepest level', Math.max(0, ...(chat.agents || []).map((a) => a.spawned?.depth || 0)))
+        await hub.stop(chat.id)
+        await new Promise((r) => setTimeout(r, 10_000))
+        log('>>> 10 s after Stop:', hub.openChat(chat.id).states.filter((x) => x.phase !== 'idle' && x.phase !== 'error').length, 'busy')
+        break
+      }
       if (pressStop) {
         // Work is out with at least two others, whether they are agents started here or teammates.
         if (!firstAgent && hub.tasksOf(chat.id).length >= 2) firstAgent = Date.now()
@@ -676,12 +747,37 @@ try {
     const name = (id: string): string => hub.accounts.get(id)?.name || id
     log('ULTRA took', Math.round((Date.now() - t1) / 1000), 's | lead', lead.name, 'ran on', snap.states.find((s) => s.accountId === lead.id)?.model, '| agents started:', (chat.agents || []).length, '| still here:', (chat.agents || []).filter((a) => !a.spawned?.gone).length)
     for (const a of chat.agents || []) log('  agent', a.name, '| depth', a.spawned?.depth, '| started by', name(a.spawned?.by || ''), '| on', name(a.spawned?.base || ''), '| for:', a.role, a.spawned?.gone ? '| sent home' : '')
-    for (const t of hub.tasksOf(chat.id)) log('  task', t.id, t.status, '|', name(t.to), '|', t.title, '| asked:', t.modelLabel || '-', t.effort || '', '| ran on:', t.ranOn || '?', t.after?.length ? `| after ${t.after.join(',')}` : '', '|', (t.result || '').replace(/\s+/g, ' ').slice(0, 140))
+    for (const i of snap.items[lead.id] || []) if (i.kind === 'notice') log('  notice', JSON.stringify(i.text.slice(0, 220)))
+    for (const t of hub.tasksOf(chat.id)) log('  task', t.id, t.status, '|', name(t.from), '->', name(t.to), hub.accounts.get(t.to)?.spawned ? '' : '(teammate)', '|', t.title, '| asked:', t.modelLabel || '-', t.effort || '', '| ran on:', t.ranOn || '?', t.after?.length ? `| after ${t.after.join(',')}` : '', '|', (t.result || '').replace(/\s+/g, ' ').slice(0, 140))
     const mine = snap.items[lead.id] || []
     log('  lead tools:', mine.flatMap((i) => (i.kind === 'tool' ? [i.name.replace('mcp__team__', '')] : [])).join(', '))
     log('  lead turns:', mine.filter((i) => i.kind === 'turn').map((i) => (i.kind === 'turn' ? `${i.status} ${Math.round(i.durationMs / 1000)}s` : '')).join(' | '))
     const last = [...mine].reverse().find((i) => i.kind === 'assistant')
     log('ANSWER:', JSON.stringify(last && last.kind === 'assistant' ? last.text.slice(0, 900) : ''))
+  } else if (scenario === 'handover') {
+    // The automatic handover on real accounts: lead the chat with an account that is running low
+    // (or out) and watch the app move the lead to a teammate with room.
+    //   ENSEMBLE_TEST_ONLY=chatgpt pnpm engine handover <the low account's id>
+    const low = (process.argv[3] && hub.accounts.get(process.argv[3])) || hub.lead()
+    if (!low) throw new Error('no lead')
+    hub.updateSettings({ leadId: low.id, smartTitles: false, recall: false, chatNotes: false, handover: true })
+    for (const a of hub.accounts.accounts) log('supply', a.name, JSON.stringify(hub.accounts.supply(a.id)))
+    const chat = hub.createChat({ cwd: work })
+    const who = (): string => hub.lead(chat)?.name || '?'
+    log('lead before:', who())
+    hub.send({ chatId: chat.id, to: low.id, text: 'Reply with exactly: FIRST. Use no tools.' })
+    await until((ev) => ev.type === 'item' && ev.chatId === chat.id && ev.item.kind === 'turn', 240000)
+    await new Promise((r) => setTimeout(r, 6000))
+    log('lead after the first reply:', who())
+    const rows = Object.entries(hub.openChat(chat.id).items).flatMap(([id, items]) => items.map((i) => ({ id, i })))
+    for (const { id, i } of rows) if (i.kind === 'notice') log('  notice in', hub.accounts.get(id)?.name, '|', JSON.stringify(i.text.slice(0, 200)), i.handover ? `| handover ${JSON.stringify(i.handover)}` : '')
+    const now = hub.lead(chat)
+    if (now) {
+      hub.send({ chatId: chat.id, to: now.id, text: 'Reply with exactly: SECOND. Use no tools.' })
+      await until((ev) => ev.type === 'item' && ev.chatId === chat.id && ev.accountId === now.id && ev.item.kind === 'turn', 240000)
+      const said = (hub.openChat(chat.id).items[now.id] || []).filter((i) => i.kind === 'assistant').map((i) => (i.kind === 'assistant' ? i.text.trim() : '')).pop()
+      log('HANDOVER | first lead:', low.name, '| lead now:', now.name, '| moved:', now.id !== low.id, '| the new lead answered:', JSON.stringify(said))
+    }
   } else if (scenario === 'live') {
     // Do real models write Live answer blocks on their own, and does the window's reader accept
     // them? Three questions, each in a fresh chat, to the lead on the model named (default: the

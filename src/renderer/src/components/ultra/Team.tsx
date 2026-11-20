@@ -10,10 +10,12 @@ import { accentVars, cn } from '@/lib/util'
 import { Tip } from '../ui'
 import { Orb, OrbStack } from '../Orb'
 import { groupAgents, type AgentGroup } from './groups'
+import { useLazyStore } from '@/lib/lazy'
 
 /** Each member's phase, as one string, so a list redraws when someone starts or stops and not on every word. */
 export function usePhases(chatId: string | null | undefined, team: Account[]): Map<string, AgentPhase> {
-  const sig = useStore((s) => (chatId ? team.map((a) => s.agents[agentKey(chatId, a.id)]?.phase || 'idle').join('|') : ''))
+  // Phases are reported, not typed into: they follow the store as low-priority work (lib/lazy.ts).
+  const sig = useLazyStore((s) => (chatId ? team.map((a) => s.agents[agentKey(chatId, a.id)]?.phase || 'idle').join('|') : ''), `${chatId}|${team.map((a) => a.id).join()}`)
   return useMemo(() => {
     const parts = sig.split('|')
     return new Map(team.map((a, i) => [a.id, (parts[i] || 'idle') as AgentPhase]))
@@ -47,7 +49,7 @@ const itemClass =
 const contentClass = 'no-drag z-[70] max-h-[70vh] min-w-[248px] animate-pop overflow-y-auto rounded-[12px] bg-raised p-1 shadow-pop outline-none'
 
 function MemberItem({ chatId, account, phase, onPick }: { chatId: string; account: Account; phase?: AgentPhase; onPick(id: string): void }) {
-  const activity = useStore((s) => s.agents[agentKey(chatId, account.id)]?.activity)
+  const activity = useLazyStore((s) => s.agents[agentKey(chatId, account.id)]?.activity, `${chatId}|${account.id}`)
   const busy = working(phase)
   return (
     <DropdownMenu.Item onSelect={() => onPick(account.id)} className={itemClass} style={accentVars(account.accent)}>

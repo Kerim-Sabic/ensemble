@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, History } from 'lucide-react'
-import type { Account, Item, ScreenKind } from '@shared/types'
+import { TurnEvidence } from '../evidence/Evidence'
+import { ArrowDown } from 'lucide-react'
+import type { Account, Item } from '@shared/types'
 import { agentKey, leadOf, useStore } from '@/store'
 import { accentVars, cn } from '@/lib/util'
 import { useStreamed } from '@/lib/streams'
@@ -8,120 +9,19 @@ import { mediaPathsIn } from '@shared/tools'
 import { MediaStrip } from '../Media'
 import { Orb } from '../Orb'
 import { Markdown } from '../Markdown'
-import { ActivityGroup, type ActivityItem } from './ToolRows'
+import { ActivityGroup } from './ToolRows'
 import { ScreenCard } from '../screen/ScreenCard'
 import { CopyButton } from './MessageActions'
 import { AutoRow, AskCard, DelegateCard, DelegateGroup, SpawnGroup, ImageCard, NoticeRow, OutgoingRow, PeerCard, PermissionCard, QuestionCard, SignInCard, SpawnCard, TurnFooter, UserBubble, WorkingLine } from './Cards'
-
-type Delegate = Extract<Item, { kind: 'delegate' }>
-type Spawn = Extract<Item, { kind: 'spawn' }>
-type ScreenStep = Extract<Item, { kind: 'screen' }>
-type ScreenBlock = { type: 'screen'; key: string; surface: ScreenKind; items: ScreenStep[]; latest?: boolean }
-
-type Block =
-  | { type: 'label'; key: string }
-  | ScreenBlock
-  | { type: 'activity'; key: string; items: ActivityItem[] }
-  | { type: 'delegates'; key: string; items: Delegate[] }
-  | { type: 'spawns'; key: string; items: Spawn[] }
-  | { type: 'item'; key: string; item: Item }
+import { rendered, timed, useRenderTime } from '@/lib/perf'
+import { sameRows, windowOf } from '@/lib/windowing'
+import { build, guess, keepSame, NO_KIDS, withCounts, type Block } from './blocks'
 
 const EMPTY: Item[] = []
 
-/** A goal check, a loop run, a goal set or resumed: the app speaking for you, so the next reply answers it. */
-const autoTurn = (it: Item): boolean => it.kind === 'auto' && (it.event === 'check' || it.event === 'run' || it.event === 'set' || it.event === 'resumed')
-
-function build(items: Item[]): { blocks: Block[]; children: Map<string, number> } {
-  const blocks: Block[] = []
-  const children = new Map<string, number>()
-  // One window per screen per turn: it appears where the agent first used the screen.
-  let cards: Partial<Record<ScreenKind, ScreenBlock>> = {}
-  let needLabel = true
-  const label = (id: string): void => {
-    if (!needLabel) return
-    blocks.push({ type: 'label', key: `l-${id}` })
-    needLabel = false
-  }
-  for (const it of items) {
-    const last = blocks[blocks.length - 1]
-    switch (it.kind) {
-      case 'user':
-      case 'peer':
-        blocks.push({ type: 'item', key: it.id, item: it })
-        needLabel = true
-        cards = {}
-        break
-      case 'auto':
-        blocks.push({ type: 'item', key: it.id, item: it })
-        if (autoTurn(it)) {
-          needLabel = true
-          cards = {}
-        }
-        break
-      case 'screen': {
-        label(it.id)
-        let card = cards[it.surface]
-        if (!card) {
-          card = { type: 'screen', key: `sc-${it.id}`, surface: it.surface, items: [] }
-          cards[it.surface] = card
-          blocks.push(card)
-        }
-        card.items.push(it)
-        const tail = blocks[blocks.length - 1]
-        if (tail?.type === 'activity') tail.items.push(it)
-        else blocks.push({ type: 'activity', key: it.id, items: [it] })
-        break
-      }
-      case 'tool':
-        if (it.parentId) {
-          children.set(it.parentId, (children.get(it.parentId) || 0) + 1)
-          break
-        }
-      // falls through
-      case 'thinking':
-        if (it.kind === 'thinking' && !it.streaming && !it.text.trim() && (it.durationMs || 0) < 1000) break
-        label(it.id)
-        if (last?.type === 'activity') last.items.push(it)
-        else blocks.push({ type: 'activity', key: it.id, items: [it] })
-        break
-      case 'delegate':
-        label(it.id)
-        if (last?.type === 'delegates') last.items.push(it)
-        else blocks.push({ type: 'delegates', key: it.id, items: [it] })
-        break
-      case 'spawn':
-        label(it.id)
-        if (last?.type === 'spawns') last.items.push(it)
-        else blocks.push({ type: 'spawns', key: it.id, items: [it] })
-        break
-      case 'assistant':
-        if (!it.text.trim() && !it.streaming) break
-        label(it.id)
-        blocks.push({ type: 'item', key: it.id, item: it })
-        break
-      case 'turn':
-        cards = {}
-      // falls through
-      case 'notice':
-        blocks.push({ type: 'item', key: it.id, item: it })
-        break
-      default:
-        label(it.id)
-        blocks.push({ type: 'item', key: it.id, item: it })
-    }
-  }
-  // The newest window onto each screen is the one that keeps following it.
-  const seen = new Set<ScreenKind>()
-  for (let i = blocks.length - 1; i >= 0 && seen.size < 2; i--) {
-    const b = blocks[i]
-    if (b.type !== 'screen' || seen.has(b.surface)) continue
-    seen.add(b.surface)
-    b.latest = true
-  }
-  return { blocks, children }
-}
 
 const AssistantText = memo(function AssistantText({ item, compact, shown, replyTo }: { item: Extract<Item, { kind: 'assistant' }>; compact?: boolean; shown: Set<string>; replyTo?: string }) {
+  rendered('AssistantText')
   // While it is being written the words arrive here directly, without the rest of the chat hearing of it.
   const text = useStreamed(item.id, item.text, item.streaming)
   // Files it mentions are shown with it, once it has finished writing, unless they are already on show.
@@ -145,13 +45,10 @@ const AssistantText = memo(function AssistantText({ item, compact, shown, replyT
   )
 })
 
-// A long chat is thousands of rows. Only the recent part is drawn; the rest is one click away.
-const PAGE = 70
-const MORE = 120
-const MOST = 420
-
-/** Somewhere a reader would expect a stretch of chat to begin. */
-const startsTurn = (b: Block): boolean => b.type === 'label' || (b.type === 'item' && (b.item.kind === 'user' || b.item.kind === 'peer' || autoTurn(b.item)))
+// A long chat is thousands of rows. Only the rows near what can be seen are drawn; empty space of
+// the right height stands in for the rest (lib/windowing.ts), so it scrolls like a short one and
+// every row can still be reached by scrolling.
+const OVERSCAN = 1400
 
 const SenderLabel = memo(function SenderLabel({ account, lead }: { account: Account | undefined; lead: boolean }) {
   return (
@@ -163,7 +60,119 @@ const SenderLabel = memo(function SenderLabel({ account, lead }: { account: Acco
   )
 })
 
-export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: string; accountId: string; compact?: boolean; fadeTop?: boolean }) {
+/** One block of the transcript. Drawn again only when its own content changes. */
+const Row = memo(function Row({
+  b,
+  chatId,
+  accountId,
+  compact,
+  account,
+  isLead,
+  active,
+  shown,
+  onOpen,
+}: {
+  b: Block
+  chatId: string
+  accountId: string
+  compact?: boolean
+  account: Account | undefined
+  isLead: boolean
+  active: boolean
+  shown: Set<string>
+  onOpen(id: string): void
+}) {
+  rendered('Row')
+  if (b.type === 'label') return compact ? null : <SenderLabel account={account} lead={isLead} />
+  if (b.type === 'screen') return <ScreenCard chatId={chatId} accountId={accountId} surface={b.surface} items={b.items} latest={!!b.latest} compact={compact} />
+  if (b.type === 'activity') return <ActivityGroup items={b.items} children={b.kids || NO_KIDS} active={active} chatId={chatId} accountId={accountId} />
+  if (b.type === 'spawns') {
+    // Agents joining one after another read as one line once there are a few of them.
+    if (b.items.length >= 3) return <SpawnGroup items={b.items} onOpen={onOpen} />
+    return (
+      <>
+        {b.items.map((it) => (
+          <SpawnCard key={it.id} item={it} onOpen={onOpen} />
+        ))}
+      </>
+    )
+  }
+  if (b.type === 'delegates') {
+    // A whole batch handed out at once is one card, not a wall of them.
+    if (b.items.length >= 5) return <DelegateGroup items={b.items} chatId={chatId} onOpen={onOpen} />
+    return (
+      <div className={cn('my-3 grid gap-2.5', b.items.length > 1 && !compact ? 'grid-cols-[repeat(auto-fit,minmax(210px,1fr))]' : 'grid-cols-1')}>
+        {b.items.map((d) => (
+          <DelegateCard key={d.id} item={d} chatId={chatId} onOpen={onOpen} />
+        ))}
+      </div>
+    )
+  }
+  const it = b.item
+  switch (it.kind) {
+    case 'user':
+      return <UserBubble item={it} chatId={chatId} accountId={accountId} />
+    case 'peer':
+      return <PeerCard item={it} onOpen={onOpen} />
+    case 'assistant':
+      return <AssistantText item={it} compact={compact} shown={shown} replyTo={accountId} />
+    case 'outgoing':
+      return <OutgoingRow item={it} onOpen={onOpen} />
+    case 'spawn':
+      return <SpawnCard item={it} onOpen={onOpen} />
+    case 'ask':
+      return <AskCard item={it} onOpen={onOpen} />
+    case 'permission':
+      return <PermissionCard item={it} />
+    case 'signin':
+      return <SignInCard item={it} chatId={chatId} accountId={accountId} />
+    case 'question':
+      return <QuestionCard item={it} accountId={accountId} />
+    case 'notice':
+      return <NoticeRow item={it} chatId={chatId} accountId={accountId} />
+    case 'image':
+      return <ImageCard item={it} />
+    case 'auto':
+      return <AutoRow item={it} />
+    case 'turn':
+      return (
+        <>
+          <TurnFooter item={it} chatId={chatId} accountId={accountId} />
+          <TurnEvidence item={it} chatId={chatId} accountId={accountId} />
+        </>
+      )
+    default:
+      return null
+  }
+})
+
+/** Measured heights of blocks, per transcript and width, kept while the window is open. */
+const measured = new Map<string, Map<string, number>>()
+/** Blocks each transcript has drawn before: drawn again (scrolled back into view), they do not play their entrance again. */
+const drawnBefore = new Map<string, Set<string>>()
+
+/**
+ * Scrolls a transcript to one row and flashes it, even when that row is far off screen and not
+ * drawn: `revealItem(chatId, accountId, itemId)`. Open the chat first (store.openChat); if its
+ * rows are still being read the reveal waits for them (up to five seconds). Rows that belong to a
+ * run (tool use, handouts) are found by any of their ids.
+ */
+let pending: { k: string; id: string; at: number } | null = null
+const revealBus = new EventTarget()
+export function revealItem(chatId: string, accountId: string, itemId: string): void {
+  pending = { k: agentKey(chatId, accountId), id: itemId, at: Date.now() }
+  revealBus.dispatchEvent(new Event('reveal'))
+}
+
+// Reachable from the page's console in a measuring run, for scripts/visual/perf-window.json.
+if ((window as { __ensemblePerf?: unknown }).__ensemblePerf) (window as unknown as { __revealItem: typeof revealItem }).__revealItem = revealItem
+
+const idsOf = (b: Block): string[] => (b.type === 'item' ? [b.item.id] : b.type === 'label' ? [] : (b.items as { id: string }[]).map((i) => i.id))
+
+// Drawn again only when its own props or what it listens to change, not whenever the view around it is.
+export const Transcript = memo(function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: string; accountId: string; compact?: boolean; fadeTop?: boolean }) {
+  rendered('Transcript')
+  useRenderTime('Transcript')
   const k = agentKey(chatId, accountId)
   const items = useStore((s) => s.items[k] ?? EMPTY)
   const state = useStore((s) => s.agents[k])
@@ -172,9 +181,18 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
   const setFocus = useStore((s) => s.setFocus)
   const setView = useStore((s) => s.setView)
 
-  const { blocks, children } = useMemo(() => build(items), [items])
+  // Blocks that did not change are the very same objects as last time, so their rows are not drawn again.
+  const last = useRef<{ k: string; blocks: Block[] }>({ k: '', blocks: [] })
+  const blocks = useMemo(() => timed('T.build', () => {
+    const { blocks: next, children } = build(items)
+    withCounts(next, children)
+    const kept = keepSame(last.current.k === k ? last.current.blocks : [], next)
+    last.current = { k, blocks: kept }
+    return kept
+  }), [items, k])
   // Media that already has a row of its own, so a reply mentioning it does not show it twice.
-  const onShow = useMemo(() => new Set(items.filter((i) => i.kind === 'image').map((i) => (i as { path: string }).path.toLowerCase())), [items])
+  const mediaSig = useMemo(() => timed('T.media', () => items.filter((i) => i.kind === 'image').map((i) => (i as { path: string }).path.toLowerCase()).join('\n')), [items])
+  const onShow = useMemo(() => new Set(mediaSig ? mediaSig.split('\n') : []), [mediaSig])
   const busy = !!state && state.phase !== 'idle' && state.phase !== 'error'
 
   const ref = useRef<HTMLDivElement>(null)
@@ -182,26 +200,45 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
   const stick = useRef(true)
   const [away, setAway] = useState(false)
 
-  // Which block the drawn part starts at. Left to itself it is the last screenful or so and
-  // moves along as the chat grows. Once you scroll up it is pinned to a block, so what you
-  // are reading does not slide away while the team keeps working.
-  const [pin, setPin] = useState<string | null>(null)
-  const page = compact ? 40 : PAGE
-  const start = useMemo(() => {
-    let at = Math.max(0, blocks.length - page)
-    if (pin) {
-      const i = blocks.findIndex((b) => b.key === pin)
-      if (i >= 0) at = Math.max(Math.min(i, at), blocks.length - MOST)
+  // ---- windowing: which blocks are drawn ----
+  const width = useRef(0)
+  const viewH = useRef(typeof window === 'undefined' ? 800 : window.innerHeight)
+  const top = useRef(0)
+  const heights = useCallback((): Map<string, number> => {
+    const id = `${k}|${compact ? 'c' : 'f'}|${width.current}`
+    let m = measured.get(id)
+    if (!m) measured.set(id, (m = new Map()))
+    return m
+  }, [k, compact])
+  const spanFor = useCallback(
+    (list: Block[]) => {
+      const m = heights()
+      const h = list.map((b) => m.get(b.key) ?? guess(b, compact))
+      return windowOf(h, top.current, viewH.current, OVERSCAN, stick.current)
+    },
+    [heights, compact],
+  )
+  const [tick, setTick] = useState(0)
+  const span = useMemo(() => timed('T.span', () => spanFor(blocks)), [spanFor, blocks, tick])
+  const spanRef = useRef(span)
+  spanRef.current = span
+  const blocksRef = useRef(blocks)
+  blocksRef.current = blocks
+
+  /** Writes down how tall each drawn block turned out to be: the distance to the next one. */
+  const measure = useCallback(() => timed('T.measure', () => {
+    const box = inner.current
+    if (!box) return
+    const rows = box.querySelectorAll<HTMLElement>(':scope > [data-b]')
+    if (!rows.length) return
+    const m = heights()
+    const end = box.querySelector<HTMLElement>(':scope > [data-end]')
+    for (let i = 0; i < rows.length; i++) {
+      const next = i + 1 < rows.length ? rows[i + 1].offsetTop : end ? end.offsetTop : rows[i].offsetTop + rows[i].offsetHeight
+      const key = rows[i].dataset.b as string
+      m.set(key, Math.max(0, next - rows[i].offsetTop))
     }
-    // Begin at the start of a turn when one is near, so the first thing drawn has its name on it.
-    for (let i = at; i > 0 && at - i < 25; i--) {
-      if (startsTurn(blocks[i])) return i
-    }
-    return at
-  }, [blocks, pin, page])
-  const shown = useMemo(() => (start > 0 ? blocks.slice(start) : blocks), [blocks, start])
-  const startKey = shown[0]?.key
-  const grew = useRef<{ height: number; top: number } | null>(null)
+  }), [heights])
 
   const toBottom = useCallback((smooth?: boolean) => {
     const el = ref.current
@@ -213,58 +250,60 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
   useLayoutEffect(() => {
     stick.current = true
     setAway(false)
-    setPin(null)
     toBottom()
   }, [k, toBottom])
 
   useLayoutEffect(() => {
+    measure()
     if (stick.current) toBottom()
-  }, [items, state?.activity, busy, toBottom])
-
-  // Earlier messages were just added above: stay on the line that was being read.
-  useLayoutEffect(() => {
-    const el = ref.current
-    const g = grew.current
-    grew.current = null
-    if (el && g) el.scrollTop = g.top + (el.scrollHeight - g.height)
-  }, [startKey])
+  }, [items, state?.activity, busy, span, measure, toBottom])
 
   // Text is written into rows without this component hearing of it, and pictures load late:
-  // whenever what is drawn gets taller while you are at the end, stay at the end.
+  // whenever what is drawn gets taller while you are at the end, stay at the end. The width
+  // changing means every height written down so far is out of date.
   useEffect(() => {
     const el = inner.current
-    if (!el) return
+    const view = ref.current
+    if (!el || !view) return
     const ro = new ResizeObserver(() => {
+      const w = Math.round(el.clientWidth)
+      const resized = w !== width.current || view.clientHeight !== viewH.current
+      width.current = w
+      viewH.current = view.clientHeight
+      measure()
       if (stick.current) toBottom()
+      if (resized) setTick((t) => t + 1)
     })
     ro.observe(el)
     // The window onto the chat gets shorter too, when something opens above or below it.
-    if (ref.current) ro.observe(ref.current)
+    ro.observe(view)
     return () => ro.disconnect()
-  }, [toBottom])
+  }, [toBottom, measure])
 
-  const startRef = useRef(startKey)
-  startRef.current = startKey
   useEffect(() => {
     const el = ref.current
     if (!el) return
+    let frame = 0
     const onScroll = (): void => {
       const near = el.scrollHeight - el.scrollTop - el.clientHeight < 90
-      if (near !== stick.current) setPin(near ? null : startRef.current || null)
       stick.current = near
       setAway(!near)
+      top.current = el.scrollTop
+      viewH.current = el.clientHeight
+      // Draw other blocks only when what should be drawn changes, at most once a frame.
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        const next = spanFor(blocksRef.current)
+        if (!sameRows(next, spanRef.current)) setTick((t) => t + 1)
+      })
     }
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
-  }, [])
-
-  const earlier = useCallback(() => {
-    const el = ref.current
-    if (el) grew.current = { height: el.scrollHeight, top: el.scrollTop }
-    stick.current = false
-    setAway(true)
-    setPin(blocks[Math.max(0, start - MORE)]?.key || null)
-  }, [blocks, start])
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      cancelAnimationFrame(frame)
+    }
+  }, [spanFor])
 
   const open = useCallback(
     (id: string) => {
@@ -274,85 +313,81 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
     [setFocus, setView],
   )
 
+  // Asked to show one row (revealItem): if it is drawn, scroll to it and flash it; if not, scroll to
+  // where it should be, which draws it, and look again once it is there and measured.
+  const reveal = useCallback(() => {
+    const p = pending
+    const el = ref.current
+    if (!p || p.k !== k || !el) return
+    if (Date.now() - p.at > 5000) {
+      pending = null
+      return
+    }
+    const list = blocksRef.current
+    const at = list.findIndex((b) => idsOf(b).includes(p.id))
+    if (at < 0) return // its rows have not come in yet
+    const row = [...el.querySelectorAll<HTMLElement>('[data-items]')].find((r) => (r.dataset.items || '').split(' ').includes(p.id))
+    if (row) {
+      pending = null
+      stick.current = false
+      row.scrollIntoView({ block: 'center' })
+      row.classList.remove('row-flash')
+      void row.offsetWidth
+      row.classList.add('row-flash')
+      setTimeout(() => row.classList.remove('row-flash'), 1800)
+      return
+    }
+    const m = heights()
+    let y = inner.current ? parseFloat(getComputedStyle(inner.current).paddingTop) || 0 : 0
+    for (let j = 0; j < at; j++) y += m.get(list[j].key) ?? guess(list[j], compact)
+    stick.current = false
+    top.current = Math.max(0, y - el.clientHeight / 3)
+    el.scrollTop = top.current
+  }, [k, heights, compact])
+  useEffect(() => {
+    revealBus.addEventListener('reveal', reveal)
+    return () => revealBus.removeEventListener('reveal', reveal)
+  }, [reveal])
+  // After each drawing: a row that was being looked for may now be there.
+  useLayoutEffect(() => {
+    if (pending) reveal()
+  }, [blocks, span, reveal])
+
+  const lastIndex = blocks.length - 1
+  const drawn = blocks.slice(span.start, span.end)
+  let before = drawnBefore.get(k)
+  if (!before) drawnBefore.set(k, (before = new Set()))
+  // Written down after drawing, so a block counts as seen from its second drawing on.
+  const seen = before
+  useEffect(() => {
+    for (const b of drawn) seen.add(b.key)
+  })
   return (
-    <div className="relative min-h-0 flex-1">
-      <div
-        ref={ref}
-        className="h-full overflow-y-auto [scrollbar-gutter:stable_both-edges]"
-        // Under the network strip, lines that scroll up fade out before its edge instead of being cut by it.
-        style={{ ...accentVars(account?.accent), ...(fadeTop ? { maskImage: 'linear-gradient(to bottom, transparent 0, #000 20px)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 20px)' } : null) }}
-      >
+    <div
+      className="relative min-h-0 flex-1"
+      // Under the network strip, lines that scroll up fade out before its edge instead of being cut by it.
+      // The fade sits on this box, not on the scrolling one, so scrolling never has to redraw it.
+      style={fadeTop ? { maskImage: 'linear-gradient(to bottom, transparent 0, #000 20px)', WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 20px)' } : undefined}
+    >
+      <div ref={ref} className="h-full overflow-y-auto [scrollbar-gutter:stable_both-edges]" style={accentVars(account?.accent)}>
         <div ref={inner} data-view-scope className={cn('mx-auto w-full', compact ? 'px-4 pt-3 pb-4' : 'max-w-[780px] px-7 pt-6 pb-10')}>
-          {start > 0 && (
-            <button
-              onClick={earlier}
-              className="mx-auto mb-4 flex h-7 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-[12px] font-medium text-ink-2 transition-colors hover:bg-hover hover:text-ink"
-            >
-              <History className="size-3.5" strokeWidth={1.9} />
-              Show earlier messages
-            </button>
-          )}
-          {shown.map((b, n) => {
-            const i = start + n
-            if (b.type === 'label') return compact ? null : <SenderLabel key={b.key} account={account} lead={isLead} />
-            if (b.type === 'screen') return <ScreenCard key={b.key} chatId={chatId} accountId={accountId} surface={b.surface} items={b.items} latest={!!b.latest} compact={compact} />
-            if (b.type === 'activity') return <ActivityGroup key={b.key} items={b.items} children={children} active={busy && i === blocks.length - 1} chatId={chatId} accountId={accountId} />
-            if (b.type === 'spawns') {
-              // Agents joining one after another read as one line once there are a few of them.
-              if (b.items.length >= 3) return <SpawnGroup key={b.key} items={b.items} onOpen={open} />
-              return b.items.map((it) => <SpawnCard key={it.id} item={it} onOpen={open} />)
-            }
-            if (b.type === 'delegates') {
-              // A whole batch handed out at once is one card, not a wall of them.
-              if (b.items.length >= 5) return <DelegateGroup key={b.key} items={b.items} chatId={chatId} onOpen={open} />
-              return (
-                <div key={b.key} className={cn('my-3 grid gap-2.5', b.items.length > 1 && !compact ? 'grid-cols-[repeat(auto-fit,minmax(210px,1fr))]' : 'grid-cols-1')}>
-                  {b.items.map((d) => (
-                    <DelegateCard key={d.id} item={d} chatId={chatId} onOpen={open} />
-                  ))}
-                </div>
-              )
-            }
-            const it = b.item
-            switch (it.kind) {
-              case 'user':
-                return <UserBubble key={b.key} item={it} chatId={chatId} accountId={accountId} />
-              case 'peer':
-                return <PeerCard key={b.key} item={it} onOpen={open} />
-              case 'assistant':
-                return <AssistantText key={b.key} item={it} compact={compact} shown={onShow} replyTo={accountId} />
-              case 'outgoing':
-                return <OutgoingRow key={b.key} item={it} onOpen={open} />
-              case 'spawn':
-                return <SpawnCard key={b.key} item={it} onOpen={open} />
-              case 'ask':
-                return <AskCard key={b.key} item={it} onOpen={open} />
-              case 'permission':
-                return <PermissionCard key={b.key} item={it} />
-              case 'signin':
-                return <SignInCard key={b.key} item={it} chatId={chatId} accountId={accountId} />
-              case 'question':
-                return <QuestionCard key={b.key} item={it} accountId={accountId} />
-              case 'notice':
-                return <NoticeRow key={b.key} item={it} chatId={chatId} accountId={accountId} />
-              case 'image':
-                return <ImageCard key={b.key} item={it} />
-              case 'auto':
-                return <AutoRow key={b.key} item={it} />
-              case 'turn':
-                return <TurnFooter key={b.key} item={it} chatId={chatId} accountId={accountId} />
-              default:
-                return null
-            }
-          })}
+          {span.top > 0 && <div aria-hidden style={{ height: span.top }} />}
+          {drawn.map((b, n) => (
+            <div key={b.key} data-b={b.key} data-item={b.key} data-items={idsOf(b).join(' ')} data-seen={seen.has(b.key) ? '' : undefined}>
+              <Row b={b} chatId={chatId} accountId={accountId} compact={compact} account={account} isLead={isLead} active={busy && span.start + n === lastIndex} shown={onShow} onOpen={open} />
+            </div>
+          ))}
+          <div data-end aria-hidden style={span.bottom > 0 ? { height: span.bottom } : undefined} />
           {busy && state && state.phase !== 'responding' && state.phase !== 'waiting' && <WorkingLine account={account} state={state} />}
         </div>
       </div>
       {away && (
         <button
           onClick={() => {
+            const el = ref.current
             stick.current = true
-            toBottom(true)
+            // Smooth over a short way; a long way is a jump, so thousands of rows are not drawn on the way.
+            toBottom(!!el && el.scrollHeight - el.scrollTop < 4 * el.clientHeight)
           }}
           aria-label="Jump to latest"
           className="absolute bottom-3 left-1/2 flex size-8 -translate-x-1/2 animate-pop items-center justify-center rounded-full bg-raised text-ink-2 shadow-float hover:text-ink"
@@ -362,4 +397,4 @@ export function Transcript({ chatId, accountId, compact, fadeTop }: { chatId: st
       )}
     </div>
   )
-}
+})

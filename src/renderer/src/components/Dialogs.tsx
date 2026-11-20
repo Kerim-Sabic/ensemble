@@ -8,11 +8,13 @@ import { isBusy, leadOf, useStore } from '@/store'
 import { api, baseName, cn, PERMISSIONS, relative, tildify } from '@/lib/util'
 import { Button, Kbd, Modal, Row, Segmented, Tip, Toggle, inputClass } from './ui'
 import { Orb } from './Orb'
+import { VOICE_LANGUAGES } from './chat/composer/voice-commands'
 import { Logo } from './Sidebar'
 import { Picker } from './Accounts'
 import { seedComposer } from './chat/Composer'
 import { plain } from './auto/plain'
 import { UltraGlyph } from './ultra/Ultra'
+import { RemoteSection } from './remote/RemoteSection'
 
 /** Which folder of notes the team treats as its library. */
 /** Restarts into the demo team. The restart stops whatever the team is doing, so it asks first while anyone works. */
@@ -172,6 +174,7 @@ export function SettingsDialog() {
   const accounts = useStore((s) => s.accounts)
   const lead = useStore((s) => leadOf(s))
   const env = useStore((s) => s.env)
+  const capacity = useStore((s) => s.capacity)
   const setModal = useStore((s) => s.setModal)
   const run = useStore((s) => s.run)
   const set = (patch: Partial<Settings>): void => void run(api.updateSettings(patch))
@@ -217,6 +220,25 @@ export function SettingsDialog() {
           <Row label="Notifications" hint="Tell me when work finishes or needs my OK while I am in another window.">
             <Toggle checked={settings.notifications} onChange={(notifications) => set({ notifications })} label="Notifications" />
           </Row>
+          <Row
+            label="Voice"
+            hint={`Speak into the message box with the microphone or Alt+V. Speech becomes text on this computer. Spoken commands, said on their own: "send it", "stop", "new chat", "ultra on", "ultra off", "make this a goal".`}
+          >
+            <select
+              aria-label="Language you speak"
+              value={settings.voice?.language || 'english'}
+              onChange={(e) => set({ voice: { language: e.target.value, commands: settings.voice?.commands !== false } })}
+              className={cn(inputClass, 'h-7 w-auto py-0 pr-7 text-[12.5px]')}
+            >
+              {VOICE_LANGUAGES.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+            <span className="ml-1 text-[12px] text-ink-3">Commands</span>
+            <Toggle checked={settings.voice?.commands !== false} onChange={(commands) => set({ voice: { language: settings.voice?.language || 'english', commands } })} label="Spoken commands" />
+          </Row>
         </div>
 
         <div className="mt-5 mb-1 text-[12px] font-medium text-ink-3">Team</div>
@@ -227,6 +249,7 @@ export function SettingsDialog() {
           <Row label="New chats start with" hint="How much the team may do without checking with you.">
             <Picker<PermissionLevel> value={settings.defaultPermission} width={300} options={PERMISSIONS.map((p) => ({ value: p.value, label: p.label, hint: p.hint }))} onChange={(defaultPermission) => set({ defaultPermission })} />
           </Row>
+          <div>
           <Row label="Extra agents per chat" hint="The lead can start more agents inside a chat, and those can start sub-agents for parts of their work. They share the accounts' allowance.">
             <Picker<string>
               value={String(settings.maxAgents)}
@@ -242,6 +265,9 @@ export function SettingsDialog() {
               onChange={(v) => set({ maxAgents: Number(v) })}
             />
           </Row>
+          {/* What this computer can carry now, as the engine measured it. Nothing until it has. */}
+          {capacity?.text && <p className="-mt-1.5 pb-3 text-[12px] leading-snug text-ink-3">{capacity.text}</p>}
+          </div>
           <Row label="Agents one agent may start" hint="Keeps any single agent below the lead from fanning out too far. How many levels deep a team may go depends on the way of working: two as a rule, more in Ultra and Go crazy.">
             <Picker<string>
               value={String(settings.maxPerAgent)}
@@ -356,6 +382,8 @@ export function SettingsDialog() {
             <Toggle checked={!!vault && settings.vaultNotes === 'auto'} onChange={(on) => vault && set({ vaultNotes: on ? 'auto' : 'ask' })} label="Write down what it learns" />
           </Row>
         </div>
+
+        <RemoteSection />
 
         <div className="mt-5 mb-1 text-[12px] font-medium text-ink-3">On this computer</div>
         <div className="divide-y divide-line">

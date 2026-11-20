@@ -14,22 +14,36 @@ files:
   # Claude accounts run on the Claude Code already installed on this computer,
   # so the copy bundled with the SDK (several hundred MB) is left out.
   - "!node_modules/@anthropic-ai/claude-agent-sdk-*/**"
-  # Other platforms' ChatGPT runtimes, and the voice add-on we never use.
-  - "!node_modules/@openai/codex-darwin-*/**"
+  # ChatGPT runtimes for other systems (each platform below keeps only its own), and the voice add-on we never use.
   - "!node_modules/@openai/codex-linux-*/**"
-  - "!node_modules/@openai/codex-win32-arm64/**"
   - "!node_modules/@openai/codex-*/vendor/*/codex-resources/voice/**"
+  # Voice: Vite copies ONNX's WebAssembly runtime (about 27 MB) into the window's assets, but it is never
+  # loaded from there: transformers.js fetches the runtime on first use of voice and keeps it cached (Canvas, 4.0).
+  - "!out/renderer/assets/ort-wasm-*.wasm"
   - "!**/*.map"
-# The small program that moves the mouse and takes pictures of the screen.
+# The page a paired phone opens (Phone and remote), on every system. electron-builder adds this list
+# to each platform's own extraResources below; remote.ts looks for it in resources/remote.
 extraResources:
-  - from: resources/hands.exe
-    to: hands.exe
+  - from: resources/remote
+    to: remote
 asar: true
-# Programs cannot be started from inside the archive.
-asarUnpack:
-  - node_modules/@openai/codex-win32-x64/**
+npmRebuild: false
+
+# Windows: unchanged from before macOS support. The installer is signed only when the release
+# workflow finds signing secrets (Azure Trusted Signing or a certificate); it passes the signing
+# settings on the command line, so a build without them is unsigned, as it always was.
 win:
   icon: build/icon.ico
+  files:
+    - "!node_modules/@openai/codex-darwin-*/**"
+    - "!node_modules/@openai/codex-win32-arm64/**"
+  # The small program that moves the mouse and takes pictures of the screen (Windows only).
+  extraResources:
+    - from: resources/hands.exe
+      to: hands.exe
+  # Programs cannot be started from inside the archive.
+  asarUnpack:
+    - node_modules/@openai/codex-win32-x64/**
   target:
     - target: nsis
       arch: [x64]
@@ -40,7 +54,28 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Ensemble
   artifactName: Ensemble-Setup-${version}.${ext}
-npmRebuild: false
+
+# macOS (new, lightly tested): a .dmg to install and a .zip for the update feed, one per processor
+# (the release workflow builds arm64 on Apple silicon and x64 on Intel). Ad-hoc signed ("-"), which
+# Apple silicon needs to start the app at all; Gatekeeper still asks people to allow it once.
+# With an Apple Developer ID: set identity to that name (or CSC_LINK), hardenedRuntime: true with
+# entitlements, and the APPLE_API_KEY variables so electron-builder notarizes it.
+mac:
+  icon: build/icon.png
+  category: public.app-category.developer-tools
+  identity: "-"
+  hardenedRuntime: false
+  files:
+    - "!node_modules/@openai/codex-win32-*/**"
+  asarUnpack:
+    - node_modules/@openai/codex-darwin-*/**
+  target:
+    - target: dmg
+    - target: zip
+  artifactName: Ensemble-${version}-${arch}-mac.${ext}
+dmg:
+  artifactName: Ensemble-${version}-${arch}.${ext}
+
 # Installed copies update themselves from the project's GitHub releases.
 publish:
   provider: github

@@ -1,0 +1,88 @@
+[
+{
+"size": [
+1280,
+800
+],
+"theme": "light",
+"wait": 1800
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__clicks = 0;\nwindow.__screens = [];\nwindow.__root = () => document.querySelector('.fixed.inset-0.z-40') || document;\nwindow.__btn = (re) => [...window.__root().querySelectorAll('button')].find(b => re.test(b.textContent.trim()) && !b.disabled);\nwindow.__click = (re) => { const b = window.__btn(re); if (b) { window.__clicks++; b.click(); } return !!b; };\nwindow.__h1 = () => window.__root().querySelector('h1')?.textContent || '';\nwindow.__t0 = performance.now();\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "window.__screens.push(window.__h1()); return 'screen 1: ' + window.__h1() + ' | continue enabled ' + !!window.__btn(/^Continue/);",
+"wait": 200,
+"shot": "auto-surfaces-first-1-connect-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-first-1-connect-dark.png"
+},
+{
+"theme": "light",
+"js": "const ok = window.__click(/^Continue/); await window.__sleep(1500); window.__screens.push(window.__h1()); return 'screen 2: ' + window.__h1() + ' | tasks: ' + [...document.querySelectorAll('button .text-\\\\[14px\\\\]')].map(x => x.textContent).join(' / ') + ' | vault ' + (window.__S().settings.vaultPath ? 'set' : 'none');",
+"wait": 300,
+"shot": "auto-surfaces-first-2-task-home-light.png"
+},
+{
+"js": "window.__S().setDraftCwd(\"C:\\\\Users\\\\kerim\\\\ensemble\"); await window.__sleep(1200); return 'code folder tasks: ' + [...document.querySelectorAll('button')].map(b => b.querySelector('.font-semibold')?.textContent).filter(Boolean).join(' / ');",
+"wait": 200,
+"shot": "auto-surfaces-first-3-task-code-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-first-3-task-code-dark.png"
+},
+{
+"theme": "light",
+"js": "window.__tStart = performance.now(); const ok = window.__click(/^Explain this project/); await window.__sleep(400); const t0 = Date.now(); while (Date.now() - t0 < 120000) { const s = window.__S(); const k = s.chatId && (s.chatId + ':' + (s.chats.find(c => c.id === s.chatId)?.leadId || s.settings.leadId)); const st = k && s.agents[k]; const items = (k && s.items[k]) || []; if (items.some(i => i.kind === 'turn') && (!st || st.phase === 'idle')) break; await window.__sleep(300); } const sc = document.querySelector('[data-view-scope]')?.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; return 'started ' + ok + ' | clicks after sign-in: ' + window.__clicks + ' | screens before the task: ' + window.__screens.length + ' (' + window.__screens.join(' > ') + ') | first answer finished after ' + Math.round((performance.now() - window.__tStart) / 1000) + ' s (demo) | onboarded ' + window.__S().settings.onboarded;",
+"wait": 400,
+"shot": "auto-surfaces-first-4-answer-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-first-4-answer-dark.png"
+},
+{
+"theme": "light",
+"js": "window.__S().newChat(); await window.__sleep(700); const b = document.querySelector('[aria-label^=\"Way of working\"]'); b && b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); await window.__sleep(500); return 'menu ' + [...document.querySelectorAll('[role=menuitem]')].map(i => i.textContent.trim().slice(0, 18)).join(' | ');",
+"wait": 200,
+"shot": "auto-surfaces-modes-menu-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-modes-menu-dark.png"
+},
+{
+"theme": "light",
+"js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await window.__sleep(300); const b = document.querySelector('[aria-label^=\"Way of working\"]'); b && b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); await window.__sleep(500); const it = [...document.querySelectorAll('[role=menuitem]')].find(i => i.textContent.trim().startsWith('Quick')); it && it.click(); await window.__sleep(500); return 'picked Quick ' + !!it + ' | pill: ' + document.querySelector('[aria-label^=\"Way of working\"]')?.getAttribute('aria-label');",
+"wait": 300,
+"shot": "auto-surfaces-modes-pill-quick.png"
+},
+{
+"js": "const b = document.querySelector('[aria-label^=\"Way of working\"]'); b && b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); await window.__sleep(500); const it = [...document.querySelectorAll('[role=menuitem]')].find(i => i.textContent.trim().startsWith('Verified')); it && it.click(); await window.__sleep(500); return 'picked Verified ' + !!it + ' | pill: ' + document.querySelector('[aria-label^=\"Way of working\"]')?.getAttribute('aria-label');",
+"wait": 300,
+"shot": "auto-surfaces-modes-pill-verified.png"
+},
+{
+"js": "const b = document.querySelector('[aria-label^=\"Way of working\"]'); b && b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'mouse' })); await window.__sleep(500); const it = [...document.querySelectorAll('[role=menuitem]')].find(i => i.textContent.trim().startsWith('Team')); it && it.click(); await window.__sleep(500); return 'picked Team ' + !!it + ' | pill: ' + document.querySelector('[aria-label^=\"Way of working\"]')?.getAttribute('aria-label');",
+"wait": 300,
+"shot": "auto-surfaces-modes-pill-team.png"
+},
+{
+"js": "const ta = document.querySelector('.composer textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, '/'); ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus(); await window.__sleep(500); return 'slash list: ' + [...document.querySelectorAll('[data-i]')].slice(0, 5).map(x => x.textContent.trim().slice(0, 30)).join(' | ');",
+"wait": 200,
+"shot": "auto-surfaces-modes-slash-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-modes-slash-dark.png"
+}
+]

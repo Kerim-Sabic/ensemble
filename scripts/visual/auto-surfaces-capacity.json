@@ -1,0 +1,29 @@
+[
+{
+"size": [
+1280,
+820
+],
+"theme": "light",
+"wait": 1800
+},
+{
+"js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'clicked: ' + out.join(' > ');\n",
+"wait": 800
+},
+{
+"js": "\nwindow.__ensemble.setState({ capacity: { more: 14, mb: 560, core: 0.05, coreMeasured: true, measured: true, text: 'This computer can carry about 14 more agents now (about 560 MB and 5% of a core each, measured).' } });\nwindow.__ensemble.getState().setModal({ kind: 'settings' });\nawait new Promise(r => setTimeout(r, 700));\nconst p = [...document.querySelectorAll('[role=dialog] p')].find(x => /can carry about/.test(x.textContent));\np && p.scrollIntoView({ block: 'center' });\nawait new Promise(r => setTimeout(r, 300));\nreturn 'line shown: ' + !!p;\n",
+"wait": 300,
+"shot": "auto-surfaces-capacity-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-capacity-dark.png"
+},
+{
+"theme": "light",
+"js": "\nwindow.__ensemble.getState().setModal(null); window.__ensemble.setState({ capacity: null }); await new Promise(r => setTimeout(r, 300));\nwindow.__ensemble.getState().setModal({ kind: 'settings' }); await new Promise(r => setTimeout(r, 700));\nreturn 'without capacity, line shown: ' + !![...document.querySelectorAll('[role=dialog] p')].find(x => /can carry about/.test(x.textContent));\n",
+"wait": 200
+}
+]

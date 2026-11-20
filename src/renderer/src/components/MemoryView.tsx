@@ -1,18 +1,21 @@
 import { useState } from 'react'
-import { BookOpen, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { MemoryNote } from '@shared/types'
 import { useStore } from '@/store'
-import { api, cn, relative } from '@/lib/util'
-import { Button, IconButton, Toggle, inputClass } from './ui'
-import { Orb } from './Orb'
+import { api, cn } from '@/lib/util'
+import { Button, Toggle, inputClass } from './ui'
+import { LearnedFeed } from './memory/Learned'
+
 
 function Editor({ note, onDone }: { note?: MemoryNote; onDone(): void }) {
   const run = useStore((s) => s.run)
   const [title, setTitle] = useState(note?.title || '')
   const [body, setBody] = useState(note?.body || '')
+  const [everywhere, setEverywhere] = useState(true)
+  const cwd = useStore((s) => s.chats.find((c) => c.id === s.chatId)?.cwd || null)
   const save = async (): Promise<void> => {
     if (!body.trim()) return
-    await run(api.saveMemory({ id: note?.id, title: title.trim() || body.trim().split('\n')[0].slice(0, 60), body }))
+    await run(api.saveMemory({ id: note?.id, title: title.trim() || body.trim().split('\n')[0].slice(0, 60), body, kind: 'preference', scope: everywhere ? null : cwd }))
     onDone()
   }
   return (
@@ -28,7 +31,14 @@ function Editor({ note, onDone }: { note?: MemoryNote; onDone(): void }) {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void save()
         }}
       />
-      <div className="mt-3 flex justify-end gap-2">
+      <div className="mt-3 flex items-center gap-2">
+        {cwd && (
+          <label className="flex items-center gap-2 text-[12.5px] text-ink-2">
+            <Toggle checked={everywhere} onChange={setEverywhere} label="For every project" />
+            {everywhere ? 'For every project' : 'Only for this chat’s folder'}
+          </label>
+        )}
+        <div className="flex-1" />
         <Button variant="ghost" size="sm" onClick={onDone}>
           Cancel
         </Button>
@@ -40,46 +50,12 @@ function Editor({ note, onDone }: { note?: MemoryNote; onDone(): void }) {
   )
 }
 
-function Note({ note }: { note: MemoryNote }) {
-  const author = useStore((s) => s.members[note.author])
-  const run = useStore((s) => s.run)
-  const [editing, setEditing] = useState(false)
-  if (editing) return <Editor note={note} onDone={() => setEditing(false)} />
-  return (
-    <div className="group/note rounded-[14px] bg-surface px-4 py-3.5 shadow-card">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-semibold">{note.title}</div>
-          <p className="selectable mt-1 text-[13px] leading-relaxed whitespace-pre-wrap text-ink-2">{note.body}</p>
-        </div>
-        <div className="-mt-1 -mr-1.5 flex opacity-0 transition-opacity group-hover/note:opacity-100">
-          <IconButton label="Edit" onClick={() => setEditing(true)}>
-            <Pencil className="size-3.5" />
-          </IconButton>
-          <IconButton label="Forget this" onClick={() => void run(api.deleteMemory(note.id))}>
-            <Trash2 className="size-3.5" />
-          </IconButton>
-        </div>
-      </div>
-      <div className="mt-2.5 flex items-center gap-1.5 text-[11.5px] text-ink-3">
-        {author ? (
-          <>
-            <Orb account={author} size={12} /> Saved by {author.name}
-          </>
-        ) : (
-          'Added by you'
-        )}
-        <span>·</span>
-        {relative(note.updatedAt)}
-      </div>
-    </div>
-  )
-}
-
-/** What the team carries from one chat to the next. */
+/** What I learned: what the team keeps between chats, each note with where it came from. */
 export function MemoryView() {
   const notes = useStore((s) => s.memory)
   const enabled = useStore((s) => s.settings.memoryEnabled)
+  const review = useStore((s) => s.settings.memoryReview !== false)
+  const perDay = useStore((s) => s.settings.memoryReviewsPerDay ?? 12)
   const run = useStore((s) => s.run)
   const [adding, setAdding] = useState(false)
 
@@ -88,9 +64,9 @@ export function MemoryView() {
       <div className="mx-auto max-w-[680px] px-7 py-8">
         <div className="flex items-start gap-4">
           <div className="min-w-0 flex-1">
-            <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Team notebook</h1>
-            <p className="mt-1.5 max-w-[480px] text-[13.5px] leading-relaxed text-ink-2">
-              Short facts the whole team starts every chat with. Agents add notes as they learn how you like to work, and you can add, edit or remove anything here.
+            <h1 className="text-[22px] font-semibold tracking-[-0.02em]">What I learned</h1>
+            <p className="mt-1.5 max-w-[500px] text-[13.5px] leading-relaxed text-ink-2">
+              What the team keeps from one chat to the next, each with where it came from. Only what you said or confirmed, or what a check proved, is used in every chat. Undo any change, or forget a note for good.
             </p>
           </div>
           <Button variant="primary" onClick={() => setAdding(true)} disabled={adding}>
@@ -98,26 +74,28 @@ export function MemoryView() {
           </Button>
         </div>
 
-        <div className="mt-5 flex items-center gap-4 rounded-[14px] bg-surface px-4 py-3 shadow-card">
-          <div className="min-w-0 flex-1">
-            <div className="text-[13px] font-medium">Use the notebook</div>
-            <div className="mt-0.5 text-[12px] text-ink-3">When off, agents neither read nor save notes. Your notes are kept.</div>
+        <div className="mt-5 divide-y divide-line rounded-[14px] bg-surface shadow-card">
+          <div className="flex items-center gap-4 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium">Use memory</div>
+              <div className="mt-0.5 text-[12px] text-ink-3">When off, agents neither read nor save notes. Your notes are kept.</div>
+            </div>
+            <Toggle checked={enabled} onChange={(v) => void run(api.updateSettings({ memoryEnabled: v }))} label="Use memory" />
           </div>
-          <Toggle checked={enabled} onChange={(v) => void run(api.updateSettings({ memoryEnabled: v }))} label="Use the notebook" />
+          <div className={cn('flex items-center gap-4 px-4 py-3', !enabled && 'opacity-55')}>
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-medium">Look back at chats</div>
+              <div className="mt-0.5 text-[12px] text-ink-3">
+                When a chat has gone quiet, the fastest model reads what is new and keeps what will still matter, each with the words it rests on. Up to {perDay} a day, on an account with allowance to spare.
+              </div>
+            </div>
+            <Toggle checked={review} onChange={(v) => void run(api.updateSettings({ memoryReview: v }))} label="Look back at chats" />
+          </div>
         </div>
 
         <div className={cn('mt-5 space-y-2.5 transition-opacity', !enabled && 'opacity-55')}>
           {adding && <Editor onDone={() => setAdding(false)} />}
-          {notes.map((n) => (
-            <Note key={n.id} note={n} />
-          ))}
-          {!notes.length && !adding && (
-            <div className="flex flex-col items-center rounded-[14px] border border-dashed border-line-2 px-8 py-12 text-center">
-              <BookOpen className="size-6 text-ink-4" strokeWidth={1.5} />
-              <div className="mt-3 text-[13.5px] font-medium">Nothing remembered yet</div>
-              <p className="mt-1 max-w-[320px] text-[12.5px] leading-relaxed text-ink-3">Tell the lead something like "remember that I prefer TypeScript", or add a note yourself.</p>
-            </div>
-          )}
+          <LearnedFeed notes={notes} />
         </div>
       </div>
     </div>

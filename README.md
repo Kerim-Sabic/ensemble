@@ -6,9 +6,11 @@
 
 ### One message becomes a team of AI agents, and you watch it work.
 
-A free, open-source Windows app that turns the Claude and ChatGPT accounts you already have into one team: a lead that plans, agents that start agents of their own, and a live network of all of it.
+A free, open-source app for Windows (and, new, macOS) that turns the Claude and ChatGPT accounts you already have into one team: a lead that plans, agents that start agents of their own, and a live network of all of it.
 
 ### [⬇ Download for Windows](https://github.com/Kerim-Sabic/ensemble/releases/latest)
+
+[macOS (new, lightly tested)](#on-a-mac-new-lightly-tested)
 
 Free · open source · no Ensemble account
 
@@ -29,7 +31,7 @@ Free · open source · no Ensemble account
 
 ---
 
-**Contents:** [What it does](#what-it-does) · [How it works](#how-it-works) · [Get started](#get-started) · [Ways to work](#ways-to-work) · [Brain view](#the-brain-view) · [Live answers](#live-answers) · [Claude, ChatGPT or both](#claude-chatgpt-or-both) · [Cost](#what-it-costs) · [When an account runs out](#when-an-account-runs-out) · [Your data](#where-your-data-goes) · [Limits](#honest-limits) · [FAQ](#faq) · [Roadmap](#roadmap) · [Contributing](#contributing)
+**Contents:** [What it does](#what-it-does) · [How it works](#how-it-works) · [Get started](#get-started) · [Ways to work](#ways-to-work) · [Brain view](#the-brain-view) · [Live answers](#live-answers) · [Claude, ChatGPT or both](#claude-chatgpt-or-both) · [Watches and Inbox](#watches-and-the-inbox) · [Phone](#your-phone-from-anywhere) · [What I learned](#what-i-learned) · [Cost](#what-it-costs) · [When an account runs out](#when-an-account-runs-out) · [Your data](#where-your-data-goes) · [Limits](#honest-limits) · [FAQ](#faq) · [Roadmap](#roadmap) · [Contributing](#contributing)
 
 ## What it does
 
@@ -78,6 +80,16 @@ Ensemble never talks to a model itself and never reads a sign-in token. Every ag
 
 **Needs:** Windows 10 or 11 (64-bit) and a Claude Pro or Max plan, a ChatGPT plan, or both. [Git for Windows](https://git-scm.com/downloads/win) helps Claude run commands. Ensemble updates itself.
 
+### On a Mac (new, lightly tested)
+
+Ensemble runs on macOS too, on Apple silicon and Intel. It has been built and checked by the team, not yet used for long on real Macs, so please [say what breaks](https://github.com/Kerim-Sabic/ensemble/issues).
+
+1. From the [latest release](https://github.com/Kerim-Sabic/ensemble/releases/latest), download `Ensemble-<version>-arm64.dmg` for Apple silicon (M1 and later) or `Ensemble-<version>-x64.dmg` for an Intel Mac. Open it and drag Ensemble into Applications.
+2. The app is not signed with an Apple Developer ID yet, so the first time you open it macOS says it cannot check it. Open **System Settings → Privacy & Security**, find the line about Ensemble and choose **Open Anyway**. You only do this once.
+3. Sign in and ask, as above. The shortcut is <kbd>Option</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> and Ultra is <kbd>Option</kbd>+<kbd>U</kbd>.
+
+What is different on a Mac: **computer control is Windows only** (the browser for every agent works), and **the Mac app does not update itself yet**: download new versions from the releases page. Both change once the Mac build is signed.
+
 ## Ways to work
 
 <table>
@@ -103,9 +115,9 @@ Ensemble never talks to a model itself and never reads a sign-in token. Every ag
 
 ### Ultra, Go crazy and deep teams
 
-<img src="docs/media/network-forming.webp" alt="One /gocrazy request: the network of agents forms, works and settles, sped up" width="100%" />
+<img src="docs/media/ensemble-loop.webp" alt="One /gocrazy message: the network of agents forms, four versions are built and judged, and the winning page runs inside the answer. A 14-second loop, sped up" width="100%" />
 
-<sub>One <code>/gocrazy</code> request with the demo team, about 35 seconds, sped up.</sub>
+<sub>One <code>/gocrazy</code> request with the demo team, a 14-second loop, sped up. The same loop as video: <code>docs/media/ensemble-loop.mp4</code>.</sub>
 
 - **Ultra** (Alt+U, or `/ultra on`) is for when the result matters more than the allowance. The lead writes a rubric first. Scouts on the fastest models research on the web, each on one angle. The strongest models each build their own complete version, without seeing the others. Judges who did none of the work score every version, the best one takes the best ideas of the rest, and it is refined and checked by running it or looking at it. Up to 20 extra agents. A thank-you or a small follow-up is still answered directly.
 - **Go crazy** (`/gocrazy`, in Ultra only) is Ultra at full scale, organised like a brain. The lead starts regions for research, building, judging and memory, and each region has a lead of its own with a team under it. More builders, a round where the versions critique each other, and two rounds of judging. There is no fixed number of agents. Before each new agent, Ensemble checks how much this computer can carry (free memory and processor cores) and which accounts still have allowance. A goal set in Go crazy keeps Go crazy for every round.
@@ -182,21 +194,93 @@ You don't have to watch your limits. Ensemble keeps an eye on every account's se
 
 Turn it off in Settings (*Hand over when an account runs out*) and you are offered the switch instead.
 
+## Watches and the Inbox
+
+Ensemble can keep an eye on things for you while you do something else: a schedule ("every weekday at 8"), failed CI runs, new issues or pull requests, a web page, a folder. Make one by asking in plain words, from the Inbox, or with `/watch`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/inbox-dark.png" />
+  <img src="docs/screenshots/inbox.png" alt="The Inbox: one approval that needs you, two things the watches found, and a watch that could not look because its sign-in expired" width="100%" />
+</picture>
+
+<sub>The demo team, with made-up projects and issues.</sub>
+
+- **Silent unless something changed.** A look compares what it sees with the last time, without a model. Only a change is read, once, by the cheapest model, and most looks end in nothing and say nothing.
+- **One place for what needs you.** The Inbox shows what waits for you first (an approval, a blocked goal), then what the watches found. Each item says where it came from.
+- **Limits, so it never eats the allowance you need.** By default at most 60 looks a day, 30 per account, none on an account with less than 30% left, and a watch may start a team chat at most three times a day. You can change them from the Watches list.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/watches-dark.png" />
+  <img src="docs/screenshots/watches.png" alt="The list of watches: failed checks, new issues, a competitor's pricing page, and a paused morning summary, each with when it looks next and how many looks used a model" width="100%" />
+</picture>
+
+### Work nobody is watching
+
+A run started by a watch is held to rules the app enforces itself, not rules written in a prompt. The details are in [docs/SECURITY.md](docs/SECURITY.md); in short:
+
+- It may read and change files inside its own folder.
+- It reaches the web only on sites you approve, and each approval lasts for that run.
+- Anything else that goes out or cannot be undone (a push, a post, a message, a delete outside the folder) waits for your approval. The approval covers exactly that one action and lapses after 12 hours.
+- It cannot control your computer, and it gets no shell commands where there is no sandbox for them.
+- Every decision goes into a record that shows if it was altered afterwards.
+
+## Your phone, from anywhere
+
+Turn on **Phone and remote** in Settings and scan the code with your phone's camera. From any phone browser you can follow chats live, message or steer the lead, stop the team, and approve or deny. It is off until you turn it on.
+
+- **On the same Wi-Fi,** or **from anywhere over a private network such as Tailscale.**
+- **From anywhere through a relay on your own Cloudflare account** (free plan). Everything between your phone and your computer is encrypted end to end and the relay cannot read or change it. It does serve the phone's page, which is why it must be your own and why there is no shared one. Steps: [relay/README.md](relay/README.md).
+- **The phone's Inbox:** what needs you first, then what watches found, with approve and deny, Stop for any chat, and notifications that say only that something needs you, never what a chat is about.
+
+A paired phone cannot touch accounts, settings, permission levels or computer control. **Honest status:** the phone page has not been tried on a real iPhone yet, only in a desktop browser at phone size, and the Cloudflare version of the relay has only been run through a stand-in on a computer, not yet deployed.
+
+## What I learned
+
+Everything the team keeps between chats says where it came from, so you can check it and take it back.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/what-i-learned-dark.png" />
+  <img src="docs/screenshots/what-i-learned.png" alt="What I learned: notes the team keeps, each with the words they rest on, where they came from, and Open chat and Forget; one waiting for a yes" width="100%" />
+</picture>
+
+- **A source for every note:** your own words, a check that passed, or an agent's guess, which waits for your yes before it is used.
+- **Undo and Forget.** Undo any change; Forget removes a note everywhere.
+- **A small memory for each chat.** Each chat starts with at most 300 words chosen for it. Everything else, including the real messages of earlier chats, is searched when needed.
+- **A look back after a chat goes quiet.** The fastest model keeps only what a quote in the chat backs, up to 12 times a day, with a switch in Settings.
+
+## Faster, lighter, and goals that finish
+
+- **Long chats stay smooth.** Only what is on screen is drawn, and typing and scrolling no longer stall while a big team works. Agents that are idle close their programs after four minutes and reopen on their next turn.
+- **A goal is checked when the whole team's work is in,** and waiting for the team no longer uses up rounds. A task nobody is working on is closed and reported after two minutes, and changing the lead no longer pauses a goal.
+
 ## Where your data goes
 
 - **Ensemble itself has no server and collects nothing.** There is no Ensemble account and no analytics.
-- **It runs on your computer with your own sign-ins.** Your chats, memory and settings are stored there, in `%APPDATA%\Ensemble`, and your notes in the vault you choose. Connector keys are encrypted with your Windows account.
+- **It runs on your computer with your own sign-ins.** Your chats, memory and settings are stored there, in `%APPDATA%\Ensemble`, and your notes in the vault you choose. Connector keys are encrypted with your Windows account (on a Mac, with the Keychain). On a Mac the folder is `~/Library/Application Support/Ensemble`.
 - **The models run at Anthropic and OpenAI.** Your messages, and the files and pages your agents read, are sent to them as they are when you use their own apps, under your plan's terms.
+- **Watches, the Inbox and what the team learned** are stored on your computer too. A look at a web page, GitHub or a folder fetches only what you asked it to watch.
+- **The phone relay,** if you set one up, runs on your own Cloudflare account and sees only encrypted traffic and when devices connect ([relay/README.md](relay/README.md)).
 - **Updates** come from this repository's releases.
+
+### Check a download
+
+Releases that list a `SHA256SUMS.txt` among their files can be checked before you run them:
+
+- **Checksum.** Compare the file's SHA-256 with its line in `SHA256SUMS.txt`. Windows (PowerShell): `Get-FileHash .\Ensemble-Setup-<version>.exe`. macOS: `shasum -a 256 Ensemble-<version>-arm64.dmg`.
+- **Where it was built.** Each file carries a build-provenance attestation from GitHub that says which workflow run, in this repository, made it. With the [GitHub CLI](https://cli.github.com): `gh attestation verify Ensemble-Setup-<version>.exe --repo Kerim-Sabic/ensemble`.
+- **What is inside.** `ensemble-<version>.spdx.json` lists every package the release was built from.
+
+How releases are signed, and what an installed copy checks before it updates: [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Honest limits
 
-- **Windows only, today.** Windows 10 or 11, 64-bit.
+- **Windows first.** Windows 10 or 11, 64-bit. macOS is new and lightly tested; on a Mac there is no computer control and no self-update yet.
 - **Plans have terms.** Ensemble uses each provider's own agent with your own sign-in, but how many accounts you may run, and how, is between you and each provider.
 - **Ultra uses allowance fast.** It is built to spend more for a better result. Leave it off for everyday work.
 - **Go crazy uses your computer too.** Every agent is a process on your computer, and Go crazy starts as many as your free memory, processor and allowance allow. Close heavy programs before a big run.
+- **Watches use allowance.** Looks are cheap and capped, and an unattended run keeps to the rules above, but a watch that hands work to the team uses the same plans as anything else.
 - **Agents act in your folders.** You choose per chat how much they may do: ask first, edit freely, auto or full access.
-- **The installer isn't signed yet,** so Windows warns about an unknown publisher.
+- **The installers aren't signed yet,** so Windows warns about an unknown publisher and macOS asks you to allow the app once. The release workflow is ready to sign them ([docs/RELEASING.md](docs/RELEASING.md)).
 
 ## FAQ
 
@@ -240,7 +324,7 @@ It runs in a sandboxed frame with scripts only, under a content policy that allo
 
 Ideas, not promises. Tell us what you want most in [Issues](https://github.com/Kerim-Sabic/ensemble/issues).
 
-- A signed installer, so Windows stops warning.
+- Signed installers for Windows and macOS, so neither warns, and self-update on the Mac.
 - Live answers that keep their state after a restart.
 - Labels for each stage (scouts, builders, judges) in the ordinary network view, as the brain view already has for its regions.
 

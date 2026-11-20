@@ -1,30 +1,27 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, BookOpen, Check, CircleAlert, Download, ExternalLink, FolderOpen, Plus, Sparkles } from 'lucide-react'
-import type { Account, AccountCandidate, Provider, SetupStatus, VaultInfo } from '@shared/types'
+import { ArrowLeft, ArrowRight, Check, CircleAlert, Download, ExternalLink, FolderGit2, FolderOpen, Plus, Sparkles, X } from 'lucide-react'
+import type { Account, AccountCandidate, Provider, SetupStatus } from '@shared/types'
+import { firstTasks, projectKind, startFolder, unsafeFolder, type FirstFolders, type FirstTask, type FolderProbe } from '@shared/firstrun'
 import { leadOf, useStore } from '@/store'
 import { api, cn, tildify } from '@/lib/util'
-import { Button, Spinner } from './ui'
-import { Orb, OrbStack } from './Orb'
+import { Button, IconButton, Spinner } from './ui'
+import { Orb } from './Orb'
 import { Logo } from './Sidebar'
 import { SignInPanel } from './Accounts'
 
 /**
- * First run, in three screens: connect an AI account (installing Claude Code if it is missing),
- * choose where the team keeps its memory, then a first request to try.
+ * First run, in two screens: connect an AI account (installing Claude Code if it is missing), then
+ * one real task to start. The memory vault no longer asks: one is made quietly (or the one already
+ * chosen is kept), and Settings changes it.
  */
 
-type Step = 'connect' | 'memory' | 'ready'
+type Step = 'connect' | 'task'
 
 const PROVIDERS: Record<Provider, { name: string; blurb: string; accent: 'clay' | 'green' }> = {
   claude: { name: 'Claude', blurb: 'Plans, builds and checks the work. Uses your Claude Pro or Max plan.', accent: 'clay' },
   chatgpt: { name: 'ChatGPT', blurb: 'Plans, builds and checks the work too, and draws images. Uses your ChatGPT plan.', accent: 'green' },
 }
 
-const IDEAS = [
-  'Research the three best project management tools for a team of five and compare them in a table',
-  'Plan a two-week launch for a new mobile app: what happens each day, and who on the team does it',
-  'Explain how you and your teammates work together, and what kinds of things I should ask you to do',
-]
 
 const keyOf = (c: AccountCandidate): string => `${c.provider}:${c.configDir || ''}`
 
@@ -35,22 +32,21 @@ export function Onboarding() {
     void api.setupStatus().then(setStatus, () => setStatus({ claude: true, chatgpt: true, obsidian: true, gitBash: true }))
   }, [step])
 
-  const index = step === 'connect' ? 0 : step === 'memory' ? 1 : 2
+  const index = step === 'connect' ? 0 : 1
   return (
     <div className="fixed inset-0 z-40 flex justify-center overflow-y-auto bg-window">
       <div className="drag absolute inset-x-0 top-0 h-11" />
       <div className="w-[560px] max-w-[92vw] animate-rise py-12">
         <div className="mb-8 flex items-center justify-center gap-3">
           <Logo size={26} />
-          <div className="flex items-center gap-1.5" aria-label={`Step ${index + 1} of 3`}>
-            {[0, 1, 2].map((i) => (
+          <div className="flex items-center gap-1.5" aria-label={`Step ${index + 1} of 2`}>
+            {[0, 1].map((i) => (
               <span key={i} className={cn('h-1.5 rounded-full transition-all duration-300', i === index ? 'w-6 bg-ink' : i < index ? 'w-1.5 bg-ink-3' : 'w-1.5 bg-line-2')} />
             ))}
           </div>
         </div>
-        {step === 'connect' && <ConnectStep status={status} onStatus={setStatus} onNext={() => setStep('memory')} />}
-        {step === 'memory' && <MemoryStep status={status} onBack={() => setStep('connect')} onNext={() => setStep('ready')} />}
-        {step === 'ready' && <ReadyStep status={status} onBack={() => setStep('memory')} />}
+        {step === 'connect' && <ConnectStep status={status} onStatus={setStatus} onNext={() => setStep('task')} />}
+        {step === 'task' && <TaskStep status={status} onBack={() => setStep('connect')} />}
       </div>
     </div>
   )
@@ -89,9 +85,12 @@ function ConnectStep({ status, onStatus, onNext }: { status: SetupStatus | null;
   const chosen = (found || []).filter((c) => c.signedIn && picked[keyOf(c)])
   const count = ready.length + chosen.length
 
+  const vaultPath = useStore((s) => s.settings.vaultPath)
   const next = async (): Promise<void> => {
     setBusy(true)
     for (const c of chosen) await run(api.addAccount({ name: c.suggestedName, provider: c.provider, configDir: c.configDir }))
+    // The memory no longer asks: keep the one already chosen, or make one quietly. Settings changes it.
+    if (!vaultPath) void run(api.createVault())
     setBusy(false)
     onNext()
   }
@@ -316,186 +315,214 @@ function InstallProgress() {
   )
 }
 
-// ───────────── 2. memory ─────────────
+// ───────────── 2. the first task ─────────────
 
-type Choice = { kind: 'vault'; path: string } | { kind: 'new' } | { kind: 'pick' } | { kind: 'skip' }
+const andList = (n: string[]): string => (n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} and ${n[n.length - 1]}`)
 
-function MemoryStep({ status, onBack, onNext }: { status: SetupStatus | null; onBack(): void; onNext(): void }) {
-  const run = useStore((s) => s.run)
-  const home = useStore((s) => s.env.home)
-  const current = useStore((s) => s.settings.vaultPath)
-  const [vaults, setVaults] = useState<VaultInfo[] | null>(null)
-  const [choice, setChoice] = useState<Choice | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    void api.vaultList().then(
-      (list) => {
-        setVaults(list)
-        const pre = list.find((v) => current && v.path.toLowerCase() === current.toLowerCase()) || list[0]
-        setChoice(pre ? { kind: 'vault', path: pre.path } : { kind: 'new' })
-      },
-      () => {
-        setVaults([])
-        setChoice({ kind: 'new' })
-      },
-    )
-    // Only on arrival: the preselection should not jump while the person is choosing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const next = async (): Promise<void> => {
-    if (!choice) return
-    setBusy(true)
-    if (choice.kind === 'vault') await run(api.updateSettings({ vaultPath: choice.path }))
-    else if (choice.kind === 'new') await run(api.createVault())
-    else if (choice.kind === 'skip') await run(api.updateSettings({ vaultPath: null }))
-    else {
-      const picked = await api.pickFolder()
-      if (!picked) return setBusy(false)
-      await run(api.updateSettings({ vaultPath: picked }))
-    }
-    setBusy(false)
-    onNext()
-  }
-
-  const same = (c: Choice): boolean => !!choice && choice.kind === c.kind && (c.kind !== 'vault' || (choice.kind === 'vault' && choice.path === c.path))
-  const option = (c: Choice, icon: ReactNode, title: string, hint: string, tag?: string) => (
-    <button
-      key={c.kind === 'vault' ? c.path : c.kind}
-      role="radio"
-      aria-checked={same(c)}
-      onClick={() => setChoice(c)}
-      className={cn(
-        'flex w-full items-center gap-3.5 rounded-[14px] px-4 py-3 text-left transition-all duration-150',
-        same(c) ? 'bg-surface shadow-[inset_0_0_0_1.5px_var(--ink)]' : 'shadow-[inset_0_0_0_1px_var(--line)] hover:bg-surface-2',
-      )}
-    >
-      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-[10px]', same(c) ? 'bg-ink text-inverse' : 'bg-surface-2 text-ink-2')}>{icon}</span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2 text-[13.5px] font-medium">
-          {title}
-          {tag && <span className="rounded-full bg-ok-soft px-2 py-px text-[10.5px] font-medium text-ok">{tag}</span>}
-        </span>
-        <span className="block truncate text-[12px] text-ink-3">{hint}</span>
-      </span>
-      <span className={cn('flex size-[18px] shrink-0 items-center justify-center rounded-full border', same(c) ? 'border-ink bg-ink text-inverse' : 'border-ink-4')}>{same(c) && <Check className="size-3" strokeWidth={3} />}</span>
-    </button>
-  )
-
-  return (
-    <>
-      <Heading title="Give your team a memory">
-        Ensemble keeps what your team learns in an Obsidian vault, a folder of plain notes you can read and edit. Every chat starts from what earlier chats found out.
-      </Heading>
-      <div className="mt-8 space-y-2">
-        {vaults === null ? (
-          <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-ink-3">
-            <Spinner /> Looking for Obsidian vaults…
-          </div>
-        ) : (
-          <>
-            {vaults.map((v, i) => option({ kind: 'vault', path: v.path }, <BookOpen className="size-4" />, `Use ${v.name}`, tildify(v.path, home), i === 0 ? 'Found in Obsidian' : undefined))}
-            {option({ kind: 'new' }, <Sparkles className="size-4" />, 'Make a new vault for me', 'A ready-to-use folder in Documents, with a short guide inside', vaults.length ? undefined : 'Recommended')}
-            {option({ kind: 'pick' }, <FolderOpen className="size-4" />, 'Use another folder', 'Any folder of Markdown notes works')}
-            {option({ kind: 'skip' }, <ArrowRight className="size-4" />, 'Skip for now', 'You can add a vault any time in Settings')}
-          </>
-        )}
-      </div>
-      {status && !status.obsidian && (
-        <p className="mt-4 text-center text-[12px] leading-relaxed text-ink-3">
-          You don't need Obsidian for this to work. To browse the notes yourself,{' '}
-          <button onClick={() => void api.openExternal('https://obsidian.md/download')} className="inline-flex items-center gap-1 font-medium text-link hover:underline">
-            get Obsidian (free) <ExternalLink className="size-3" />
-          </button>
-        </p>
-      )}
-      <div className="mt-7 flex items-center justify-center gap-2">
-        <Button variant="ghost" size="lg" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back
-        </Button>
-        <Button variant="primary" size="lg" className="w-[200px]" disabled={busy || !choice} onClick={() => void next()}>
-          {busy ? <Spinner className="text-inverse" /> : null}
-          Continue <ArrowRight className="size-4" />
-        </Button>
-      </div>
-    </>
-  )
+/** "Ensemble in Documents": a folder said by its name and where it is, without the whole path. */
+const placeOf = (p: string): string => {
+  const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/)
+  return parts.length > 1 ? `${parts[parts.length - 1]} in ${parts[parts.length - 2]}` : p
 }
 
-// ───────────── 3. ready ─────────────
-
-function ReadyStep({ status, onBack }: { status: SetupStatus | null; onBack(): void }) {
+/**
+ * Straight to one real task. First, where the team works: a project folder chosen here (one click
+ * opens the picker, or a recent project), or else a new folder of the app's own, made when the task
+ * starts. Never the home folder, a personal folder itself or a drive root. The three tasks offered
+ * fit that folder: about the project when it is code, ones that need no files when it is empty.
+ */
+function TaskStep({ status, onBack }: { status: SetupStatus | null; onBack(): void }) {
   const run = useStore((s) => s.run)
   const accounts = useStore((s) => s.accounts)
   const vault = useStore((s) => s.vault)
   const send = useStore((s) => s.send)
   const newChat = useStore((s) => s.newChat)
+  const draftCwd = useStore((s) => s.draftCwd)
+  const home = useStore((s) => s.env.home)
+  const demo = useStore((s) => s.env.demo)
+  const setDraftCwd = useStore((s) => s.setDraftCwd)
   const lead = useStore((s) => leadOf(s))
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [probe, setProbe] = useState<FolderProbe | null>(null)
+  const [folders, setFolders] = useState<FirstFolders | null>(null)
+  const [refused, setRefused] = useState<string | null>(null)
   const team = useMemo(() => accounts.filter((a) => a.enabled), [accounts])
+  // The folder set before this screen counts only when it is safe; the home folder never does.
+  const chosen = startFolder(draftCwd, home)
 
-  const finish = async (idea?: string): Promise<void> => {
-    setBusy(true)
+  useEffect(() => {
+    void api.firstFolders().then(setFolders, () => setFolders({ app: '', recent: [] }))
+  }, [])
+  useEffect(() => {
+    let live = true
+    setProbe(null)
+    if (!chosen) return
+    void api.folderProbe(chosen).then(
+      (p) => live && setProbe(p),
+      () => live && setProbe({ path: chosen, name: '', entries: [], git: false, missing: true }),
+    )
+    return () => {
+      live = false
+    }
+  }, [chosen])
+  const ready = !chosen || !!probe
+  const tasks = useMemo(() => firstTasks(chosen ? probe : null), [chosen, probe])
+  const kind = chosen && probe && !probe.missing ? projectKind(probe) : null
+
+  /** A folder the person chose: kept when it is safe, refused in one sentence when it is not. */
+  const choose = (p: string | null): void => {
+    if (!p) return
+    const why = unsafeFolder(p, home)
+    setRefused(why)
+    if (!why) setDraftCwd(p)
+  }
+  // Screenshot runs cannot drive the system's folder picker; the demo lets them hand in a path.
+  useEffect(() => {
+    if (!demo) return
+    const w = window as unknown as { __pickFolder?: (p: string) => void }
+    w.__pickFolder = choose
+    return () => {
+      delete w.__pickFolder
+    }
+  })
+  const pick = async (): Promise<void> => choose(await api.pickFolder())
+
+  const start = async (task?: FirstTask): Promise<void> => {
+    setBusy(task?.title || 'empty')
+    // No folder chosen: the app's own, made now.
+    const dir = chosen || (await api.makeFirstFolder().catch(() => null))
+    if (!dir || unsafeFolder(dir, home)) {
+      setBusy(null)
+      setRefused('The new folder could not be made, so choose a project folder.')
+      return
+    }
     await run(api.updateSettings({ onboarded: true, leadId: lead?.id || null }))
     newChat()
-    if (idea) await send(idea)
+    setDraftCwd(dir)
+    if (task) await send(task.text)
   }
-
   const helpers = team.filter((a) => a.id !== lead?.id)
+  const recent = (folders?.recent || []).filter((r) => r.path !== chosen).slice(0, 4)
+  const appPlace = folders?.app ? placeOf(folders.app) : 'Ensemble in Documents'
+
   return (
     <>
-      <Heading title="Your team is ready">Ask for something real and watch the team split it up. Open the Team tab to see who is doing what.</Heading>
-      <div className="mt-8 rounded-[18px] bg-surface p-4 shadow-float">
-        <div className="flex items-center gap-3.5">
-          <OrbStack accounts={team} size={30} max={5} />
-          <div className="min-w-0 flex-1 text-[13px] leading-snug">
-            <div>
-              <span className="font-medium">{lead?.name || 'Your account'}</span> leads
-              {helpers.length ? (
-                <>
-                  , with <span className="font-medium">{helpers.map((a) => a.name).join(', ')}</span> on the team
-                </>
-              ) : (
-                ' and starts helper agents when the work splits'
-              )}
-              .
-            </div>
-            <div className="mt-0.5 text-ink-3">{vault ? `Memory: ${vault.name}` : 'No memory vault yet. Add one any time in Settings.'}</div>
+      <Heading title="Start with one real task">
+        Pick one and {lead?.name || 'your lead'} starts on it now{helpers.length ? `, with ${andList(helpers.map((a) => a.name))} on the team` : ''}. You can watch it work and steer it as it goes.
+      </Heading>
+
+      <div className="mt-7 rounded-[16px] bg-surface p-4 shadow-card">
+        <div className="flex items-center gap-3">
+          <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-[10px]', chosen ? 'bg-ok-soft text-ok' : 'bg-surface-2 text-ink-2')}>
+            {chosen && probe?.git ? <FolderGit2 className="size-[18px]" /> : <FolderOpen className="size-[18px]" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            {chosen ? (
+              <>
+                <div className="truncate text-[14px] font-semibold" title={chosen}>
+                  {probe?.name || placeOf(chosen)}
+                </div>
+                <div className="truncate text-[12.5px] text-ink-3" title={chosen}>
+                  {[kind?.code ? `${kind.kind ? `${kind.kind} project` : 'Code project'}` : probe && !probe.missing ? (probe.entries.length ? 'Folder' : 'Empty folder') : null, probe?.git ? 'git' : null, tildify(chosen, home)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[14px] font-semibold">Where should the team work?</div>
+                <div className="text-[12.5px] leading-snug text-ink-3">
+                  Choose your project folder. Without one, the team works in a new folder, <span className="font-medium text-ink-2" title={folders?.app || undefined}>{appPlace}</span>.
+                </div>
+              </>
+            )}
           </div>
+          {chosen ? (
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button variant="ghost" size="sm" disabled={!!busy} onClick={() => void pick()}>
+                Change
+              </Button>
+              <IconButton label="Use a new folder instead" disabled={!!busy} onClick={() => {
+                  setRefused(null)
+                  setDraftCwd(null)
+                }}>
+                <X className="size-3.5" />
+              </IconButton>
+            </div>
+          ) : (
+            <Button variant="primary" size="md" disabled={!!busy} onClick={() => void pick()}>
+              Choose a project folder
+            </Button>
+          )}
         </div>
-        {status && !status.gitBash && team.some((a) => a.provider === 'claude') && (
-          <p className="mt-3 border-t border-line pt-3 text-[12px] leading-relaxed text-ink-3">
-            Tip: Claude runs commands best with Git for Windows installed.{' '}
-            <button onClick={() => void api.openExternal('https://git-scm.com/downloads/win')} className="inline-flex items-center gap-1 font-medium text-link hover:underline">
-              Get it (free) <ExternalLink className="size-3" />
-            </button>
-          </p>
+
+        {recent.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-line pt-3">
+            <span className="mr-1 text-[12px] text-ink-3">{chosen ? 'Or another recent project' : 'Recent projects'}</span>
+            {recent.map((r) => (
+              <button
+                key={r.path}
+                title={r.path}
+                disabled={!!busy}
+                onClick={() => choose(r.path)}
+                className="flex max-w-[180px] items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-hover hover:text-ink disabled:opacity-50"
+              >
+                <FolderGit2 className="size-3.5 shrink-0 text-ink-3" />
+                <span className="truncate">{r.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {refused && (
+          <div role="alert" className="mt-3 flex items-start gap-2 rounded-[10px] bg-bad-soft px-3 py-2 text-[12.5px] leading-snug text-bad">
+            <CircleAlert className="mt-px size-4 shrink-0" />
+            <span>{refused}</span>
+          </div>
         )}
       </div>
 
-      <div className="mt-6 text-[12px] font-medium text-ink-3">Try one</div>
-      <div className="mt-2 space-y-2">
-        {IDEAS.map((idea) => (
-          <button
-            key={idea}
-            disabled={busy}
-            onClick={() => void finish(idea)}
-            className="group flex w-full items-center gap-3 rounded-[14px] px-4 py-3 text-left text-[13.5px] leading-snug shadow-[inset_0_0_0_1px_var(--line)] transition-all duration-150 hover:-translate-y-px hover:bg-surface hover:shadow-float disabled:opacity-50"
-          >
-            <span className="min-w-0 flex-1">{idea}</span>
-            <ArrowRight className="size-4 shrink-0 text-ink-4 transition-colors group-hover:text-ink" />
-          </button>
-        ))}
+      <div className="mt-5 mb-2 px-1 text-[12px] font-medium text-ink-3">{chosen ? `Then pick a task for ${probe?.name || 'this folder'}` : 'Then pick a task'}</div>
+      <div className="space-y-2">
+        {(ready ? tasks : [null, null, null]).map((t, i) =>
+          t ? (
+            <button
+              key={t.title}
+              disabled={!!busy}
+              onClick={() => void start(t)}
+              className="group flex w-full items-center gap-3.5 rounded-[14px] bg-surface px-4 py-3.5 text-left shadow-card transition-all duration-150 hover:-translate-y-px hover:shadow-float disabled:opacity-50"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] font-semibold">{t.title}</span>
+                <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-3">{t.blurb}</span>
+              </span>
+              {busy === t.title ? <Spinner /> : <ArrowRight className="size-4 shrink-0 text-ink-4 transition-colors group-hover:text-ink" />}
+            </button>
+          ) : (
+            <div key={i} className="h-[66px] animate-pulse-soft rounded-[14px] bg-surface-2" />
+          ),
+        )}
       </div>
 
-      <div className="mt-7 flex items-center justify-center gap-2">
-        <Button variant="ghost" size="lg" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back
+      <p className="mt-4 text-center text-[12px] leading-relaxed text-ink-3">
+        {vault ? `Your team keeps its notes in ${vault.name}. Change that any time in Settings.` : 'Your team keeps its notes in a vault made for you. Change that any time in Settings.'}
+      </p>
+      {status && !status.gitBash && team.some((a) => a.provider === 'claude') && (
+        <p className="mt-1.5 text-center text-[12px] leading-relaxed text-ink-3">
+          Claude runs commands best with Git for Windows.{' '}
+          <button onClick={() => void api.openExternal('https://git-scm.com/downloads/win')} className="inline-flex items-center gap-1 font-medium text-link hover:underline">
+            Get it (free) <ExternalLink className="size-3" />
+          </button>
+        </p>
+      )}
+
+      <div className="mt-6 flex items-center justify-center gap-2">
+        <Button variant="ghost" onClick={onBack} disabled={!!busy}>
+          <ArrowLeft className="size-4" /> Accounts
         </Button>
-        <Button variant="primary" size="lg" className="w-[200px]" disabled={busy} onClick={() => void finish()}>
-          {busy ? <Spinner className="text-inverse" /> : null}
-          Start using Ensemble
+        <Button variant="ghost" disabled={!!busy} onClick={() => void start()}>
+          {busy === 'empty' ? <Spinner /> : null}
+          Start with an empty chat
         </Button>
       </div>
     </>

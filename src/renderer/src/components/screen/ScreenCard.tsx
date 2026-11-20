@@ -53,7 +53,7 @@ export const ScreenCard = memo(function ScreenCard({ chatId, accountId, surface,
             <span className="size-1.5 animate-pulse-soft rounded-full bg-[#ff5b4f]" /> Live
           </span>
         )}
-        <span className="absolute top-2.5 right-2.5 flex h-[22px] items-center gap-1.5 rounded-full bg-black/60 px-2.5 text-[11px] font-medium text-white opacity-0 backdrop-blur-sm transition-opacity group-hover/sc:opacity-100">
+        <span className="absolute top-2.5 right-2.5 flex h-[22px] items-center gap-1.5 rounded-full bg-black/60 px-2.5 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover/sc:opacity-100 group-hover/sc:backdrop-blur-sm">
           <Maximize2 className="size-3" /> {live ? 'Watch' : 'Replay'}
         </span>
       </div>

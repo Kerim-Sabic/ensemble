@@ -13,8 +13,13 @@ import { GoalOptions, LoopOptions, ModePill } from './composer/Options'
 import { ComposerPopup, popupFor } from './composer/Popup'
 import { NudgeChip, PreviewChip, UndoChip } from './composer/Chips'
 import { NO_EXTRAS, commandOf, goalOf, gocrazyAllowed, loopOf, nudgeOf, previewOf, type Extras } from './composer/extras'
+import { openGithub } from '../github/FromGithub'
+import { openWatchEditor } from '../watches/state'
 import './composer/ultra'
 import { UltraGlyph } from '../ultra/Ultra'
+import { VoiceButton } from './composer/VoiceButton'
+import { joinDictation, type Heard } from './composer/voice-commands'
+import { began, Done, rendered, useRenderTime } from '@/lib/perf'
 
 /** Lets other parts of the screen put text into the message box. */
 export const composerBus = new EventTarget()
@@ -76,6 +81,9 @@ const limitedWindow = (u: { session?: UsageWindow; weekly?: UsageWindow } | unde
   [u?.session, u?.weekly].find((w) => w && (w.status === 'rejected' || w.utilization >= 1) && w.resetsAt && w.resetsAt > Date.now())
 
 export function Composer() {
+  began('Composer')
+  rendered('Composer')
+  useRenderTime('Composer')
   // For measuring how often the message box draws (a step script sets window.__renders).
   const probe = (window as { __renders?: Record<string, number> }).__renders
   if (probe) probe.composer = (probe.composer || 0) + 1
@@ -87,7 +95,10 @@ export function Composer() {
   const usage = useStore((s) => s.usage)
   const focusId = useStore(focusOf)
   const leadId = useStore((s) => leadOf(s)?.id)
-  const state = useStore((s) => (s.chatId && focusId ? s.agents[agentKey(s.chatId, focusId)] : undefined))
+  // Only what the box shows of the agent's state, so its every new activity line does not redraw the box.
+  const busy = useStore((s) => isBusy(s.chatId && focusId ? s.agents[agentKey(s.chatId, focusId)] : undefined))
+  const stateSuggestion = useStore((s) => (s.chatId && focusId ? s.agents[agentKey(s.chatId, focusId)]?.suggestion : undefined))
+  const errored = useStore((s) => !!s.chatId && !!focusId && s.agents[agentKey(s.chatId, focusId)]?.phase === 'error')
   // Anyone at work in this chat, not only whoever the box is writing to: Stop stays in reach.
   const working = useStore((s) => workingIn(s, s.chatId))
   const leadBusy = useStore((s) => {
@@ -136,10 +147,9 @@ export function Composer() {
   const target = team.find((a) => a.id === focusId) || former
   const lead = team.find((a) => a.id === leadId)
   const gone = !!target?.spawned?.gone
-  const busy = isBusy(state)
   const signedOut = target ? statuses[target.id]?.state === 'signed-out' : false
   const limited = target ? limitedWindow(usage[target.id]) : undefined
-  const suggestion = !text && !busy && attachments.length === 0 && !extras.kind ? state?.suggestion : undefined
+  const suggestion = !text && !busy && attachments.length === 0 && !extras.kind ? stateSuggestion : undefined
 
   const command = useMemo(() => commandOf(text), [text])
   const preview = useMemo(() => previewOf(command, ultra), [command, ultra])
@@ -225,6 +235,23 @@ export function Composer() {
     if (!body && !attachments.length) return
     // "/loop 15m" and nothing more would start a loop whose whole job is "15m"; "/gocrazy" needs Ultra on.
     if (previewOf(commandOf(body), ultra)?.incomplete) return
+    // "/github" and an address (or nothing) opens From GitHub: an issue, a pull request or a failed run to start from.
+    const gh = commandOf(body)
+    if (gh?.kind === 'github') {
+      if (!gh.ok) {
+        toast('That is not a GitHub address. Type /github and a repository, issue, pull request or Actions run link, or /github alone.', 'warn')
+        return
+      }
+      openGithub(gh.address)
+      setText('')
+      return
+    }
+    // "/watch" (and what to keep an eye on) opens the make-a-watch screen; nothing is sent.
+    if (gh?.kind === 'watch') {
+      openWatchEditor(undefined, gh.text ? { prompt: gh.text } : undefined)
+      setText('')
+      return
+    }
     // "@Name do this" sends straight to that teammate.
     let to: string | undefined
     if (body.startsWith('@')) {
@@ -344,6 +371,31 @@ export function Composer() {
     },
     [chatId, storeUltra, patch],
   )
+
+  // Voice: what was said goes into the box to be read first; a spoken command then acts on it.
+  const newChat = useStore((s) => s.newChat)
+  const [voiceSend, setVoiceSend] = useState(0)
+  const submitRef = useRef(submit)
+  submitRef.current = submit
+  useEffect(() => {
+    if (voiceSend) void submitRef.current()
+  }, [voiceSend])
+  const heard = useCallback(
+    (h: Heard) => {
+      if (h.text) setText((t) => joinDictation(t, h.text))
+      if (h.command === 'send') setVoiceSend((n) => n + 1)
+      else if (h.command === 'stop') stop()
+      else if (h.command === 'new-chat') newChat()
+      else if (h.command === 'ultra-on' || h.command === 'ultra-off') {
+        flipUltra(h.command === 'ultra-on')
+        // Heard, not clicked: say so, in case it was heard wrong. Ultra uses allowance very fast.
+        if (h.command === 'ultra-on') useStore.getState().toast('Ultra is on, from what you said: the next message uses allowance very fast. Say "Ultra off" or press Alt+U to turn it off.', 'warn')
+      }
+      else if (h.command === 'goal') setExtras((x) => ({ ...x, kind: 'goal' }))
+      ref.current?.focus()
+    },
+    [stop, newChat, flipUltra],
+  )
   // Go crazy only goes out in Ultra: once Ultra is off, however that happened, it falls back.
   useEffect(() => {
     if (!ultra && extras.mode === 'gocrazy') patch({ mode: 'chat' })
@@ -409,6 +461,17 @@ export function Composer() {
   const choose = (i: number): void => {
     if (!popup) return
     if (popup.kind === 'command' && popup.items[i].disabled) return
+    // "/github" typed out in full and Enter: it needs nothing more, so it opens From GitHub at once.
+    if (popup.kind === 'command' && popup.items[i].name === 'github' && text.trim().toLowerCase() === '/github') {
+      openGithub('')
+      setText('')
+      return
+    }
+    if (popup.kind === 'command' && popup.items[i].name === 'watch' && text.trim().toLowerCase() === '/watch') {
+      openWatchEditor()
+      setText('')
+      return
+    }
     if (popup.kind === 'mention') setText(`@${popup.items[i].name} `)
     else setText(`/${popup.items[i].name} `)
     setAt(0)
@@ -484,7 +547,7 @@ export function Composer() {
   return (
     <div className="mx-auto w-full max-w-[780px] px-7 pb-5">
       {/* Right after a failed reply the transcript already offers the way out. */}
-      {limited && target && state?.phase !== 'error' && (
+      {limited && target && !errored && (
         <div className="mb-2 flex animate-rise items-center gap-2.5 rounded-[14px] bg-warn-soft py-2 pr-2 pl-3.5 text-[12.5px] shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--warn)_28%,transparent)]">
           <TriangleAlert className="size-4 shrink-0 text-warn" strokeWidth={1.9} />
           <span className="min-w-0 flex-1 leading-snug">
@@ -730,6 +793,7 @@ export function Composer() {
           )}
 
           <span className="ml-1 flex shrink-0 items-center gap-0.5">
+            <VoiceButton onHeard={heard} language={settings.voice?.language || 'english'} commands={settings.voice?.commands !== false} disabled={!target || gone} />
             {ultra ? (
               <Tip label="Ultra is on for this chat. Click to turn it off" kbd="Alt+U" side="top">
                 <button
@@ -747,7 +811,7 @@ export function Composer() {
               <Tip
                 label={
                   <span>
-                    <span className="font-semibold">Ultra.</span> Many agents on the strongest models at full effort. Uses allowance very fast.
+                    <span className="font-semibold">Ultra.</span> The strongest models at full effort, cross-checked. Uses allowance very fast.
                   </span>
                 }
                 kbd="Alt+U"
@@ -841,6 +905,7 @@ export function Composer() {
           )}
         </div>
       </div>
+      <Done name="Composer" />
     </div>
   )
 }

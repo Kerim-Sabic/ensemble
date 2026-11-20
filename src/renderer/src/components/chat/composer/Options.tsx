@@ -10,8 +10,12 @@ import { Orb } from '../../Orb'
 import { CHECKS, RUN_LIMITS, TIME_LIMITS, gocrazyAllowed, paceLabel, type Extras } from './extras'
 import { InlineField, MODE_ICON, Pill } from './bits'
 
+/** The three main ways of working, then the others. Ultra and Go crazy sit apart, under Advanced. */
+export const MAIN_MODES: WorkMode[] = ['quick', 'chat', 'thorough']
+export const MORE_MODES: WorkMode[] = WORK_MODES.filter((m) => !MAIN_MODES.includes(m) && m !== 'ultra' && m !== 'gocrazy')
+
 /**
- * How the lead goes about the next message. Goes back to Auto once it is sent. Ultra is not a
+ * How the lead goes about the next message. Goes back to Team once it is sent. Ultra is not a
  * way of working for one message here but the chat's own switch, so it shows as checked while on.
  */
 export function ModePill({ mode, onChange, ultra, onUltra }: { mode: WorkMode; onChange(m: WorkMode): void; ultra: boolean; onUltra(on: boolean): void }) {
@@ -43,13 +47,16 @@ export function ModePill({ mode, onChange, ultra, onUltra }: { mode: WorkMode; o
       }
     >
       <MenuLabel>Way of working for this message</MenuLabel>
-      {WORK_MODES.filter((m) => m !== 'ultra' && m !== 'gocrazy').map(item)}
+      {MAIN_MODES.map(item)}
       <MenuSeparator />
-      <MenuLabel>Full power · uses allowance very fast</MenuLabel>
+      <MenuLabel>More</MenuLabel>
+      {MORE_MODES.map(item)}
+      <MenuSeparator />
+      <MenuLabel>Advanced · uses allowance very fast</MenuLabel>
       <MenuItem
         icon={<UltraGlyph size={15} className={cn(!ultra && 'opacity-70 grayscale')} />}
         checked={ultra}
-        hint={ultra ? 'On for this chat. Choose again to turn it off' : 'Many agents on the strongest models at full effort. Stays on for this chat'}
+        hint={ultra ? 'On for this chat. Choose again to turn it off' : 'The strongest models at full effort, cross-checked. Stays on for this chat'}
         onSelect={() => onUltra(!ultra)}
       >
         <span className="flex items-center gap-2">
@@ -272,7 +279,7 @@ export function LoopOptions({ x, set, onSubmit, onDone }: { x: Extras; set(patch
           >
             <MenuLabel>How often it runs</MenuLabel>
             {EVERY_PRESETS.map((p) => (
-              <MenuItem key={p.label} checked={p.ms === x.every} hint={p.ms === null ? 'The agent says when the next run is due' : undefined} onSelect={() => set({ every: p.ms })}>
+              <MenuItem key={p.label} checked={p.ms === x.every} hint={p.ms === null ? 'The lead says when the next run is due' : undefined} onSelect={() => set({ every: p.ms })}>
                 {p.label}
               </MenuItem>
             ))}

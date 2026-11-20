@@ -30,6 +30,7 @@ import { Spinner } from '../ui'
 import { Markdown } from '../Markdown'
 import { useStreamed } from '@/lib/streams'
 import { ScreenRow } from '../screen/ScreenCard'
+import { rendered } from '@/lib/perf'
 
 type ToolItem = Extract<Item, { kind: 'tool' }>
 type ThinkingItem = Extract<Item, { kind: 'thinking' }>
@@ -233,6 +234,9 @@ function summarize(items: ActivityItem[]): string {
   return text[0].toUpperCase() + text.slice(1)
 }
 
+/** Runs someone opened or folded by hand, by their first row. */
+const opened = new Map<string, boolean | null>()
+
 /** A run of thinking and tool use, folded into one line once it is over. */
 export const ActivityGroup = memo(function ActivityGroup({
   items,
@@ -247,7 +251,13 @@ export const ActivityGroup = memo(function ActivityGroup({
   chatId: string
   accountId: string
 }) {
-  const [open, setOpen] = useState<boolean | null>(null)
+  rendered('ActivityGroup')
+  // Kept by the run's first row, so scrolling it out of view and back does not fold it again.
+  const [open, setOpenNow] = useState<boolean | null>(() => opened.get(items[0]?.id) ?? null)
+  const setOpen = (v: boolean | null): void => {
+    if (items[0]) opened.set(items[0].id, v)
+    setOpenNow(v)
+  }
   const running = items.some((i) => (i.kind === 'thinking' ? i.streaming : i.status === 'running'))
   const failed = items.filter((i) => i.kind !== 'thinking' && i.status === 'error').length
   const foldable = items.length > 3

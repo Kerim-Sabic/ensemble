@@ -2,17 +2,18 @@
 // window both need, kept in one place so they always say the same thing.
 
 import type { Goal, GoalAction, Loop, WorkMode } from './types'
+import { parseAddress } from './github'
 
 /** What each way of working is called and what it does, for menus and tips. */
 export const MODE_INFO: Record<WorkMode, { label: string; hint: string }> = {
-  chat: { label: 'Auto', hint: 'The lead decides how to go about it' },
-  quick: { label: 'Quick', hint: 'The lead answers alone. Fastest, and the least allowance' },
+  chat: { label: 'Team', hint: 'The lead plans and brings in the team' },
+  quick: { label: 'Quick', hint: 'Answered now, without the team' },
   plan: { label: 'Plan first', hint: 'You get a plan to approve before any work starts' },
-  thorough: { label: 'Thorough', hint: 'The whole team from the start, and a fresh reviewer before the answer' },
+  thorough: { label: 'Verified', hint: 'The team does it, a reviewer who did none of the work checks it, and you see the evidence' },
   council: { label: 'Council', hint: 'Every model answers on its own, then the lead compares them' },
   research: { label: 'Deep research', hint: 'Several angles, a source for every claim, and a check of the facts' },
-  ultra: { label: 'Ultra', hint: 'Many agents on the strongest models at full effort, cross-checked. Uses allowance very fast' },
-  gocrazy: { label: 'Go crazy', hint: 'Ultra at full scale: a swarm of fast research agents, every top model building its own version, judges, rounds of refinement' },
+  ultra: { label: 'Ultra', hint: 'The strongest models at full effort, cross-checked. Uses allowance very fast' },
+  gocrazy: { label: 'Go crazy', hint: 'Ultra at full scale, with rounds of building, judging and refining. Uses allowance fastest' },
 }
 
 /** What the app says when /gocrazy is sent while the chat's Ultra is off. */
@@ -138,15 +139,21 @@ export function parseEvery(raw: string): number | undefined {
 
 /** The commands the app itself answers to, whoever the message is for. Offered when "/" is typed. */
 export const APP_COMMANDS: { name: string; description: string; hint?: string }[] = [
+  // The three main ways of working first. "/thorough" still works when typed; "/verified" is its name now.
+  { name: 'quick', description: 'Quick: answered now, without the team', hint: '<request>' },
+  { name: 'team', description: 'Team: the lead plans and brings in the team', hint: '<request>' },
+  { name: 'verified', description: 'Verified: the team does it, a reviewer who did none of the work checks it, and you see the evidence', hint: '<request>' },
   { name: 'goal', description: 'Keep working until this is done, checking after every reply', hint: '<what done looks like>  ·  pause | resume | stop' },
-  { name: 'loop', description: 'Send this again by itself, on a timer or at the agent\'s own pace', hint: '[5m | 2h | 1d] <what to do>  ·  stop' },
+  { name: 'loop', description: 'Send this again by itself, on a timer or when the lead judges it is time', hint: '[5m | 2h | 1d] <what to do>  ·  stop' },
   { name: 'plan', description: 'Get a plan to approve before any work starts', hint: '<request>' },
-  { name: 'quick', description: 'The lead answers alone: fastest, least allowance', hint: '<request>' },
-  { name: 'thorough', description: 'The whole team from the start, and a fresh reviewer before the answer', hint: '<request>' },
   { name: 'council', description: 'Every model answers on its own, then the lead compares them', hint: '<question>' },
   { name: 'research', description: 'Several angles, sources for every claim, a check of the facts', hint: '<question>' },
-  { name: 'ultra', description: 'Many agents on the strongest models at full effort. Uses allowance very fast', hint: 'on | off  ·  <request>' },
-  { name: 'gocrazy', description: 'Ultra at full scale: research swarm, every top model builds, judges, refinement. Needs Ultra on', hint: '<request>' },
+  { name: 'ultra', description: 'The strongest models at full effort, cross-checked. Uses allowance very fast', hint: 'on | off  ·  <request>' },
+  { name: 'gocrazy', description: 'Ultra at full scale, with rounds of building, judging and refining. Needs Ultra on', hint: '<request>' },
+  // Opened by the window (From GitHub); the engine never sees it as a command.
+  { name: 'github', description: 'Start from a GitHub issue, pull request or failed run, as verified work', hint: '<address>' },
+  // Opened by the window too (the make-a-watch screen); the engine never passes it to an agent.
+  { name: 'watch', description: 'Keep an eye on something by itself and tell you only when it finds something', hint: '<what to keep an eye on>' },
 ]
 
 export type AppCommand =
@@ -157,6 +164,14 @@ export type AppCommand =
   | { kind: 'mode'; mode: WorkMode; text: string }
   /** "/ultra on" | "/ultra off" | "/ultra" (on: undefined, which flips it). */
   | { kind: 'ultra'; on?: boolean }
+  /**
+   * "/github" opens From GitHub; "/github <address>" opens it on that repository, issue, pull request
+   * or failed run. `ok` is false when the address is not a GitHub one: nothing opens and nothing is sent.
+   * The window handles it; the engine never passes it to an agent.
+   */
+  | { kind: 'github'; address: string; ok: boolean }
+  /** "/watch" opens the make-a-watch screen, with the rest (if any) as what to keep an eye on. The window handles it. */
+  | { kind: 'watch'; text: string }
 
 /**
  * Reads a message that starts with one of the app's own commands.
@@ -168,7 +183,7 @@ export type AppCommand =
  * Returns null for anything else, which is then sent as it is.
  */
 export function parseCommand(text: string): AppCommand | null {
-  const m = /^\/(goal|loop|plan|quick|thorough|council|research|ultra|gocrazy|go-crazy)(?:\s+([\s\S]*))?$/i.exec(text.trim())
+  const m = /^\/(goal|loop|plan|quick|team|verified|thorough|council|research|ultra|gocrazy|go-crazy|github|watch)(?:\s+([\s\S]*))?$/i.exec(text.trim())
   if (!m) return null
   const name = m[1].toLowerCase()
   const rest = (m[2] || '').trim()
@@ -196,7 +211,12 @@ export function parseCommand(text: string): AppCommand | null {
     if (word === 'off' || word === 'stop' || word === 'end') return { kind: 'ultra', on: false }
     return { kind: 'mode', mode: 'ultra', text: rest }
   }
+  if (name === 'github') return { kind: 'github', address: rest, ok: !rest || !!parseAddress(rest) }
+  if (name === 'watch') return { kind: 'watch', text: rest }
   if (name === 'go-crazy') return rest ? { kind: 'mode', mode: 'gocrazy', text: rest } : null
+  // The names people see: Team is the usual way ('chat'), Verified is 'thorough'.
+  if (name === 'team') return rest ? { kind: 'mode', mode: 'chat', text: rest } : null
+  if (name === 'verified') return rest ? { kind: 'mode', mode: 'thorough', text: rest } : null
   return rest ? { kind: 'mode', mode: name as WorkMode, text: rest } : null
 }
 
@@ -209,10 +229,15 @@ export const liveLoops = (loops: Loop[] | undefined): Loop[] => (loops || []).fi
 /** Where a goal stands, in a few words. */
 export function goalLine(g: Goal): string {
   switch (g.status) {
-    case 'active':
-      return g.checking ? 'Checking whether it is done' : g.round ? `Round ${g.round + 1} of ${g.maxRounds}` : 'Working on it'
+    case 'active': {
+      if (g.checking) return 'Checking whether it is done'
+      const where = g.round ? `Round ${g.round + 1} of ${g.maxRounds}` : ''
+      // What it waits for, so a goal whose lead is idle does not look stuck.
+      const wait = g.waiting === 'team' ? 'Waiting for the team' : g.waiting === 'retry' ? 'A reply failed, trying again shortly' : ''
+      return where && wait ? `${where} · ${wait.charAt(0).toLowerCase()}${wait.slice(1)}` : wait || where || 'Working on it'
+    }
     case 'paused':
-      return 'Paused'
+      return g.waiting === 'allowance' ? 'Waiting for the allowance to come back' : 'Paused'
     case 'met':
       return g.round ? `Done after ${g.round + 1} rounds` : 'Done'
     case 'blocked':

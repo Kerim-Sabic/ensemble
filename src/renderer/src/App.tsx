@@ -14,13 +14,17 @@ import { TeamFlow } from './components/TeamFlow'
 import { KnowledgeView } from './components/KnowledgeView'
 import { LiveView } from './components/screen/LiveView'
 import { LibraryView } from './components/LibraryView'
+import { InboxView } from './components/watches/InboxView'
+import { WatchEditor } from './components/watches/WatchEditor'
 import { DiffDialog, TaskDialog } from './components/Inspector'
 import { AccountSheet, AddAccountDialog } from './components/Accounts'
 import { ConfirmDialog, Palette, SettingsDialog, ShortcutsDialog, Toasts } from './components/Dialogs'
 import { Onboarding } from './components/Onboarding'
 import { Viewer } from './components/Viewer'
+import { rendered } from '@/lib/perf'
 
 export function App() {
+  rendered('App')
   const ready = useStore((s) => s.ready)
   const init = useStore((s) => s.init)
   const dark = useStore((s) => s.dark)
@@ -113,6 +117,7 @@ export function App() {
               {effectiveView === 'memory' && <KnowledgeView />}
               {effectiveView === 'library' && <LibraryView />}
               {effectiveView === 'now' && <NowView />}
+              {effectiveView === 'inbox' && <InboxView />}
             </div>
           </main>
         </div>
@@ -123,6 +128,7 @@ export function App() {
       <SettingsDialog />
       <ShortcutsDialog />
       <ImportDialog />
+      <WatchEditor />
       <FolderDialog />
       <ConnectorsDialog />
       <TaskDialog />

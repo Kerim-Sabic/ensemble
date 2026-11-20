@@ -8,10 +8,11 @@ import '../styles'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { Account, AgentState, Task } from '@shared/types'
 import { agentKey, isBusy, leadOf, teamOf, useStore } from '@/store'
-import { ACCENT, cn, prettyModel } from '@/lib/util'
+import { ACCENT, accentVars, cn, prettyModel } from '@/lib/util'
 import { textWidth } from '../fit'
 import { plural } from '../groups'
 import { buildNeural, layoutNeural, synapse, type Layout, type Link, type Net, type Neuron, type NeuronState, type Shape } from './layout'
+import { useLazyStore } from '@/lib/lazy'
 
 const NO_TASKS: Task[] = []
 const NO_AGENTS: Account[] = []
@@ -51,12 +52,12 @@ export function useNeural(chatId: string) {
   const accounts = useStore((s) => s.accounts)
   const agents = useStore((s) => s.chats.find((c) => c.id === chatId)?.agents ?? NO_AGENTS)
   const leadId = useStore((s) => leadOf(s, chatId)?.id)
-  const tasks = useStore((s) => s.tasks[chatId] ?? NO_TASKS)
+  const tasks = useLazyStore((s) => s.tasks[chatId] ?? NO_TASKS, chatId)
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === chatId)?.ultra)
   // Agents sent home stay in the picture, settled, so a finished stage does not vanish.
   const team = useMemo(() => teamOf(accounts, leadId, agents, true), [accounts, leadId, agents])
   // Who is busy right now, as one string: an account at work belongs in the picture.
-  const busySig = useStore((s) => team.filter((a) => !a.spawned && isBusy(s.agents[agentKey(chatId, a.id)])).map((a) => a.id).join('|'))
+  const busySig = useLazyStore((s) => team.filter((a) => !a.spawned && isBusy(s.agents[agentKey(chatId, a.id)])).map((a) => a.id).join('|'), `${chatId}|${team.map((a) => a.id).join()}`)
   // An account appears as a neuron only once work has gone to it, from it, or through it.
   const { members, bench } = useMemo(() => {
     const busy = new Set(busySig.split('|').filter(Boolean))
@@ -66,20 +67,26 @@ export function useNeural(chatId: string) {
       touched.add(t.to)
     }
     for (const a of team) if (a.spawned?.by) touched.add(a.spawned.by)
+    // Accounts whose sign-in carries agents are working too: they are not listed as idle.
+    const carrying = new Set(team.filter((a) => a.spawned && !a.spawned.gone).map((a) => a.spawned!.base))
     const out: Account[] = []
     const rest: Account[] = []
-    for (const a of team) (a.spawned || a.id === leadId || touched.has(a.id) || busy.has(a.id) ? out : rest).push(a)
+    for (const a of team) {
+      if (a.spawned || a.id === leadId || touched.has(a.id) || busy.has(a.id)) out.push(a)
+      else if (!carrying.has(a.id)) rest.push(a)
+    }
     return { members: out, bench: rest }
   }, [team, tasks, leadId, busySig])
   const net = useMemo(() => buildNeural(members, leadId, tasks), [members, leadId, tasks])
   // Each member's phase and whether its sign-in is out of allowance, as one string.
-  const sig = useStore((s) =>
+  const sig = useLazyStore((s) =>
     team
       .map((a) => {
         const st = s.agents[agentKey(chatId, a.id)]
         return `${st?.phase || 'idle'}${limitedNow(s.usage[a.spawned?.base || a.id] as never) ? '!' : ''}`
       })
       .join('|'),
+    `${chatId}|${team.map((a) => a.id).join()}`,
   )
   const states = useMemo(() => {
     const parts = sig.split('|')
@@ -756,8 +763,9 @@ export const NeuralNetwork = memo(function NeuralNetwork({
 const NO_TASK: Task[] = []
 
 export function NeuronCard({ chatId, n, st, x, y, r, w, h, by }: { chatId: string; n: Neuron; st: NeuronState; x: number; y: number; r: number; w: number; h: number; by?: string }) {
-  const agent = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, n.id)])
-  const tasks = useStore((s) => s.tasks[chatId] ?? NO_TASK)
+  const agent = useLazyStore((s): AgentState | undefined => s.agents[agentKey(chatId, n.id)], `${chatId}|${n.id}`)
+  const tasks = useLazyStore((s) => s.tasks[chatId] ?? NO_TASK, chatId)
+  const base = useStore((s) => (n.account.spawned ? s.members[n.account.spawned.base] : undefined))
   const mine = tasks.filter((t) => t.to === n.id)
   const current = mine.find((t) => t.status === 'running') || mine.find((t) => t.status === 'queued')
   const last = [...mine].reverse().find((t) => t.status === 'done' || t.status === 'failed')
@@ -786,7 +794,7 @@ export function NeuronCard({ chatId, n, st, x, y, r, w, h, by }: { chatId: strin
         <span className={cn('ml-auto shrink-0 text-[11px] font-medium', tone)}>{WORD[st]}</span>
       </div>
       {(n.account.role || task?.title) && <div className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-ink-2">{task?.title || n.account.role}</div>}
-      {(model || by) && (
+      {(model || by || base) && (
         <div className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-ink-3">
           {model && (
             <span>
@@ -795,6 +803,7 @@ export function NeuronCard({ chatId, n, st, x, y, r, w, h, by }: { chatId: strin
             </span>
           )}
           {by && <span>Started by {by}</span>}
+          {base && <span style={accentVars(base.accent)} className="text-[color-mix(in_oklab,var(--a2)_55%,var(--ink-2))]">on {base.name}</span>}
         </div>
       )}
       <div className={cn('mt-1.5 line-clamp-2 text-[12px] leading-snug', st === 'working' ? 'shimmer-text' : 'text-ink-2')}>{line}</div>

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ChevronDown, Download, Ellipsis, FolderOpen, FolderSymlink, GitBranch, PanelLeft, Pin, PinOff, ShieldCheck, Square, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronDown, Download, Ellipsis, FolderOpen, FolderSymlink, GitBranch, Link2, PanelLeft, Pin, PinOff, ShieldCheck, Square, SquarePen, Trash2 } from 'lucide-react'
 import { useStore, useTeam, workingIn, type View } from '@/store'
 import { api, cn, folderLabel, PERMISSIONS, permissionLabel, tildify } from '@/lib/util'
 import { IconButton, Menu, MenuItem, MenuLabel, MenuSeparator, Segmented, Tip } from './ui'
 import { DemoBar } from './DemoBar'
+import { RoomsDialogs, SharedBadge, openShare } from './rooms/Rooms'
 
 export function TitleBar() {
   const collapsed = useStore((s) => s.settings.sidebarCollapsed)
@@ -36,6 +37,7 @@ export function TitleBar() {
   return (
     <>
     <DemoBar />
+    <RoomsDialogs />
     <header className="drag flex h-11 shrink-0 items-center gap-2 pr-[146px] pl-2">
       {collapsed && (
         <div className="flex items-center gap-0.5">
@@ -75,6 +77,7 @@ export function TitleBar() {
                 </button>
               </Tip>
             )}
+            <SharedBadge chat={chat} />
             <Menu
               trigger={
                 <button className="no-drag flex h-7 min-w-0 items-center gap-1.5 rounded-[7px] px-1.5 text-[12.5px] text-ink-2 hover:bg-hover hover:text-ink">
@@ -120,6 +123,9 @@ export function TitleBar() {
                 onSelect={() => void run(api.exportChat(chat.id)).then((p) => p && toast('Saved the chat as a document.'))}
               >
                 Save as a document…
+              </MenuItem>
+              <MenuItem icon={<Link2 className="size-3.5" />} onSelect={() => openShare(chat.id)}>
+                {chat.shared ? 'Shared project…' : 'Share this project…'}
               </MenuItem>
               <MenuSeparator />
               <MenuItem

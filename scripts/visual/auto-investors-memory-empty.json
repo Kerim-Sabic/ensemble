@@ -1,0 +1,24 @@
+[
+ {
+  "size": [
+   1280,
+   900
+  ],
+  "theme": "light",
+  "wait": 2000
+ },
+ {
+  "js": "for (let i=0;i<10;i++){ if (window.__ensemble.getState().settings.onboarded) break; const all=[...document.querySelectorAll('button')].filter(b=>!b.disabled); const find=re=>all.find(b=>re.test(b.textContent.trim())); const b=find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble|Try the demo)/)||find(/^Skip/); if(!b) break; b.click(); await new Promise(r=>setTimeout(r,900)); } const s=window.__ensemble.getState(); return 'onboarded ' + s.settings.onboarded + ' chat ' + s.chatId",
+  "wait": 800
+ },
+ {
+  "js": "window.__ensemble.getState().setView('memory'); await new Promise(r=>setTimeout(r,600)); const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='What I learned'); if (b) b.click(); await new Promise(r=>setTimeout(r,500)); const sc=[...document.querySelectorAll('.overflow-y-auto')].find(e=>e.textContent.includes('What I learned')); if (sc) sc.scrollTop=0; return 'tab ' + !!b + ' notes ' + window.__ensemble.getState().memory.length",
+  "wait": 600,
+  "shot": "memory-empty-light.png"
+ },
+ {
+  "js": "await window.ensemble.updateSettings({ theme: 'dark' }); await new Promise(r=>setTimeout(r,500)); return 'dark'",
+  "wait": 600,
+  "shot": "memory-empty-dark.png"
+ }
+]

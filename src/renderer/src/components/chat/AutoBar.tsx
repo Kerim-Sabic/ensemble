@@ -12,6 +12,7 @@ import { api, cn } from '@/lib/util'
 import { Button, IconButton, Tip } from '../ui'
 import { LoopEditor } from '../auto/LoopEditor'
 import { MetMark, RoundMeter, goalDoneLine, useNow } from '../auto/shared'
+import { began, Done, rendered } from '@/lib/perf'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -65,7 +66,7 @@ function GoalRow({ chatId, goal, now }: { chatId: string; goal: Goal; now: numbe
     )
 
   // The second line: what is still missing, or how it will be judged before the first check.
-  const sub = goal.note || (goal.doneWhen ? `Done when ${goal.doneWhen.replace(/^done when\s+/i, '')}` : st === 'active' && !goal.log.length ? 'It is checked after every reply until it is done' : '')
+  const sub = goal.note || (goal.doneWhen ? `Done when ${goal.doneWhen.replace(/^done when\s+/i, '')}` : st === 'active' && !goal.log.length ? 'It is checked each time the work is in, until it is done' : '')
 
   return (
     <div className={cn('transition-colors duration-300', st === 'blocked' && 'bg-warn-soft', st === 'met' && 'bg-ok-soft')}>
@@ -299,6 +300,8 @@ const NO_LOOPS: Loop[] = []
  * `hideGoal`: the brain view shows the goal itself, so only the loops stay here.
  */
 export function AutoBar({ chatId, hideGoal }: { chatId: string; hideGoal?: boolean }) {
+  began('AutoBar')
+  rendered('AutoBar')
   const chat = useStore((s): Chat | undefined => s.chats.find((c) => c.id === chatId))
   const goal = hideGoal ? null : chat?.goal || null
   const all = chat?.loops ?? NO_LOOPS
@@ -328,6 +331,7 @@ export function AutoBar({ chatId, hideGoal }: { chatId: string; hideGoal?: boole
           </motion.div>
         )}
       </AnimatePresence>
+      <Done name="AutoBar" />
     </div>
   )
 }

@@ -4,6 +4,7 @@ import os from 'node:os'
 import { execFile, spawn } from 'node:child_process'
 import { Codex, type CodexOptions, type Input, type Thread, type ThreadItem, type ThreadOptions } from '@openai/codex-sdk'
 import type { PermissionLevel } from '@shared/types'
+import { isLimitText } from '@shared/limits'
 import { IMAGE_EXT } from '@shared/tools'
 import { cleanEnv, clip, uid } from '../util'
 import type { AgentRuntime, RuntimeEvent, RuntimeOptions, TurnInput } from './types'
@@ -42,7 +43,17 @@ export function codexConfig(servers: Record<string, unknown>): Record<string, un
   return { ...(Object.keys(servers).length ? { mcp_servers: servers } : {}), features: { sleep_tool: false, multi_agent: false }, agents: { enabled: false } }
 }
 
-function threadOptions(o: RuntimeOptions, level: PermissionLevel): ThreadOptions {
+/**
+ * The tool servers a ChatGPT agent is started with: the team's own, and the user's outside
+ * services. In a run nobody is watching the outside services are left out: Codex runs a tool
+ * without asking anyone first, so the only calls it may make are the team's, which the hub checks
+ * where they run.
+ */
+export function codexServers(o: Pick<RuntimeOptions, 'connectors' | 'toolsUrl' | 'guard'>): Record<string, unknown> {
+  return { ...(o.guard ? {} : o.connectors || {}), ...(o.toolsUrl ? { team: { url: o.toolsUrl, default_tools_approval_mode: 'approve', tool_timeout_sec: 900 } } : {}) }
+}
+
+export function threadOptions(o: RuntimeOptions, level: PermissionLevel): ThreadOptions {
   // Codex has no way to ask for approval when driven from another app, so the
   // permission level is expressed purely as how tight the sandbox is.
   const opts: ThreadOptions = {
@@ -58,6 +69,17 @@ function threadOptions(o: RuntimeOptions, level: PermissionLevel): ThreadOptions
   if (o.model) opts.model = o.model
   if (o.effort) opts.modelReasoningEffort = o.effort as ThreadOptions['modelReasoningEffort']
   if (o.extraDirs?.length) opts.additionalDirectories = o.extraDirs
+  if (o.guard) {
+    // A run nobody is watching (src/main/guard.ts). Codex cannot ask before a tool runs, so its
+    // own sandbox does the holding, whatever the chat's level says: commands and edits stay in
+    // the working folder, commands get no network, and no folder is added to what may be written.
+    // Its own web search is off: a search runs before anyone could be asked, and a query can carry
+    // out what the run has read.
+    opts.sandboxMode = 'workspace-write'
+    opts.networkAccessEnabled = o.guard.network
+    opts.webSearchMode = 'disabled'
+    delete opts.additionalDirectories
+  }
   return opts
 }
 
@@ -97,7 +119,9 @@ export class CodexRuntime implements AgentRuntime {
     // The team tools are ours and only touch the hub, so they never need a prompt
     // (Codex cannot show one when driven from another app anyway).
     // A tool call can wait on the person (the OK to use the computer), so it gets a long leash.
-    const servers: Record<string, unknown> = { ...(o.connectors || {}), ...(o.toolsUrl ? { team: { url: o.toolsUrl, default_tools_approval_mode: 'approve', tool_timeout_sec: 900 } } : {}) }
+    // In a run nobody is watching, outside services are left out: their calls cannot be checked
+    // before they run here (the team's own tools can, where the hub runs them).
+    const servers = codexServers(o)
     // Codex gives its models a sleep tool, and they use it to wait for a teammate's report. Reports
     // are only handed over between turns, so that waiting holds back the very thing it waits for.
     const config = codexConfig(servers) as unknown as CodexOptions['config']
@@ -268,7 +292,7 @@ export class CodexRuntime implements AgentRuntime {
     for (const id of open) this.emit({ type: 'tool-end', id, output: '', isError: false })
     for (const p of this.newImages(started)) this.emit({ type: 'image', path: p })
 
-    const limit = !!error && /usage limit|rate limit|quota|too many requests/i.test(error)
+    const limit = !!error && (/usage limit|rate limit|quota|too many requests/i.test(error) || isLimitText(error))
     const auth = !!error && /not logged in|login|unauthorized|401/i.test(error)
     this.emit({
       type: 'turn-end',

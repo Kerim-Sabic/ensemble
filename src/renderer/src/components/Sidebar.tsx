@@ -9,6 +9,8 @@ import { accentVars, api, cn, dayBucket, folderLabel, relative } from '@/lib/uti
 import { IconButton, Kbd, Menu, MenuItem, MenuLabel, MenuSeparator, Tip } from './ui'
 import { BudgetMeter, Orb, OrbStack } from './Orb'
 import { UltraGlyph } from './ultra/Ultra'
+import { InboxButton } from './watches/InboxView'
+import { rendered } from '@/lib/perf'
 
 /** The app's mark, the same drawing as its icon: three lights that add up to white where they meet. */
 export function Logo({ size = 20 }: { size?: number }) {
@@ -643,6 +645,7 @@ function TeamDock() {
 }
 
 export function Sidebar() {
+  rendered('Sidebar')
   const collapsed = useStore((s) => s.settings.sidebarCollapsed)
   const newChat = useStore((s) => s.newChat)
   const setModal = useStore((s) => s.setModal)
@@ -676,6 +679,7 @@ export function Sidebar() {
             <Kbd className="bg-transparent">Ctrl N</Kbd>
           </button>
           <NowButton />
+          <InboxButton />
           <UpdatePill />
         </div>
 

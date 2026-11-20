@@ -1,0 +1,81 @@
+[
+  {
+    "size": [
+      1380,
+      900
+    ],
+    "theme": "light",
+    "wait": 1800
+  },
+  {
+    "js": "const out = []; for (let i = 0; i < 10; i++) { if (window.__ensemble.getState().settings.onboarded) break; const all = [...document.querySelectorAll('button')].filter(b => !b.disabled); const find = re => all.find(b => re.test(b.textContent.trim())); const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/); if (!b) break; out.push(b.textContent.trim().slice(0, 30)); b.click(); await new Promise(r => setTimeout(r, 900)); } return 'clicked: ' + out.join(' > ') + ' | onboarded: ' + window.__ensemble.getState().settings.onboarded",
+    "wait": 1200
+  },
+  {
+    "js": "const c = await window.ensemble.createChat({ cwd: null, title: 'Website relaunch' }); await window.__ensemble.getState().openChat(c.id); window.__rooms = { chatId: c.id }; return 'chat ' + c.id",
+    "wait": 900
+  },
+  {
+    "js": "window.dispatchEvent(new CustomEvent('ensemble:rooms', { detail: { kind: 'share', chatId: window.__rooms.chatId } })); return 'share dialog asked for'",
+    "wait": 900
+  },
+  {
+    "js": "const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }; const inputs = [...document.querySelectorAll('[role=dialog] input')]; set(inputs[0], 'Kerim'); return 'inputs: ' + inputs.length",
+    "wait": 400,
+    "shot": "auto-main-rooms-share-before-light.png"
+  },
+  {
+    "theme": "dark",
+    "wait": 500,
+    "shot": "auto-main-rooms-share-before-dark.png"
+  },
+  {
+    "theme": "light",
+    "js": "const b = [...document.querySelectorAll('[role=dialog] button')].find(b => /Share and get a code/.test(b.textContent)); b.click(); return 'share clicked'",
+    "wait": 1500
+  },
+  {
+    "js": "const id = window.__rooms.chatId; const a = await window.ensemble.roomNote(id, 'API port', 'The API listens on 8080. Decided 20 Nov: 3000 is taken by the docs site.'); const b = await window.ensemble.roomNote(id, 'Who owns what', 'Kerim: landing page and sign-up. Ana: pricing page and checkout. Shared: design tokens, the API client.'); return a + ' | ' + b",
+    "wait": 7000
+  },
+  {
+    "js": "const i = await window.ensemble.roomInfo(window.__rooms.chatId); return 'people: ' + i.people.map(p => p.name + (p.online ? '' : ' (away)')).join(', ') + ' | notes: ' + i.notes.map(n => n.title).join(', ') + ' | state: ' + i.state + ' | code: ' + String(i.code).slice(0, 24)",
+    "wait": 1800,
+    "shot": "auto-main-rooms-share-light.png"
+  },
+  {
+    "theme": "dark",
+    "wait": 600,
+    "shot": "auto-main-rooms-share-dark.png"
+  },
+  {
+    "theme": "light",
+    "js": "const b = [...document.querySelectorAll('[role=dialog] button')].find(b => /^Done$/.test(b.textContent.trim())); b.click(); await new Promise(r => setTimeout(r, 400)); const row = [...document.querySelectorAll('*')].filter(e => e.children.length === 0 && /Message from Ana/.test(e.textContent || '')).pop(); if (row) row.scrollIntoView({ block: 'center' }); return 'closed; message row: ' + !!row",
+    "wait": 900,
+    "shot": "auto-main-rooms-chat-light.png"
+  },
+  {
+    "js": "const i = await window.ensemble.roomInfo(window.__rooms.chatId); window.__rooms.code = i.code; window.__ensemble.getState().newChat(); return 'new chat'",
+    "wait": 800,
+    "shot": "auto-main-rooms-newchat-light.png"
+  },
+  {
+    "js": "window.dispatchEvent(new CustomEvent('ensemble:rooms', { detail: { kind: 'join' } })); return 'join dialog asked for'",
+    "wait": 800
+  },
+  {
+    "js": "const setT = (el, v) => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }; const setI = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }; setT(document.querySelector('[role=dialog] textarea'), window.__rooms.code); setI(document.querySelector('[role=dialog] input'), 'Ana'); return 'filled'",
+    "wait": 500,
+    "shot": "auto-main-rooms-join-light.png"
+  },
+  {
+    "theme": "dark",
+    "wait": 600,
+    "shot": "auto-main-rooms-join-dark.png"
+  },
+  {
+    "js": "const setT = (el, v) => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })) }; setT(document.querySelector('[role=dialog] textarea'), window.__rooms.code.slice(0, 60)); return 'cut code'",
+    "wait": 400,
+    "shot": "auto-main-rooms-join-badcode-dark.png"
+  }
+]

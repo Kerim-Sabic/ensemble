@@ -1,0 +1,36 @@
+[
+  {
+    "size": [1180, 860],
+    "theme": "light",
+    "js": "window.__sleep = ms => new Promise(r => setTimeout(r, ms)); await window.ensemble.updateSettings({ onboarded: true, remote: true }); await window.__sleep(1800); return 'onboarded: ' + window.__ensemble.getState().settings.onboarded + ', remote: ' + window.__ensemble.getState().settings.remote",
+    "wait": 300
+  },
+  {
+    "js": "window.__ensemble.getState().setModal({ kind: 'settings' }); await window.__sleep(900); window.__toPhone = () => { const h = [...document.querySelectorAll('div')].find(d => d.textContent.trim() === 'Phone and remote' && d.children.length === 0); if (h) h.scrollIntoView({ block: 'start' }); return !!h }; const found = window.__toPhone(); await window.__sleep(2600); return 'section found: ' + found + ' | ' + document.body.innerText.replace(/\\s+/g, ' ').match(/Phone and remote.{0,260}/)?.[0]",
+    "wait": 300,
+    "shot": "auto-developer-remote-01-off-light.png"
+  },
+  {
+    "js": "const i = await window.ensemble.remotePair(); await window.__sleep(2400); window.__toPhone(); await window.__sleep(400); return 'listening ' + i.listening + ', code ' + (i.pairing && i.pairing.code) + ', devices ' + i.devices.length + ', addresses ' + JSON.stringify(i.addresses)",
+    "wait": 300,
+    "shot": "auto-developer-remote-02-pairing-light.png"
+  },
+  {
+    "theme": "dark",
+    "js": "await window.__sleep(600); window.__toPhone(); await window.__sleep(400); return 'dark'",
+    "wait": 300,
+    "shot": "auto-developer-remote-03-pairing-dark.png"
+  },
+  {
+    "size": [860, 760],
+    "js": "await window.__sleep(700); window.__toPhone(); await window.__sleep(400); return 'narrow dark'",
+    "wait": 300,
+    "shot": "auto-developer-remote-04-narrow-dark.png"
+  },
+  {
+    "theme": "light",
+    "js": "await window.__sleep(700); window.__toPhone(); await window.__sleep(400); return 'narrow light'",
+    "wait": 300,
+    "shot": "auto-developer-remote-05-narrow-light.png"
+  }
+]

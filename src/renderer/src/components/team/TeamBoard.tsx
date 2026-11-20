@@ -7,6 +7,7 @@ import { agentKey, useStore } from '@/store'
 import { accentVars, cn, duration, prettyModel } from '@/lib/util'
 import { Orb, OrbStack } from '../Orb'
 import { LABEL, RANK, columnsFor, isFinished, sections, statusOf, taskOf, waitsFor, type Section, type Status } from './model'
+import { carryLine, carryOf, useCarried, useWhyIdle, type Carry } from './carry'
 
 // The team at a glance: the lead, then everyone else in tidy groups of cards that are all the
 // same size. Cards glide to their new place when someone joins, finishes or goes home.
@@ -60,7 +61,7 @@ export function StatusMark({ status, className }: { status: Status; className?: 
   )
 }
 
-function Pill({ status }: { status: Status }) {
+function Pill({ status, label }: { status: Status; label?: string }) {
   return (
     <span
       className={cn(
@@ -69,7 +70,7 @@ function Pill({ status }: { status: Status }) {
       )}
     >
       <StatusMark status={status} />
-      {LABEL[status]}
+      {label || LABEL[status]}
     </span>
   )
 }
@@ -130,7 +131,8 @@ function Details({ chatId, account, status, st, task, model, lead }: { chatId: s
         {row('Waiting for', task?.status === 'queued' ? waits.waiting : null)}
         {row('Lined up after', !waits.waiting ? waits.after : null)}
         {row('Model', model)}
-        {row('Started by', account.spawned ? `${by || 'a teammate'}, on ${base || 'an'} account` : null)}
+        {row('Started by', account.spawned ? by || 'a teammate' : null)}
+        {row('Runs on', account.spawned ? `${base || 'another'} account` : null)}
         {row('Why', st?.modelWhy || task?.modelWhy)}
         {row('Problem', status === 'problem' ? st?.error || 'It stopped before it finished.' : null)}
         {row('Took', task?.startedAt && task.finishedAt ? duration(task.finishedAt - task.startedAt) : null)}
@@ -153,8 +155,25 @@ function Hover({ children, content }: { children: ReactNode; content: ReactNode 
   )
 }
 
-const AgentCard = memo(function AgentCard({ chatId, account, status, pinged, onOpen }: { chatId: string; account: Account; status: Status; pinged: boolean; onOpen(id: string): void }) {
+/** "on Nova": the account an agent runs on, in that account's colour, quiet. */
+function OnAccount({ id }: { id: string }) {
+  const base = useStore((s) => s.members[id])
+  if (!base) return null
+  return (
+    <span className="flex min-w-0 shrink items-center gap-1" style={accentVars(base.accent)}>
+      <span className="size-[6px] shrink-0 rounded-full bg-[var(--a2)]" />
+      <span className="truncate text-[color-mix(in_oklab,var(--a2)_55%,var(--ink-2))]">on {base.name}</span>
+    </span>
+  )
+}
+
+const AgentCard = memo(function AgentCard({ chatId, account, status: own, carry, pinged, onOpen }: { chatId: string; account: Account; status: Status; carry: Carry; pinged: boolean; onOpen(id: string): void }) {
   const st = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, account.id)])
+  // An account whose sign-in carries agents at work is working, even with no task of its own.
+  const carrying = !account.spawned && carry.agents > 0
+  const ownBusy = own === 'working' || own === 'needs' || own === 'problem' || own === 'off'
+  const status: Status = carrying && carry.working > 0 && !ownBusy ? 'working' : own
+  const why = useWhyIdle(account.spawned ? '' : account.id)
   const task = useStore((s) => taskOf(account, st, s.tasks[chatId] || []))
   const helpers = useStore((s) => (s.chats.find((c) => c.id === chatId)?.agents || []).filter((a) => a.spawned?.by === account.id && !a.spawned.gone).length)
   const model = useModel(account, st, task)
@@ -175,13 +194,29 @@ const AgentCard = memo(function AgentCard({ chatId, account, status, pinged, onO
         )}
       >
         <span className="flex w-full items-center gap-2.5">
-          <Orb account={account} size={24} phase={st?.phase} off={status === 'off' || status === 'gone'} />
+          <Orb account={account} size={24} phase={st?.phase} live={carrying && carry.working > 0 ? true : undefined} off={status === 'off' || status === 'gone'} />
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{account.name}</span>
-          <Pill status={status} />
+          <Pill status={status} label={carrying && status === 'free' ? 'Standing by' : undefined} />
         </span>
-        <span className="mt-1.5 block w-full truncate text-[12.5px] leading-[17px]">{doing(status, st, task, account, waiting)}</span>
+        <span className="mt-1.5 block w-full truncate text-[12.5px] leading-[17px]">
+          {carrying && !ownBusy ? (
+            <span className={carry.working ? 'text-ink' : 'text-ink-2'}>{carryLine(carry)}</span>
+          ) : !account.spawned && why.long && !ownBusy ? (
+            <span className={why.tone === 'bad' ? 'text-bad' : 'text-warn'}>{why.long}</span>
+          ) : (
+            doing(own, st, task, account, waiting)
+          )}
+        </span>
         <span className="mt-auto flex w-full items-center gap-2 text-[11px] text-ink-4">
-          <span className="min-w-0 flex-1 truncate">{model}</span>
+          {account.spawned && <OnAccount id={account.spawned.base} />}
+          {/* An account busy with its own task still says what its sign-in carries; trouble with its usage comes first. */}
+          {!account.spawned && why.long && (carrying || ownBusy) ? (
+            <span className={cn('min-w-0 flex-1 truncate', why.tone === 'bad' ? 'text-bad' : 'text-warn')}>{why.long}</span>
+          ) : !account.spawned && carrying && ownBusy ? (
+            <span className="min-w-0 flex-1 truncate text-ink-3">{carryLine(carry)}</span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate">{model}</span>
+          )}
           {helpers > 0 && (
             <span className="shrink-0 text-ink-3">
               {helpers} {helpers === 1 ? 'helper' : 'helpers'}
@@ -194,7 +229,8 @@ const AgentCard = memo(function AgentCard({ chatId, account, status, pinged, onO
   )
 })
 
-function Lead({ chatId, account, counts, total, onOpen }: { chatId: string; account: Account; counts: Record<Status, number>; total: number; onOpen(id: string): void }) {
+function Lead({ chatId, account, counts, total, carry, onOpen }: { chatId: string; account: Account; counts: Record<Status, number>; total: number; carry: Carry; onOpen(id: string): void }) {
+  const why = useWhyIdle(account.id)
   const st = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, account.id)])
   const out = useStore((s) => s.statuses[account.id]?.state === 'signed-out')
   const task = useStore((s) => (st?.taskId ? s.tasks[chatId]?.find((t) => t.id === st.taskId) : undefined))
@@ -227,8 +263,14 @@ function Lead({ chatId, account, counts, total, onOpen }: { chatId: string; acco
                 <span className="text-[11.5px] text-ink-3">Lead</span>
                 <span className="truncate text-[11.5px] text-ink-4">{model}</span>
               </span>
+              {(why.long || (carry.agents > 0 && status !== 'free')) && (
+                <span className="mt-0.5 flex min-w-0 items-center gap-2 text-[12px]">
+                  {carry.agents > 0 && status !== 'free' && <span className="truncate text-ink-3">{carryLine(carry)}</span>}
+                  {why.long && <span className={cn('truncate', why.tone === 'bad' ? 'text-bad' : 'text-warn')}>{why.long}</span>}
+                </span>
+              )}
               <span className="mt-0.5 flex items-center gap-2 text-[13px]">
-                <span className="min-w-0 truncate">{doing(status, st, task, account)}</span>
+                <span className="min-w-0 truncate">{status === 'free' && carry.agents > 0 ? <span className={carry.working ? 'text-ink' : 'text-ink-2'}>{carryLine(carry)}</span> : doing(status, st, task, account)}</span>
                 {status === 'working' && st?.turnStartedAt && <Elapsed since={st.turnStartedAt} className="shrink-0 text-[12px] text-ink-3" />}
               </span>
             </span>
@@ -269,7 +311,7 @@ function shownOf(section: Section, statusOfId: Map<string, Status>, open: boolea
   return { live, done, shown: open ? [...live, ...done] : live }
 }
 
-function SectionView({ chatId, section, statusOfId, fit, cardW, open, setOpen, pinged, onOpen }: { chatId: string; section: Section; statusOfId: Map<string, Status>; fit: number; cardW: number; open: boolean; setOpen(v: boolean): void; pinged: Set<string>; onOpen(id: string): void }) {
+function SectionView({ chatId, section, statusOfId, ownOf, carried, fit, cardW, open, setOpen, pinged, onOpen }: { chatId: string; section: Section; statusOfId: Map<string, Status>; ownOf: Map<string, Status>; carried: Map<string, Carry>; fit: number; cardW: number; open: boolean; setOpen(v: boolean): void; pinged: Set<string>; onOpen(id: string): void }) {
   const ok = useContext(Smooth)
   const { live, done, shown } = shownOf(section, statusOfId, open)
   const cols = columnsFor(shown.length, fit)
@@ -317,7 +359,7 @@ function SectionView({ chatId, section, statusOfId, fit, cardW, open, setOpen, p
           <AnimatePresence initial={false} mode="popLayout" custom={ok}>
             {shown.map((m) => (
               <motion.div key={m.id} layout="position" transition={ok ? glide : still} custom={ok} variants={cardMotion} initial="hidden" animate="shown" exit="gone">
-                <AgentCard chatId={chatId} account={m} status={statusOfId.get(m.id) || 'free'} pinged={pinged.has(m.id)} onOpen={onOpen} />
+                <AgentCard chatId={chatId} account={m} status={ownOf.get(m.id) || 'free'} carry={carryOf(carried, m.id)} pinged={pinged.has(m.id)} onOpen={onOpen} />
               </motion.div>
             ))}
           </AnimatePresence>
@@ -383,7 +425,18 @@ export function TeamBoard({ chatId, team, leadId, tasks, pinged, onOpen }: { cha
     return () => ro.disconnect()
   }, [])
 
-  const statusOfId = useStatuses(chatId, team, tasks)
+  const ownOf = useStatuses(chatId, team, tasks)
+  const carried = useCarried(chatId)
+  // What the board orders and counts by: an account whose sign-in carries agents at work counts as working.
+  const statusOfId = useMemo(() => {
+    const m = new Map(ownOf)
+    for (const a of team) {
+      if (a.spawned) continue
+      const own = m.get(a.id) || 'free'
+      if (carryOf(carried, a.id).working > 0 && (own === 'free' || own === 'queued' || own === 'done')) m.set(a.id, 'working')
+    }
+    return m
+  }, [ownOf, carried, team])
   const lead = team.find((a) => a.id === leadId) || team[0]
   const list = useMemo(() => sections(team, lead?.id, (a) => statusOfId.get(a.id) || 'free'), [team, lead?.id, statusOfId])
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -442,7 +495,7 @@ export function TeamBoard({ chatId, team, leadId, tasks, pinged, onOpen }: { cha
     <div ref={box} className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 pb-10 [scrollbar-gutter:stable]">
       {width > 0 && lead && (
         <div className="mx-auto space-y-6" style={{ width: inner }}>
-          <Lead chatId={chatId} account={lead} counts={counts} total={spawned} onOpen={onOpen} />
+          <Lead chatId={chatId} account={lead} counts={counts} total={spawned} carry={carryOf(carried, lead.id)} onOpen={onOpen} />
           <Smooth.Provider value={smooth}>
             <LayoutGroup id={`team-${chatId}`} key={epoch}>
               {list.map((s) => (
@@ -451,6 +504,8 @@ export function TeamBoard({ chatId, team, leadId, tasks, pinged, onOpen }: { cha
                     chatId={chatId}
                     section={s}
                     statusOfId={statusOfId}
+                    ownOf={ownOf}
+                    carried={carried}
                     fit={fitOf(s)}
                     cardW={cardW}
                     open={!!open[s.key]}

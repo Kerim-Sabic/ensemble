@@ -167,6 +167,27 @@ function settledAt(text: string): number {
 const REMARK = [remarkGfm]
 const REHYPE: [typeof rehypeHighlight, { detect: boolean; ignoreMissing: boolean }][] = [[rehypeHighlight, { detect: false, ignoreMissing: true }]]
 
+/**
+ * Texts already worked out, newest last. Working out a long reply (parsing, then colouring its
+ * code) takes several milliseconds; a long chat scrolled through draws the same replies again and
+ * again as they come into view, so each is worked out once. What comes out is a description of
+ * elements, which React can draw any number of times.
+ */
+const parsed = new Map<string, ReactNode>()
+const PARSED_MAX = 160
+
+function parsedOnce(text: string): ReactNode {
+  let out = parsed.get(text)
+  if (out !== undefined) {
+    parsed.delete(text)
+  } else {
+    out = ReactMarkdown({ remarkPlugins: REMARK, rehypePlugins: REHYPE, components, children: text })
+    if (parsed.size >= PARSED_MAX) parsed.delete(parsed.keys().next().value as string)
+  }
+  parsed.set(text, out)
+  return out
+}
+
 /** Whether a text ends inside a fenced block that has not been closed yet. */
 export function endsOpen(text: string): boolean {
   let fence: string | null = null
@@ -185,6 +206,7 @@ const Part = memo(function Part({ text, parts, writing }: { text: string; parts:
   const open = writing && endsOpen(text)
   const end = text.trimEnd().length
   const own = useMemo<Components>(() => (open ? { ...parts, pre: pre({ end }) } : parts), [open, end, parts])
+  if (own === components && !writing) return parsedOnce(text)
   return (
     <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={own}>
       {text}
@@ -245,9 +267,13 @@ export const Markdown = memo(function Markdown({
   } else {
     out = (
       <div className={cn('md', compact && 'compact', className)}>
-        <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={parts} urlTransform={onNote ? (u) => (NOTE.test(u) ? u : defaultUrlTransform(u)) : undefined}>
-          {text}
-        </ReactMarkdown>
+        {onNote ? (
+          <ReactMarkdown remarkPlugins={REMARK} rehypePlugins={REHYPE} components={parts} urlTransform={(u) => (NOTE.test(u) ? u : defaultUrlTransform(u))}>
+            {text}
+          </ReactMarkdown>
+        ) : (
+          parsedOnce(text)
+        )}
       </div>
     )
   }

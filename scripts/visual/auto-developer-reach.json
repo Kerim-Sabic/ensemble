@@ -1,0 +1,42 @@
+[
+  {
+    "size": [
+      1180,
+      900
+    ],
+    "theme": "light",
+    "js": "window.__sleep = ms => new Promise(r => setTimeout(r, ms)); await window.ensemble.updateSettings({ onboarded: true, remote: true }); await window.__sleep(1500); const r = await window.ensemble.remoteReachSet({ relayUrl: 'http://127.0.0.1:8799', relayOn: true }); await window.__sleep(1500); await window.ensemble.remotePair(); const r2 = await window.ensemble.remoteReach(); return 'relay connected ' + r2.relay.connected + ', link ' + !!r2.relay.link + ', tailscale ' + r2.tailscale.running + ' ' + r2.tailscale.name",
+    "wait": 300
+  },
+  {
+    "js": "window.__ensemble.getState().setModal({ kind: 'settings' }); await window.__sleep(1200); window.__toAny = () => { const h = [...document.querySelectorAll('div')].find(d => d.textContent.trim() === 'From anywhere' && d.children.length === 0); if (h) h.scrollIntoView({ block: 'start' }); return !!h }; const f = window.__toAny(); await window.__sleep(2500); window.__toAny(); return 'found ' + f",
+    "wait": 300,
+    "shot": "auto-developer-reach-01-light.png"
+  },
+  {
+    "js": "const t = document.querySelector('[aria-label=\"When a watch finds something\"]'); if (t) t.scrollIntoView({ block: 'center' }); await window.__sleep(500); return 'scrolled ' + !!t",
+    "wait": 300,
+    "shot": "auto-developer-reach-02-light-lower.png"
+  },
+  {
+    "theme": "dark",
+    "js": "await window.__sleep(700); window.__toAny(); await window.__sleep(400); return 'dark'",
+    "wait": 300,
+    "shot": "auto-developer-reach-03-dark.png"
+  },
+  {
+    "js": "const t = document.querySelector('[aria-label=\"When a watch finds something\"]'); if (t) t.scrollIntoView({ block: 'center' }); await window.__sleep(500); return 'scrolled ' + !!t",
+    "wait": 300,
+    "shot": "auto-developer-reach-04-dark-lower.png"
+  },
+  {
+    "size": [
+      860,
+      820
+    ],
+    "theme": "light",
+    "js": "await window.__sleep(700); window.__toAny(); await window.__sleep(400); return 'narrow'",
+    "wait": 300,
+    "shot": "auto-developer-reach-05-narrow-light.png"
+  }
+]

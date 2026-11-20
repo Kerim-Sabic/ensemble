@@ -1,0 +1,132 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nwindow.__ensemble.getState().newChat();\nreturn 'clicked: ' + out.join(' > ');",
+  "wait": 1500,
+  "shot": "github-newchat-light.png"
+ },
+ {
+  "theme": "light",
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^From GitHub$/.test(b.textContent.trim())); if (!b) return 'no button /^From GitHub$/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 1200,
+  "shot": "github-issues-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^Pull requests/.test(b.textContent.trim())); if (!b) return 'no button /^Pull requests/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 500,
+  "shot": "github-pulls-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^Failed runs/.test(b.textContent.trim())); if (!b) return 'no button /^Failed runs/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 500,
+  "shot": "github-runs-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'acme/quiet-site' } })); return 'opened acme/quiet-site';",
+  "wait": 1200,
+  "shot": "github-empty-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'acme/private-site' } })); return 'opened acme/private-site';",
+  "wait": 1200,
+  "shot": "github-error-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/issues/139' } })); return 'opened https://github.com/acme/pricing-site/issues/139';",
+  "wait": 1200,
+  "shot": "github-focus-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^From GitHub$/.test(b.textContent.trim())); if (!b) return 'no button /^From GitHub$/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 1200,
+  "shot": "github-issues-dark.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^Pull requests/.test(b.textContent.trim())); if (!b) return 'no button /^Pull requests/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 500,
+  "shot": "github-pulls-dark.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^Failed runs/.test(b.textContent.trim())); if (!b) return 'no button /^Failed runs/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 500,
+  "shot": "github-runs-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'acme/quiet-site' } })); return 'opened acme/quiet-site';",
+  "wait": 1200,
+  "shot": "github-empty-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'acme/private-site' } })); return 'opened acme/private-site';",
+  "wait": 1200,
+  "shot": "github-error-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/issues/139' } })); return 'opened https://github.com/acme/pricing-site/issues/139';",
+  "wait": 1200,
+  "shot": "github-focus-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 400
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "theme": "light",
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^From GitHub$/.test(b.textContent.trim())); if (!b) return 'no button /^From GitHub$/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 1200,
+  "shot": "github-issues-900-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(b => /^Start$/.test(b.textContent.trim())); if (!b) return 'no button /^Start$/'; b.click(); return 'clicked ' + b.textContent.trim();",
+  "wait": 2500
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === s.chatId); return 'chat ' + (c && c.title) + ' | goal ' + (c && c.goal && c.goal.status + ': ' + c.goal.text) + ' | done when ' + (c && c.goal && c.goal.doneWhen);",
+  "wait": 2500,
+  "shot": "github-started-900-light.png"
+ }
+]

@@ -1,47 +1,237 @@
 name: Release
 
-# Push a tag such as v3.4.1 and this builds the Windows installer and publishes it as a
-# GitHub release. Installed copies of Ensemble find it and update themselves.
+# Push a tag such as v3.8.0 and this builds the installers and publishes them as a GitHub release.
+# Installed copies of Ensemble find it and update themselves.
+#
+# What it adds to the files themselves (all optional, all driven by repository secrets and variables;
+# none set means the release is built exactly as before, unsigned):
+# - Windows code signing: Azure Trusted Signing (AZURE_* secrets and variables) or a certificate (WIN_CSC_LINK).
+# - Update signatures: the installers are signed with the project's update key (ENSEMBLE_UPDATE_KEY), and
+#   installed copies refuse an update whose signature does not check out (src/main/updatesig.ts).
+# - For anyone checking a download: SHA256SUMS.txt, an SPDX SBOM and a GitHub build-provenance attestation.
+# Setup steps for each: docs/RELEASING.md.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
-permissions:
-  contents: write
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      # No dependency cache in a release build, so nothing from an earlier run can end up in an installer.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - name: Build the installer
-        run: node scripts/build-hands.mjs && pnpm exec electron-vite build && pnpm exec electron-builder --win --publish never
-      # Published here in one step rather than by electron-builder: it uploads its files in
-      # parallel, and each upload can create its own copy of a release that doesn't exist yet.
-      - name: Publish the release
+      - name: Check production dependencies for known vulnerabilities
+        run: pnpm audit --prod --audit-level high
+      - name: Build the installer (signed when signing secrets exist)
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Azure Trusted Signing: client secret credentials of an app registration with the
+          # "Trusted Signing Certificate Profile Signer" role, plus the account's details.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          # Or a classic certificate: the .pfx as base64, and its password.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Exactly the certificate's subject common name. Written into the app, so electron-updater
+          # refuses an update that is not signed by this publisher. Required for Azure; optional for a .pfx.
+          WIN_PUBLISHER_NAME: ${{ vars.WIN_PUBLISHER_NAME }}
         run: |
+          set -euo pipefail
+          node scripts/build-hands.mjs
+          pnpm exec electron-vite build
+          args=(--win --publish never)
+          if [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_CLIENT_SECRET:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
+            if [ -z "${AZURE_SIGN_ENDPOINT:-}" ] || [ -z "${AZURE_SIGN_ACCOUNT:-}" ] || [ -z "${AZURE_SIGN_PROFILE:-}" ] || [ -z "${WIN_PUBLISHER_NAME:-}" ]; then
+              echo "Azure signing secrets are set but AZURE_SIGN_ENDPOINT, AZURE_SIGN_ACCOUNT, AZURE_SIGN_PROFILE or WIN_PUBLISHER_NAME is missing." >&2
+              exit 1
+            fi
+            echo "Signing with Azure Trusted Signing."
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+            args+=("-c.win.azureSignOptions.endpoint=$AZURE_SIGN_ENDPOINT"
+                   "-c.win.azureSignOptions.codeSigningAccountName=$AZURE_SIGN_ACCOUNT"
+                   "-c.win.azureSignOptions.certificateProfileName=$AZURE_SIGN_PROFILE"
+                   "-c.win.azureSignOptions.publisherName=$WIN_PUBLISHER_NAME")
+          elif [ -n "${WIN_CSC_LINK:-}" ]; then
+            echo "Signing with the certificate in WIN_CSC_LINK."
+            if [ -n "${WIN_PUBLISHER_NAME:-}" ]; then args+=("-c.win.signtoolOptions.publisherName=$WIN_PUBLISHER_NAME"); fi
+          else
+            # Once a release has carried a publisher name, installed copies refuse any update not signed
+            # by that publisher: an unsigned build now would stop every one of them from updating.
+            if [ -n "${WIN_PUBLISHER_NAME:-}" ]; then
+              echo "WIN_PUBLISHER_NAME is set but no signing secrets are: installed copies would refuse an unsigned update. Restore the signing secrets, or clear WIN_PUBLISHER_NAME only if no release has ever carried it." >&2
+              exit 1
+            fi
+            echo "No signing secrets: building an unsigned installer, as before."
+            unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+          fi
+          pnpm exec electron-builder "${args[@]}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/Ensemble-Setup-*.exe
+            dist/Ensemble-Setup-*.exe.blockmap
+            dist/latest.yml
+
+  # macOS is new: a failure here does not hold back the Windows release.
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: true
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 10
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # Installs the ChatGPT runtime for this runner's processor (@openai/codex-darwin-<arch>).
+      - run: pnpm install --frozen-lockfile
+      - name: Build the Mac app (ad-hoc signed)
+        env:
+          ARCH: ${{ matrix.arch }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -euo pipefail
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --mac "--$ARCH" --publish never
+          mv dist/latest-mac.yml "dist/latest-mac-$ARCH.yml"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mac-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/Ensemble-*.dmg
+            dist/Ensemble-*.zip
+            dist/Ensemble-*.blockmap
+            dist/latest-mac-*.yml
+
+  publish:
+    needs: [windows, mac]
+    # Only a version tag publishes. A run started by hand builds the installers (as artifacts) and stops there.
+    if: ${{ !cancelled() && needs.windows.result == 'success' && github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # create the release and upload its files
+      id-token: write # sign the build-provenance attestation
+      attestations: write # store the attestation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Version and tag
+        id: v
+        shell: bash
+        run: |
+          set -euo pipefail
           version=$(node -p "require('./package.json').version")
           tag="v$version"
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$tag" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package.json version $version" >&2
             exit 1
           fi
-          files="dist/Ensemble-Setup-$version.exe dist/Ensemble-Setup-$version.exe.blockmap dist/latest.yml"
-          if gh release view "$tag" > /dev/null 2>&1; then
-            gh release upload "$tag" $files --clobber
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: One macOS update feed for both processors
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          if [ -f latest-mac-arm64.yml ]; then
+            node ../scripts/mac-feed.mjs latest-mac-arm64.yml latest-mac-x64.yml latest-mac.yml
+          elif [ -f latest-mac-x64.yml ]; then
+            cp latest-mac-x64.yml latest-mac.yml
           else
-            gh release create "$tag" $files --title "Ensemble $version" --generate-notes
+            echo "No Mac build this time."
+          fi
+          rm -f latest-mac-arm64.yml latest-mac-x64.yml
+      - name: Sign the installers for the app's update check
+        env:
+          ENSEMBLE_UPDATE_KEY: ${{ secrets.ENSEMBLE_UPDATE_KEY }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: node scripts/update-sign.mjs dist "$VERSION"
+      - name: Software bill of materials (SPDX)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/ensemble-${{ steps.v.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+      - name: Checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -- * > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Build-provenance attestation for every file in the release
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS.txt
+      # Published here in one step rather than by electron-builder: it uploads its files in
+      # parallel, and each upload can create its own copy of a release that doesn't exist yet.
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "Ensemble $VERSION" --generate-notes --target "$GITHUB_SHA"
           fi

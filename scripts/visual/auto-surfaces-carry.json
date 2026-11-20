@@ -1,0 +1,71 @@
+[
+{
+"size": [
+1400,
+860
+],
+"theme": "light",
+"wait": 1800
+},
+{
+"js": "\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'onboarded=' + window.__ensemble.getState().settings.onboarded + ' size=' + innerWidth + 'x' + innerHeight + ' dpr=' + devicePixelRatio;\n",
+"wait": 800
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__scroller = () => document.querySelector('[data-view-scope]')?.parentElement;\nwindow.__info = () => { const s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); if (!c) return 'no chat'; const ag = c.agents || []; const t = s.tasks[c.id] || []; const busy = Object.values(s.agents).filter(a => a.chatId === c.id && a.phase !== 'idle' && a.phase !== 'error').length; return 'ag ' + ag.length + ' gone ' + ag.filter(a => a.spawned?.gone).length + ' tasks ' + t.filter(x => x.status === 'done').length + '/' + t.length + ' busy ' + busy + ' neurons ' + document.querySelectorAll('.nn-node').length; };\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "\nconst st = window.__ensemble; const api = window.ensemble;\nconst chat = await api.createChat({});\nawait st.getState().openChat(chat.id);\nawait api.setUltra(chat.id, true);\nawait api.updateChat(chat.id, { title: 'Design the landing page' });\nlocalStorage.setItem('ensemble.flow.feed', '0');\nst.getState().setView('flow');\nawait new Promise(r => setTimeout(r, 800));\nreturn document.querySelectorAll('.nn-node').length + ' neurons before start, view ' + st.getState().view;\n",
+"wait": 300
+},
+{
+"js": "window.__ensemble.getState().send('/gocrazy design the landing page'); await window.__sleep(11000); const b = [...document.querySelectorAll('[role=tab]')].find(t => /Groups/.test(t.textContent)); b && b.click(); await window.__sleep(700); \nconst s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); const m = {};\nfor (const a of (c.agents || [])) if (a.spawned && !a.spawned.gone) { const n = s.members[a.spawned.base]?.name || a.spawned.base; m[n] = (m[n] || 0) + 1; }\nreturn 'bases ' + JSON.stringify(m) + ' | ' + window.__info();\n",
+"wait": 300,
+"shot": "auto-surfaces-carry-01-groups-light.png"
+},
+{
+"theme": "dark",
+"js": "\nconst s = window.__S(); const c = s.chats.find(c => c.id === s.chatId); const m = {};\nfor (const a of (c.agents || [])) if (a.spawned && !a.spawned.gone) { const n = s.members[a.spawned.base]?.name || a.spawned.base; m[n] = (m[n] || 0) + 1; }\nreturn 'bases ' + JSON.stringify(m) + ' | ' + window.__info();\n",
+"wait": 400,
+"shot": "auto-surfaces-carry-02-groups-dark.png"
+},
+{
+"size": [
+900,
+760
+],
+"wait": 700,
+"shot": "auto-surfaces-carry-03-groups-900-dark.png"
+},
+{
+"theme": "light",
+"wait": 400,
+"shot": "auto-surfaces-carry-04-groups-900-light.png"
+},
+{
+"size": [
+1400,
+860
+],
+"js": "\nconst st = window.__ensemble; const s = st.getState(); const now = Date.now();\nconst accs = s.accounts.filter(a => a.enabled && a.id !== (s.chats.find(c => c.id === s.chatId).leadId || s.settings.leadId));\nconst pick = accs.slice(-2);\nconst u = { ...s.usage };\nif (pick[0]) u[pick[0].id] = { ...(u[pick[0].id] || { accountId: pick[0].id, updatedAt: now }), supply: { state: 'low', until: now + 95 * 60000, window: 'session' } };\nif (pick[1]) u[pick[1].id] = { ...(u[pick[1].id] || { accountId: pick[1].id, updatedAt: now }), supply: { state: 'out', until: now + 140 * 60000, window: 'session' } };\nst.setState({ usage: u });\nreturn 'faked low ' + (pick[0] && pick[0].name) + ', out ' + (pick[1] && pick[1].name);\n",
+"wait": 600,
+"shot": "auto-surfaces-carry-05-lowout-light.png"
+},
+{
+"theme": "dark",
+"wait": 400,
+"shot": "auto-surfaces-carry-06-lowout-dark.png"
+},
+{
+"theme": "light",
+"js": "const sc = document.querySelector('.overflow-y-auto.px-5'); if (sc) sc.scrollTop = 99999; await window.__sleep(300); return 'scrolled';",
+"wait": 300,
+"shot": "auto-surfaces-carry-07-agents-light.png"
+},
+{
+"js": "\nconst b = [...document.querySelectorAll('[role=tab]')].find(t => /Network/.test(t.textContent)); b && b.click(); await window.__sleep(900);\nconst g = [...document.querySelectorAll('.nn-node')].find(x => /Builder B/.test(x.getAttribute('aria-label') || '')) || document.querySelectorAll('.nn-node')[4];\ng && g.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, relatedTarget: document.body }));\nreturn 'hover ' + (g && g.getAttribute('aria-label'));\n",
+"wait": 600,
+"shot": "auto-surfaces-carry-08-network-hover-light.png"
+}
+]

@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { isLimitNotice, isLimitText } from '@shared/limits'
 import {
   query,
   createSdkMcpServer,
@@ -32,6 +33,8 @@ export function claudeEnv(configDir: string | null): Record<string, string> {
 
 /** Tools that change files, which is what makes a turn worth an undo point. */
 const EDITING = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+/** How long the reply's own result may take to arrive after a result that was not its own (the first words of a long reply can take a while). */
+const STRAY_WAIT_MS = 90_000
 
 // Commands that only make sense inside Claude Code's own terminal window.
 const HIDDEN_COMMANDS = new Set(
@@ -99,6 +102,44 @@ function resultText(content: unknown): string {
   return parts.join('\n')
 }
 
+/** Tools that run commands. An unattended run has them only inside the program's own sandbox. */
+export const CLAUDE_SHELL_TOOLS = ['Bash', 'PowerShell', 'BashOutput', 'KillShell', 'KillBash', 'Monitor']
+
+/**
+ * The settings of a run nobody is watching (src/main/guard.ts). Nothing here is left to the model:
+ *  - `dontAsk`: whatever is not approved beforehand is refused, and nobody is asked.
+ *  - Nothing is approved beforehand by a list. Every tool call goes to the guard through a
+ *    pre-tool hook, which runs before any rule; if the hook fails, the call is blocked.
+ *  - No shell, unless the program can keep commands in its sandbox (macOS, Linux, WSL2; there is
+ *    none on native Windows), and then commands that cannot be sandboxed do not run at all.
+ *  - Asking the user a question is not offered: there is nobody to answer.
+ */
+export function guarded(options: Options, gate: NonNullable<RuntimeOptions['guard']>): void {
+  options.permissionMode = 'dontAsk'
+  options.allowDangerouslySkipPermissions = false
+  options.allowedTools = []
+  options.disallowedTools = ['AskUserQuestion', ...(gate.shell ? [] : CLAUDE_SHELL_TOOLS)]
+  if (gate.shell) {
+    options.sandbox = { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false, autoAllowBashIfSandboxed: false, ...(gate.network ? {} : { network: { allowedDomains: [], strictAllowlist: true } }) }
+  }
+  options.hooks = {
+    ...options.hooks,
+    PreToolUse: [
+      {
+        onFailure: 'block',
+        hooks: [
+          async (input) => {
+            if (input.hook_event_name !== 'PreToolUse') return {}
+            // The team's own tools are checked where they run (the same check, for every provider).
+            const r = input.tool_name.startsWith('mcp__team__') ? { allow: true } : await gate.check(input.tool_name, input.tool_input)
+            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: r.allow ? 'allow' : 'deny', permissionDecisionReason: r.allow ? 'Allowed by the rules for unattended runs.' : r.message || 'Not allowed in a run nobody is watching.' } }
+          },
+        ],
+      },
+    ],
+  }
+}
+
 export class ClaudeRuntime implements AgentRuntime {
   private q: Query | null = null
   private input = new AsyncQueue<SDKUserMessage>()
@@ -126,6 +167,12 @@ export class ClaudeRuntime implements AgentRuntime {
   private swallow = 0
   private swallowUntil = 0
   private steerWait: ReturnType<typeof setTimeout> | null = null
+  /** The model has produced something in the reply under way. */
+  private moved = false
+  /** The reply under way is a typed command. */
+  private typed = false
+  /** A result that was not the reply's own arrived: how long the real one may still take. */
+  private strayWait: ReturnType<typeof setTimeout> | null = null
 
   constructor(private o: RuntimeOptions) {
     this.level = o.permission
@@ -155,6 +202,8 @@ export class ClaudeRuntime implements AgentRuntime {
       allowedTools: ['WebSearch', 'WebFetch', ...o.tools.map((t) => `mcp__team__${t.name}`)],
       stderr: () => {},
       canUseTool: async (toolName, input, opts) => {
+        // Nobody is watching: nothing is asked here. (In that mode the program does not call this at all; this is the backstop.)
+        if (o.guard) return { behavior: 'deny', message: 'Nobody is watching this run, so this was not done.' }
         if (toolName === 'AskUserQuestion') {
           const questions = ((input.questions as QuestionSpec[]) || []).map((q) => ({
             question: q.question,
@@ -189,6 +238,7 @@ export class ClaudeRuntime implements AgentRuntime {
         }
       },
     }
+    if (o.guard) guarded(options, o.guard)
     if (o.executable) options.pathToClaudeCodeExecutable = o.executable
     if (o.resumeId) {
       options.resume = o.resumeId
@@ -239,6 +289,14 @@ export class ClaudeRuntime implements AgentRuntime {
       if (m.type === 'result') this.swallow--
       else if ((m.type === 'stream_event' || m.type === 'assistant') && this.q) void this.q.interrupt().catch(() => {})
       if (m.type !== 'system') return
+    }
+    // Anything the model itself produces means the reply we are waiting for is under way.
+    if (this.inTurn && (m.type === 'stream_event' || m.type === 'assistant')) {
+      this.moved = true
+      if (this.strayWait) {
+        clearTimeout(this.strayWait)
+        this.strayWait = null
+      }
     }
     switch (m.type) {
       case 'stream_event': {
@@ -339,10 +397,32 @@ export class ClaudeRuntime implements AgentRuntime {
           this.awaitSteered()
           return
         }
+        // A result with no model step, no text and nothing produced is not the end of the reply we
+        // are waiting for: the program reports one for things of its own (a background command
+        // reporting in, a session picking up again). Taken as ours, it closed a task with "left no
+        // report" while the agent went on working (seen 2026-11-20). The real one is still to come;
+        // if nothing follows, the reply ends after a wait rather than hanging.
+        if (!this.moved && !this.typed && !this.interrupted && !m.is_error && m.subtype === 'success' && !(m.num_turns || 0) && !(m.result || '').trim()) {
+          if (!this.strayWait) {
+            this.strayWait = setTimeout(() => {
+              this.strayWait = null
+              if (!this.inTurn || this.moved) return
+              this.inTurn = false
+              this.emit({ type: 'turn-end', status: 'done', resultText: '', durationMs: Date.now() - this.turnStart })
+            }, STRAY_WAIT_MS)
+          }
+          return
+        }
+        if (this.strayWait) {
+          clearTimeout(this.strayWait)
+          this.strayWait = null
+        }
         this.inTurn = false
-        const failed = m.is_error || m.subtype !== 'success'
+        // A limit notice can arrive as an ordinary answer ("You've hit your … limit · resets …"): it is a failure on the limit.
+        const noticed = !m.is_error && m.subtype === 'success' && isLimitNotice(m.result || '')
+        const failed = m.is_error || m.subtype !== 'success' || noticed
         const text = m.subtype === 'success' ? m.result : (m.errors || []).join('\n')
-        const limit = this.lastError === 'rate_limit' || (failed && /usage limit|rate limit|limit reached|out of .*usage/i.test(text))
+        const limit = this.lastError === 'rate_limit' || (failed && isLimitText(text))
         const auth =
           this.lastError === 'authentication_failed' || (failed && /not logged in|please run \/login|authentication|invalid api key/i.test(text))
         this.emit({
@@ -436,6 +516,9 @@ export class ClaudeRuntime implements AgentRuntime {
     this.inTurn = true
     this.interrupted = false
     this.edited = false
+    this.moved = false
+    // A typed command (/compact) can rightly end with no model step and no text.
+    this.typed = input.origin.kind === 'human' && content.length === 1 && input.text.trimStart().startsWith('/')
     this.turnStart = Date.now()
     // Text on its own goes as a plain string, the form the agent expects for
     // typed commands such as /compact.
@@ -521,6 +604,8 @@ export class ClaudeRuntime implements AgentRuntime {
     const wasFull = this.level === 'full'
     this.level = level
     this.o.permission = level
+    // A run nobody is watching keeps its own strict mode whatever the chat is set to.
+    if (this.o.guard) return
     if (!this.q) return
     // Full access has to be granted when the process starts, so crossing that
     // line means a fresh process that resumes the same conversation.

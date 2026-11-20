@@ -8,6 +8,7 @@ import { Button, Segmented, Tip } from './ui'
 import { Orb } from './Orb'
 import { TeamMap, type Packet } from './TeamMap'
 import { TeamBoard } from './team/TeamBoard'
+import { AccountsStrip } from './team/carry'
 import { useMeasured } from './ultra/fit'
 import { Markdown } from './Markdown'
 import { NetworkView, takeNetworkWish } from './ultra/neural/NetworkView'
@@ -455,6 +456,7 @@ export function TeamFlow() {
             </button>
           )}
         </div>
+        <AccountsStrip chatId={chatId} team={team} leadId={leadId} />
         {mode === 'network' ? (
           <NetworkView chatId={chatId} onOpen={openAgent} />
         ) : mode === 'map' ? (

@@ -121,11 +121,17 @@ export function previewOf(cmd: AppCommand | null, ultra = false): Preview | null
       // Go crazy only goes out while the chat's Ultra is on: say so before, not after.
       if (cmd.mode === 'gocrazy' && !gocrazyAllowed(ultra)) return { tone: 'stop', label: 'Needs Ultra on', hint: GOCRAZY_NEEDS_ULTRA, mode: cmd.mode, incomplete: true }
       return { tone: 'mode', label: MODE_INFO[cmd.mode].label, hint: MODE_INFO[cmd.mode].hint, mode: cmd.mode }
+    case 'github':
+      return cmd.ok
+        ? { tone: 'mode', label: 'From GitHub', hint: cmd.address ? 'Opens From GitHub on this address' : 'Opens From GitHub for this folder\'s repository' }
+        : { tone: 'stop', label: 'Not a GitHub address', hint: 'Use a repository, issue, pull request or Actions run link' }
+    case 'watch':
+      return { tone: 'mode', label: 'New watch', hint: cmd.text ? 'Opens a new watch with this filled in' : 'Opens a new watch' }
     case 'ultra': {
       const on = cmd.on ?? !ultra
       if (on === ultra) return { tone: 'stop', label: on ? 'Ultra is already on' : 'Ultra is already off', hint: 'Sending this changes nothing', mode: 'ultra' }
       return on
-        ? { tone: 'mode', label: 'Turns Ultra on', hint: 'Every message in this chat goes to many agents on the strongest models until you turn it off', mode: 'ultra' }
+        ? { tone: 'mode', label: 'Turns Ultra on', hint: 'Every message in this chat goes to the strongest models at full effort until you turn it off', mode: 'ultra' }
         : { tone: 'stop', label: 'Turns Ultra off', hint: 'Messages go back to the usual way of working', mode: 'ultra' }
     }
   }

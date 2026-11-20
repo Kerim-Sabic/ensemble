@@ -1,0 +1,20 @@
+# Dependabot opens pull requests for dependency updates and security fixes.
+# Security updates also need "Dependabot security updates" switched on in the repository settings.
+version: 2
+updates:
+  - package-ecosystem: npm # reads pnpm-lock.yaml
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  # Keeps the pinned commit SHAs in .github/workflows current, with the version in a comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

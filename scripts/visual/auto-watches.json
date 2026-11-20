@@ -1,0 +1,231 @@
+[
+ {
+  "size": [
+   1320,
+   900
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst st = window.__ensemble;\nfor (let i = 0; i < 10; i++) {\n  if (st.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nconst cwd = \"C:\\\\Users\\\\kerim\\\\AppData\\\\Local\\\\Temp\\\\demo\\\\acme\\\\pricing-site\";\nconst c = await window.ensemble.createChat({ cwd });\nawait st.getState().openChat(c.id);\nreturn 'onboarded: ' + st.getState().settings.onboarded + ', chat in ' + cwd\n",
+  "wait": 800
+ },
+ {
+  "js": "\nconst now = Date.now(), m = 60000, h = 60 * m;\nconst run = (ago, outcome, note, model, ms) => ({ id: 'r' + Math.random().toString(36).slice(2), at: now - ago, ms: ms || 900, outcome, note, model });\nconst w = (o) => Object.assign({ cwd: undefined, account: 'auto', onFind: 'tell', status: 'active', createdAt: now - 6 * 24 * h, failures: 0, madeBy: 'user' }, o);\nwindow.__demoWatches = [\n  w({ id: 'w-ci', name: 'Failed checks on main', prompt: 'When a check fails on main, find which step failed and why, and hand the fix to the team.', trigger: { kind: 'github', repo: 'acme/pricing-site', on: 'ci-failed' }, onFind: 'team', nextAt: now + 4 * m,\n     runs: [run(26 * m, 'handed', 'Checks failed on main: 2 tests in checkout.test.ts round the tax down. Handed to the team as Verified work.', 'gpt-5-mini', 7400), run(56 * m, 'quiet'), run(86 * m, 'quiet'), run(116 * m, 'quiet'), run(146 * m, 'quiet')] }),\n  w({ id: 'w-issues', name: 'New issues from customers', prompt: 'Tell me about new issues that come from customers (not from the team), with what they ask for in one line.', trigger: { kind: 'github', repo: 'acme/pricing-site', on: 'issue' }, nextAt: now + 11 * m,\n     runs: [run(9 * m, 'found', 'Issue #212 from a customer: the yearly price shows $0 in Safari 17.', 'gpt-5-mini', 5100), run(39 * m, 'quiet'), run(69 * m, 'quiet')] }),\n  w({ id: 'w-page', name: 'Competitor pricing page', prompt: 'Tell me when Northwind changes its plans or prices, and what changed.', trigger: { kind: 'url', url: 'https://www.northwind.example/pricing' }, nextAt: now + 47 * m,\n     runs: [run(13 * m, 'quiet'), run(73 * m, 'quiet'), run(133 * m, 'quiet'), run(193 * m, 'quiet')] }),\n  w({ id: 'w-brief', name: 'Morning summary of pull requests', prompt: 'Each weekday morning, list the open pull requests that wait for a review, oldest first.', trigger: { kind: 'schedule', at: '08:00', days: [1, 2, 3, 4, 5] }, status: 'paused', nextAt: null, failures: 3,\n     runs: [run(2 * h, 'failed', 'GitHub said the sign-in has expired. Sign in again under Settings, GitHub.'), run(26 * h, 'failed', 'GitHub said the sign-in has expired.'), run(50 * h, 'failed', 'GitHub said the sign-in has expired.'), run(74 * h, 'found', '3 pull requests wait for a review; the oldest is #198 (5 days).', 'gpt-5-mini', 6200)] }),\n];\nwindow.__demoInbox = [\n  { id: 'i-perm', kind: 'needs-you', title: 'Waiting for your OK', body: 'Push the branch fix/tax-rounding to github.com/acme/pricing-site and open a pull request', at: now - 4 * m, watchId: 'w-ci', chatId: undefined, approval: { chatId: 'x', requestId: 'demo-req', expiresAt: now + 11 * h + 34 * m }, read: false, done: false, ref: 'perm:demo' },\n  { id: 'i-issue', kind: 'found', title: 'Issue #212: the yearly price shows $0 in Safari 17', body: 'Opened by a customer 9 minutes ago. The toggle sets the price before the plan list has loaded, so Safari draws $0 until the page is scrolled. Two people have added \"same here\".', at: now - 9 * m, watchId: 'w-issues', read: false, done: false },\n  { id: 'i-ci', kind: 'found', title: 'Checks failed on main: tax rounded down in checkout', body: 'Two tests in checkout.test.ts expect $21.39 and get $21.38: the tax is rounded per line instead of on the total. Handed to the team as Verified work.', at: now - 26 * m, watchId: 'w-ci', read: true, done: false },\n  { id: 'i-fail', kind: 'failed', title: 'Morning summary of pull requests is paused after three failed looks', body: 'GitHub said the sign-in has expired. Sign in again under Settings, GitHub, then resume the watch.', at: now - 2 * h, watchId: 'w-brief', read: false, done: false },\n  { id: 'i-old', kind: 'found', title: 'Northwind added a Team plan at $18 a seat', body: '', at: now - 30 * h, watchId: 'w-page', read: true, done: true },\n];\nwindow.__demoToday = { runs: 14, byAccount: {}, caps: { runsPerDay: 60, runsPerAccount: 30, keepFree: 30 } };\nreturn 'demo data ready'\n",
+  "wait": 100
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); s.setView('inbox'); await new Promise(r => setTimeout(r, 600)); const b = [...document.querySelectorAll('button')].find(b => /^Inbox/.test(b.textContent.trim()) && b.closest('header')); b && b.click(); await new Promise(r => setTimeout(r, 300)); return 'inbox view: ' + !!window.__watches",
+  "wait": 800
+ },
+ {
+  "size": [
+   1320,
+   900
+  ],
+  "theme": "light",
+  "wait": 500
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Inbox/.test(b.textContent.trim())); if (!b) return 'no Inbox tab'; b.click(); await new Promise(r => setTimeout(r, 300)); return 'inbox tab'",
+  "wait": 100
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300
+ },
+ {
+  "js": "const m = document.querySelector('main') || document.body; return (m.innerText || '').replace(/\\s+/g, ' ').slice(0, 900)",
+  "wait": 100,
+  "shot": "watches-inbox-large-light.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: [], today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300,
+  "shot": "watches-inbox-empty-large-light.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 100
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Watches/.test(b.textContent.trim())); if (!b) return 'no Watches tab'; b.click(); await new Promise(r => setTimeout(r, 300)); const row = [...document.querySelectorAll('button[aria-expanded]')].find(x => /Morning summary/.test(x.textContent)); row && row.click(); await new Promise(r => setTimeout(r, 300)); return 'watches tab'",
+  "wait": 400,
+  "shot": "watches-list-large-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 200)); const b = [...document.querySelectorAll('header button')].find(b => /New watch/.test(b.textContent.trim())); if (!b) return 'no New watch'; b.click(); await new Promise(r => setTimeout(r, 1500)); return 'editor: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 300)",
+  "wait": 400,
+  "shot": "watches-new-large-light.png"
+ },
+ {
+  "js": "const chip = [...document.querySelectorAll('[role=dialog] button')].find(b => /failed checks/i.test(b.textContent)); if (!chip) return 'no chip: ' + [...document.querySelectorAll('[role=dialog] button')].map(b => b.textContent.trim()).join(' | '); chip.click(); await new Promise(r => setTimeout(r, 500)); return 'filled: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 400)",
+  "wait": 400,
+  "shot": "watches-new-filled-large-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.__watches.setState({ editing: { open: false } }); await new Promise(r => setTimeout(r, 300)); return 'closed'",
+  "wait": 200
+ },
+ {
+  "size": [
+   900,
+   700
+  ],
+  "theme": "light",
+  "wait": 500
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Inbox/.test(b.textContent.trim())); if (!b) return 'no Inbox tab'; b.click(); await new Promise(r => setTimeout(r, 300)); return 'inbox tab'",
+  "wait": 100
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300
+ },
+ {
+  "js": "const m = document.querySelector('main') || document.body; return (m.innerText || '').replace(/\\s+/g, ' ').slice(0, 900)",
+  "wait": 100,
+  "shot": "watches-inbox-900-light.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: [], today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300,
+  "shot": "watches-inbox-empty-900-light.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 100
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Watches/.test(b.textContent.trim())); if (!b) return 'no Watches tab'; b.click(); await new Promise(r => setTimeout(r, 300)); const row = [...document.querySelectorAll('button[aria-expanded]')].find(x => /Morning summary/.test(x.textContent)); row && row.click(); await new Promise(r => setTimeout(r, 300)); return 'watches tab'",
+  "wait": 400,
+  "shot": "watches-list-900-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 200)); const b = [...document.querySelectorAll('header button')].find(b => /New watch/.test(b.textContent.trim())); if (!b) return 'no New watch'; b.click(); await new Promise(r => setTimeout(r, 1500)); return 'editor: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 300)",
+  "wait": 400,
+  "shot": "watches-new-900-light.png"
+ },
+ {
+  "js": "const chip = [...document.querySelectorAll('[role=dialog] button')].find(b => /failed checks/i.test(b.textContent)); if (!chip) return 'no chip: ' + [...document.querySelectorAll('[role=dialog] button')].map(b => b.textContent.trim()).join(' | '); chip.click(); await new Promise(r => setTimeout(r, 500)); return 'filled: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 400)",
+  "wait": 400,
+  "shot": "watches-new-filled-900-light.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.__watches.setState({ editing: { open: false } }); await new Promise(r => setTimeout(r, 300)); return 'closed'",
+  "wait": 200
+ },
+ {
+  "size": [
+   1320,
+   900
+  ],
+  "theme": "dark",
+  "wait": 500
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Inbox/.test(b.textContent.trim())); if (!b) return 'no Inbox tab'; b.click(); await new Promise(r => setTimeout(r, 300)); return 'inbox tab'",
+  "wait": 100
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300
+ },
+ {
+  "js": "const m = document.querySelector('main') || document.body; return (m.innerText || '').replace(/\\s+/g, ' ').slice(0, 900)",
+  "wait": 100,
+  "shot": "watches-inbox-large-dark.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: [], today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300,
+  "shot": "watches-inbox-empty-large-dark.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 100
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Watches/.test(b.textContent.trim())); if (!b) return 'no Watches tab'; b.click(); await new Promise(r => setTimeout(r, 300)); const row = [...document.querySelectorAll('button[aria-expanded]')].find(x => /Morning summary/.test(x.textContent)); row && row.click(); await new Promise(r => setTimeout(r, 300)); return 'watches tab'",
+  "wait": 400,
+  "shot": "watches-list-large-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 200)); const b = [...document.querySelectorAll('header button')].find(b => /New watch/.test(b.textContent.trim())); if (!b) return 'no New watch'; b.click(); await new Promise(r => setTimeout(r, 1500)); return 'editor: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 300)",
+  "wait": 400,
+  "shot": "watches-new-large-dark.png"
+ },
+ {
+  "js": "const chip = [...document.querySelectorAll('[role=dialog] button')].find(b => /failed checks/i.test(b.textContent)); if (!chip) return 'no chip: ' + [...document.querySelectorAll('[role=dialog] button')].map(b => b.textContent.trim()).join(' | '); chip.click(); await new Promise(r => setTimeout(r, 500)); return 'filled: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 400)",
+  "wait": 400,
+  "shot": "watches-new-filled-large-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.__watches.setState({ editing: { open: false } }); await new Promise(r => setTimeout(r, 300)); return 'closed'",
+  "wait": 200
+ },
+ {
+  "size": [
+   900,
+   700
+  ],
+  "theme": "dark",
+  "wait": 500
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Inbox/.test(b.textContent.trim())); if (!b) return 'no Inbox tab'; b.click(); await new Promise(r => setTimeout(r, 300)); return 'inbox tab'",
+  "wait": 100
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300
+ },
+ {
+  "js": "const m = document.querySelector('main') || document.body; return (m.innerText || '').replace(/\\s+/g, ' ').slice(0, 900)",
+  "wait": 100,
+  "shot": "watches-inbox-900-dark.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: [], today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 300,
+  "shot": "watches-inbox-empty-900-dark.png"
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: window.__demoWatches, inbox: window.__demoInbox, today: window.__demoToday }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 100
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('header button')].find(b => /^Watches/.test(b.textContent.trim())); if (!b) return 'no Watches tab'; b.click(); await new Promise(r => setTimeout(r, 300)); const row = [...document.querySelectorAll('button[aria-expanded]')].find(x => /Morning summary/.test(x.textContent)); row && row.click(); await new Promise(r => setTimeout(r, 300)); return 'watches tab'",
+  "wait": 400,
+  "shot": "watches-list-900-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 200)); const b = [...document.querySelectorAll('header button')].find(b => /New watch/.test(b.textContent.trim())); if (!b) return 'no New watch'; b.click(); await new Promise(r => setTimeout(r, 1500)); return 'editor: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 300)",
+  "wait": 400,
+  "shot": "watches-new-900-dark.png"
+ },
+ {
+  "js": "const chip = [...document.querySelectorAll('[role=dialog] button')].find(b => /failed checks/i.test(b.textContent)); if (!chip) return 'no chip: ' + [...document.querySelectorAll('[role=dialog] button')].map(b => b.textContent.trim()).join(' | '); chip.click(); await new Promise(r => setTimeout(r, 500)); return 'filled: ' + (document.querySelector('[role=dialog]')?.textContent || '').replace(/\\s+/g, ' ').slice(0, 400)",
+  "wait": 400,
+  "shot": "watches-new-filled-900-dark.png"
+ },
+ {
+  "js": "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); window.__watches.setState({ editing: { open: false } }); await new Promise(r => setTimeout(r, 300)); return 'closed'",
+  "wait": 200
+ },
+ {
+  "size": [
+   1320,
+   900
+  ],
+  "theme": "light",
+  "wait": 400
+ },
+ {
+  "js": "window.__watches.setState({ available: true, watches: [], inbox: [], today: null }); await new Promise(r => setTimeout(r, 300)); return 'set: ' + (window.__watches.getState().watches||[]).length + ' watches, ' + (window.__watches.getState().inbox||[]).length + ' items'",
+  "wait": 600,
+  "shot": "watches-list-empty-large-light.png"
+ }
+]

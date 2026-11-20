@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { Bug, ChevronDown, ListChecks, Repeat, Target, UsersRound, CornerDownRight, Crown, FolderOpen, FolderPlus, GitCompareArrows, Globe, ImagePlus, ListTree, Map as MapIcon, Monitor, PanelRight, Search, ShieldQuestion, ScrollText, SlidersHorizontal, Sparkles, Telescope, UserMinus } from 'lucide-react'
 import type { Account, AgentPhase } from '@shared/types'
 import { adviseModel, budgetOf, modelForTier } from '@shared/budget'
@@ -10,12 +10,15 @@ import { Inspector } from '../Inspector'
 import { Transcript } from './Transcript'
 import { Composer, seedComposer } from './Composer'
 import { AutoBar } from './AutoBar'
+import { GithubStarter } from '../github/FromGithub'
+import { JoinStarter } from '../rooms/Rooms'
 import { NetworkStrip, UltraEdge, UltraMark, useStripShown } from '../ultra/Ultra'
 import { OverflowChip, usePhases, working } from '../ultra/Team'
 import { fitTabs, useMeasured } from '../ultra/fit'
 import { AnimatePresence } from 'motion/react'
 import { BrainPanel } from '../brain/BrainView'
 import { useBrainMode } from '../brain/hooks'
+import { began, Done, rendered, useRenderTime } from '@/lib/perf'
 
 
 /** True when the window is wide enough to show the panel beside the chat. */
@@ -32,6 +35,8 @@ function useWide(min: number): boolean {
 }
 
 function AgentTabs({ canInspect }: { canInspect: boolean }) {
+  began('AgentTabs')
+  rendered('AgentTabs')
   const team = useTeam()
   const chatId = useStore((s) => s.chatId)
   const focusId = useStore(focusOf)
@@ -146,6 +151,7 @@ function AgentTabs({ canInspect }: { canInspect: boolean }) {
           <PanelRight className="size-[15px]" />
         </IconButton>
       )}
+      <Done name="AgentTabs" />
     </div>
   )
 }
@@ -476,13 +482,27 @@ function EmptyState() {
             </button>
           </Tip>
         ))}
+        <GithubStarter />
+        <JoinStarter />
       </div>
       <div className="flex min-h-[24px] flex-[1.3]" />
     </div>
   )
 }
 
+// Each part listens to the store for what it shows. Drawn from here only when its own props change,
+// so a change that redraws the chat view (a chat update, someone starting work) does not redraw
+// the transcript, the message box and the side panel with it.
+const Tabs = memo(AgentTabs)
+const Strip = memo(NetworkStrip)
+const Live = memo(LiveStrip)
+const Bar = memo(AutoBar)
+const Box = memo(Composer)
+const Panel = memo(Inspector)
+
 export function ChatView() {
+  rendered('ChatView')
+  useRenderTime('ChatView')
   const chatId = useStore((s) => s.chatId)
   const focusId = useStore(focusOf)
   const ultra = useStore((s) => !!s.chats.find((c) => c.id === s.chatId)?.ultra)
@@ -497,15 +517,15 @@ export function ChatView() {
     <div className="flex h-full min-h-0">
       <div className="relative flex h-full min-w-0 flex-1 flex-col">
         {ultra && <UltraEdge />}
-        <AgentTabs canInspect={!!chatId && wide} />
-        {chatId && <NetworkStrip chatId={chatId} onOpen={setFocus} off={brain.on} />}
+        <Tabs canInspect={!!chatId && wide} />
+        {chatId && <Strip chatId={chatId} onOpen={setFocus} off={brain.on} />}
         <AnimatePresence initial={false}>{chatId && brain.on && <BrainPanel key="brain" chatId={chatId} mode={brain} onOpen={setFocus} />}</AnimatePresence>
         {chatId && focusId ? <Transcript chatId={chatId} accountId={focusId} fadeTop={strip || brain.on} /> : <EmptyState />}
-        <LiveStrip />
-        {chatId && <AutoBar chatId={chatId} hideGoal={brain.on} />}
-        <Composer />
+        <Live />
+        {chatId && <Bar chatId={chatId} hideGoal={brain.on} />}
+        <Box />
       </div>
-      {showPanel && chatId && <Inspector chatId={chatId} />}
+      {showPanel && chatId && <Panel chatId={chatId} />}
     </div>
   )
 }

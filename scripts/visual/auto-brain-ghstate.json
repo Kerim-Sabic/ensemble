@@ -1,0 +1,94 @@
+[
+ {
+  "size": [
+   1400,
+   860
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst out = [];\nfor (let i = 0; i < 10; i++) {\n  if (window.__ensemble.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  out.push(b.textContent.trim().slice(0, 30));\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nwindow.__ensemble.getState().newChat();\nreturn 'clicked: ' + out.join(' > ');",
+  "wait": 1500
+ },
+ {
+  "theme": "light",
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/issues/118' } })); return 'opened https://github.com/acme/pricing-site/issues/118';",
+  "wait": 1300,
+  "shot": "ghstate-closed-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('[role=dialog] button')].find(b => /^Start$/.test(b.textContent.trim())); if (!b) return 'no Start'; b.click(); return 'clicked Start';",
+  "wait": 600,
+  "shot": "ghstate-warning-light.png"
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/pull/140' } })); return 'opened https://github.com/acme/pricing-site/pull/140';",
+  "wait": 1300,
+  "shot": "ghstate-merged-light.png"
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/actions/runs/11850000001' } })); return 'opened https://github.com/acme/pricing-site/actions/runs/11850000001';",
+  "wait": 1300,
+  "shot": "ghstate-rerun-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('[role=dialog] button')].find(b => /^Start$/.test(b.textContent.trim())); if (!b) return 'no Start'; b.click(); return 'clicked Start';",
+  "wait": 600,
+  "shot": "ghstate-rerun-warning-light.png"
+ },
+ {
+  "theme": "dark",
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/issues/118' } })); return 'opened https://github.com/acme/pricing-site/issues/118';",
+  "wait": 1300,
+  "shot": "ghstate-closed-dark.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('[role=dialog] button')].find(b => /^Start$/.test(b.textContent.trim())); if (!b) return 'no Start'; b.click(); return 'clicked Start';",
+  "wait": 600,
+  "shot": "ghstate-warning-dark.png"
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/pull/140' } })); return 'opened https://github.com/acme/pricing-site/pull/140';",
+  "wait": 1300,
+  "shot": "ghstate-merged-dark.png"
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 500
+ },
+ {
+  "js": "window.dispatchEvent(new CustomEvent('ensemble:github', { detail: { address: 'https://github.com/acme/pricing-site/actions/runs/11850000001' } })); return 'opened https://github.com/acme/pricing-site/actions/runs/11850000001';",
+  "wait": 1300,
+  "shot": "ghstate-rerun-dark.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('[role=dialog] button')].find(b => /^Start$/.test(b.textContent.trim())); if (!b) return 'no Start'; b.click(); return 'clicked Start';",
+  "wait": 600,
+  "shot": "ghstate-rerun-warning-dark.png"
+ },
+ {
+  "js": "const x = document.querySelector('[aria-label=\"Close\"]'); if (x) x.click(); return 'closed';",
+  "wait": 300
+ }
+]

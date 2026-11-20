@@ -9,12 +9,15 @@ import { useScreens, type ScreenEntry } from './screen/LiveView'
 import { Button, IconButton, Modal, Spinner, Tip } from './ui'
 import { Orb, OrbStack } from './Orb'
 import { Markdown } from './Markdown'
+import { EvidenceBlock } from './evidence/Evidence'
 import { useElapsed, waitingLabel } from './chat/Cards'
 import { MediaTile } from './Media'
 import { mediaKind } from '@shared/tools'
 import { tierOfModel } from '@shared/budget'
 import { groupAgents } from './ultra/groups'
 import { GroupRow, usePhases } from './ultra/Team'
+import { began, Done, rendered } from '@/lib/perf'
+import { useLazyStore } from '@/lib/lazy'
 
 const EMPTY: Item[] = []
 const NO_TASKS: Task[] = []
@@ -66,8 +69,8 @@ function StepRow({ step, live }: { step: PlanStep; live: boolean }) {
 }
 
 function PlanSection({ chatId, account, isLead }: { chatId: string; account: Account; isLead: boolean }) {
-  const items = useStore((s) => s.items[agentKey(chatId, account.id)] ?? EMPTY)
-  const live = useStore((s) => isBusy(s.agents[agentKey(chatId, account.id)]))
+  const items = useLazyStore((s) => s.items[agentKey(chatId, account.id)] ?? EMPTY, `${chatId}|${account.id}`)
+  const live = useLazyStore((s) => isBusy(s.agents[agentKey(chatId, account.id)]), `${chatId}|${account.id}`)
   const steps = useMemo(() => planFrom(items), [items])
   if (!steps.length) return null
   const done = steps.filter((s) => s.status === 'completed').length
@@ -95,9 +98,9 @@ function PlanSection({ chatId, account, isLead }: { chatId: string; account: Acc
 // ───────────── who is doing what ─────────────
 
 const TeamRow = memo(function TeamRow({ chatId, account, lead, focused, nested }: { chatId: string; account: Account; lead: boolean; focused: boolean; nested?: boolean }) {
-  const st = useStore((s): AgentState | undefined => s.agents[agentKey(chatId, account.id)])
+  const st = useLazyStore((s): AgentState | undefined => s.agents[agentKey(chatId, account.id)], `${chatId}|${account.id}`)
   const out = useStore((s) => s.statuses[account.id]?.state === 'signed-out')
-  const task = useStore((s) => (st?.taskId ? s.tasks[chatId]?.find((t) => t.id === st.taskId) : undefined))
+  const task = useLazyStore((s) => (st?.taskId ? s.tasks[chatId]?.find((t) => t.id === st.taskId) : undefined), `${chatId}|${st?.taskId || ''}`)
   const setFocus = useStore((s) => s.setFocus)
   const dry = useStore((s) => {
     const u = s.usage[account.id]
@@ -214,7 +217,7 @@ function NotesSection({ chatId }: { chatId: string }) {
   const team = useTeam()
   const vault = useStore((s) => s.vault)
   const setView = useStore((s) => s.setView)
-  const sig = useStore((s) => team.map((a) => `${s.items[agentKey(chatId, a.id)]?.length || 0}${s.agents[agentKey(chatId, a.id)]?.phase || ''}`).join('|'))
+  const sig = useLazyStore((s) => team.map((a) => `${s.items[agentKey(chatId, a.id)]?.length || 0}${s.agents[agentKey(chatId, a.id)]?.phase || ''}`).join('|'), `${chatId}|${team.map((a) => a.id).join()}`)
   const notes = useMemo(() => {
     if (!vault) return []
     const st = useStore.getState()
@@ -280,7 +283,7 @@ const WEIGHT: Record<string, number> = { top: 1, strong: 0.6, mid: 0.2, light: 0
 
 function SpendSection({ chatId }: { chatId: string }) {
   const team = useTeam(true)
-  const sig = useStore((s) => team.map((a) => s.items[agentKey(chatId, a.id)]?.length || 0).join('|'))
+  const sig = useLazyStore((s) => team.map((a) => s.items[agentKey(chatId, a.id)]?.length || 0).join('|'), `${chatId}|${team.map((a) => a.id).join()}`)
   const spend = useMemo(() => {
     const st = useStore.getState()
     const by = new Map<string, { label: string; tier: string; tokens: number; turns: number }>()
@@ -330,7 +333,7 @@ function SpendSection({ chatId }: { chatId: string }) {
 
 function WebSection({ chatId }: { chatId: string }) {
   const team = useTeam(true)
-  const sig = useStore((s) => team.map((a) => s.items[agentKey(chatId, a.id)]?.length || 0).join('|'))
+  const sig = useLazyStore((s) => team.map((a) => s.items[agentKey(chatId, a.id)]?.length || 0).join('|'), `${chatId}|${team.map((a) => a.id).join()}`)
   const rows = useMemo(() => {
     const st = useStore.getState()
     const out: { id: string; kind: 'search' | 'page'; text: string; url?: string; ts: number; who: Account; running: boolean }[] = []
@@ -380,7 +383,7 @@ function WebSection({ chatId }: { chatId: string }) {
 
 function MadeSection({ chatId }: { chatId: string }) {
   const team = useTeam(true)
-  const sig = useStore((s) => team.map((a) => s.items[agentKey(chatId, a.id)]?.length || 0).join('|'))
+  const sig = useLazyStore((s) => team.map((a) => s.items[agentKey(chatId, a.id)]?.length || 0).join('|'), `${chatId}|${team.map((a) => a.id).join()}`)
   const made = useMemo(() => {
     const st = useStore.getState()
     const all: { path: string; ts: number; who: Account }[] = []
@@ -456,7 +459,7 @@ const TaskLine = memo(function TaskLine({ task }: { task: Task }) {
 })
 
 function TasksSection({ chatId }: { chatId: string }) {
-  const tasks = useStore((s) => s.tasks[chatId] ?? NO_TASKS)
+  const tasks = useLazyStore((s) => s.tasks[chatId] ?? NO_TASKS, chatId)
   const [all, setAll] = useState(false)
   const ordered = useMemo(() => {
     const open = tasks.filter((t) => t.status === 'running' || t.status === 'queued')
@@ -531,7 +534,7 @@ function ChangesSection({ chatId }: { chatId: string }) {
   const setModal = useStore((s) => s.setModal)
   const [all, setAll] = useState(false)
   // Recomputed when a transcript grows or an agent changes phase, not on every streamed word.
-  const sig = useStore((s) => team.map((a) => `${s.items[agentKey(chatId, a.id)]?.length || 0}${s.agents[agentKey(chatId, a.id)]?.phase || ''}`).join('|'))
+  const sig = useLazyStore((s) => team.map((a) => `${s.items[agentKey(chatId, a.id)]?.length || 0}${s.agents[agentKey(chatId, a.id)]?.phase || ''}`).join('|'), `${chatId}|${team.map((a) => a.id).join()}`)
   const touched = useMemo(() => {
     const st = useStore.getState()
     return team.map((a) => ({ account: a, files: touchedFiles(st.items[agentKey(chatId, a.id)] || EMPTY) })).filter((x) => x.files.length)
@@ -655,11 +658,13 @@ function TeamSection({ chatId, team, leadId, focusId }: { chatId: string; team: 
 }
 
 export function Inspector({ chatId }: { chatId: string }) {
+  began('Inspector')
+  rendered('Inspector')
   const team = useTeam()
   const focusId = useStore(focusOf)
   const leadId = useStore((s) => leadOf(s)?.id)
   const focused = team.find((a) => a.id === focusId)
-  const context = useStore((s) => (focusId ? s.agents[agentKey(chatId, focusId)]?.context : undefined))
+  const context = useLazyStore((s) => (focusId ? s.agents[agentKey(chatId, focusId)]?.context : undefined), `${chatId}|${focusId || ''}`)
   return (
     <aside className="flex h-full w-[296px] shrink-0 flex-col border-l border-line bg-surface-2/60">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -680,6 +685,7 @@ export function Inspector({ chatId }: { chatId: string }) {
           </div>
         </Tip>
       )}
+      <Done name="Inspector" />
     </aside>
   )
 }
@@ -751,6 +757,7 @@ export function TaskDialog() {
             <Markdown text={task.result} compact replyTo={task.to} />
           </div>
         )}
+        {task.status !== 'queued' && task.status !== 'running' && <EvidenceBlock chatId={task.chatId} evidenceRef={{ kind: 'task', taskId: task.id }} className="mt-4" />}
         <div className="mt-6 flex gap-2">
           <Button
             variant="primary"

@@ -1,0 +1,1152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ensemble</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ensemble">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f2f1ee" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
+:root {
+  --window: #f2f1ee; --surface: #ffffff; --surface-2: #f6f5f2; --surface-3: #eeede9;
+  --hover: rgba(24, 20, 12, 0.045); --line: rgba(24, 20, 12, 0.09); --line-2: rgba(24, 20, 12, 0.15);
+  --ink: #1b1a17; --ink-2: #5c5a54; --ink-3: #8f8c85; --ink-4: #bab7b0; --inverse: #ffffff;
+  --ok: #1c9a55; --warn: #b97509; --bad: #d0382d; --warn-soft: #fbf3e2; --bad-soft: #fceeec;
+  --vh: 100dvh;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --window: #141413; --surface: #1c1c1a; --surface-2: #242422; --surface-3: #2c2c29;
+    --hover: rgba(255, 255, 255, 0.055); --line: rgba(255, 255, 255, 0.08); --line-2: rgba(255, 255, 255, 0.15);
+    --ink: #edece8; --ink-2: #aaa8a1; --ink-3: #7a7872; --ink-4: #54524d; --inverse: #141413;
+    --ok: #45c985; --warn: #e3a743; --bad: #f0695e; --warn-soft: rgba(227, 167, 67, 0.12); --bad-soft: rgba(240, 105, 94, 0.12);
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--window); color: var(--ink); }
+body {
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%; overscroll-behavior: none;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; }
+#app { height: var(--vh); display: flex; flex-direction: column; max-width: 720px; margin: 0 auto; }
+.view { display: none; flex: 1; min-height: 0; flex-direction: column; }
+.view.on { display: flex; }
+
+/* top bar */
+.bar {
+  display: flex; align-items: center; gap: 4px; min-height: 52px;
+  padding: calc(env(safe-area-inset-top) + 4px) calc(env(safe-area-inset-right) + 8px) 4px calc(env(safe-area-inset-left) + 8px);
+  background: var(--window); border-bottom: 1px solid var(--line);
+}
+.bar h1 { flex: 1; min-width: 0; margin: 0 8px; font-size: 17px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar .sub { display: block; font-size: 12.5px; font-weight: 400; color: var(--ink-3); letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; color: var(--ink-2); flex: none; }
+.icon:active { background: var(--hover); }
+.icon svg { width: 22px; height: 22px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-4); flex: none; }
+.dot.live { background: var(--ok); }
+.dot.work { background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .dot.work, .caret { animation: none !important; } }
+
+.scroll { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.pad { padding: 12px calc(env(safe-area-inset-right) + 14px) calc(env(safe-area-inset-bottom) + 20px) calc(env(safe-area-inset-left) + 14px); }
+
+/* pairing */
+.pair { max-width: 380px; margin: 0 auto; padding-top: 8vh; text-align: center; }
+.pair img { width: 72px; height: 72px; border-radius: 17px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12); }
+.pair h2 { margin: 18px 0 6px; font-size: 24px; letter-spacing: -0.02em; }
+.pair p { margin: 0 0 22px; color: var(--ink-2); font-size: 15px; }
+.field { display: block; width: 100%; min-height: 52px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line-2); background: var(--surface); outline: none; }
+.field:focus { border-color: var(--ink-3); }
+.code { text-align: center; font-size: 24px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+.label { display: block; margin: 14px 2px 6px; text-align: left; font-size: 13px; color: var(--ink-3); }
+.primary { display: block; width: 100%; min-height: 52px; margin-top: 18px; border-radius: 14px; background: var(--ink); color: var(--inverse); font-weight: 600; }
+.primary:disabled { opacity: 0.4; }
+.primary:active:not(:disabled) { opacity: 0.85; }
+.quiet { min-height: 44px; padding: 0 16px; border-radius: 12px; background: var(--surface-3); font-weight: 550; font-size: 15px; }
+.quiet:active { opacity: 0.7; }
+.err { min-height: 22px; margin-top: 12px; color: var(--bad); font-size: 14px; }
+.fine { margin-top: 26px; font-size: 13px; color: var(--ink-3); }
+
+/* chat list */
+.chat { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: left; padding: 13px 14px; margin-bottom: 8px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.chat:active { background: var(--surface-2); }
+.chat .dot { margin-top: 8px; }
+.chat .main { flex: 1; min-width: 0; }
+.chat .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat .snip { color: var(--ink-2); font-size: 14px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.chat .meta { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--ink-3); }
+.tag { padding: 2px 8px; border-radius: 99px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 550; white-space: nowrap; }
+.tag.warn { background: var(--warn-soft); color: var(--warn); }
+.tag.ok { color: var(--ok); }
+.empty { margin-top: 18vh; text-align: center; color: var(--ink-3); }
+.tip { margin: 14px 2px 0; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); font-size: 13.5px; color: var(--ink-2); }
+.banner { padding: 9px 14px; background: var(--warn-soft); color: var(--warn); font-size: 13.5px; text-align: center; }
+
+/* a chat */
+.rows { display: flex; flex-direction: column; gap: 10px; }
+.me { align-self: flex-end; max-width: 86%; padding: 10px 14px; border-radius: 18px 18px 6px 18px; background: var(--surface-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.me .q { display: block; margin-top: 3px; font-size: 12px; color: var(--ink-3); }
+.them { overflow-wrap: anywhere; padding: 2px 2px; }
+.md p { margin: 0 0 10px; }
+.md > :last-child { margin-bottom: 0; }
+.md .h { margin: 14px 0 6px; font-weight: 650; }
+.md > .h:first-child { margin-top: 0; }
+.md .li { display: flex; gap: 8px; margin: 3px 0; }
+.md .li > .b { flex: none; min-width: 14px; color: var(--ink-3); }
+.md .li + p, .md .li + .h { margin-top: 10px; }
+.md code { padding: 1px 5px; border-radius: 6px; background: var(--surface-3); font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+.md pre { margin: 6px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.md .quote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--line-2); color: var(--ink-2); }
+.md .tw { margin: 6px 0 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.md table { border-collapse: collapse; font-size: 14px; }
+.md th, .md td { padding: 6px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.md th { font-weight: 600; color: var(--ink-2); }
+.md hr { margin: 12px 0; border: 0; border-top: 1px solid var(--line); }
+.md .link { text-decoration: underline; text-decoration-color: var(--ink-4); text-underline-offset: 2px; }
+.caret { display: inline-block; width: 7px; height: 16px; margin-left: 2px; vertical-align: -2px; border-radius: 2px; background: var(--ink-3); animation: pulse 1s ease-in-out infinite; }
+.steps { align-self: stretch; border-radius: 12px; background: var(--surface-2); font-size: 13.5px; color: var(--ink-2); overflow: hidden; }
+.steps > button { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; text-align: left; }
+.steps .n { color: var(--ink-3); flex: none; }
+.steps .last { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps ol { display: none; margin: 0; padding: 0 12px 10px 32px; color: var(--ink-3); }
+.steps.open ol { display: block; }
+.steps li { padding: 2px 0; overflow-wrap: anywhere; }
+.steps li.error { color: var(--bad); }
+.note { align-self: center; max-width: 92%; padding: 6px 12px; border-radius: 12px; font-size: 13px; color: var(--ink-3); text-align: center; }
+.note.warn { background: var(--warn-soft); color: var(--warn); }
+.note.error { background: var(--bad-soft); color: var(--bad); }
+.card { align-self: stretch; padding: 14px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
+.card .who { font-size: 12.5px; color: var(--ink-3); margin-bottom: 2px; }
+.card .what { font-weight: 600; }
+.card .detail { margin-top: 4px; font-size: 13.5px; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 132px; overflow: auto; }
+.card .acts { display: flex; gap: 8px; margin-top: 12px; }
+.card .acts button { flex: 1; min-height: 46px; border-radius: 12px; font-weight: 600; background: var(--surface-3); }
+.card .acts .go { background: var(--ink); color: var(--inverse); }
+.card .acts button:disabled { opacity: 0.45; }
+.card .done { margin-top: 8px; font-size: 13.5px; color: var(--ink-3); }
+.card .qtext { margin: 10px 0 8px; font-weight: 550; }
+.opt { display: block; width: 100%; min-height: 46px; margin-top: 6px; padding: 9px 12px; border-radius: 12px; text-align: left; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+.opt small { display: block; color: var(--ink-3); font-size: 12.5px; }
+.opt.on { box-shadow: inset 0 0 0 2px var(--ink); }
+
+/* message box */
+.compose { display: flex; align-items: flex-end; gap: 8px; padding: 8px calc(env(safe-area-inset-right) + 10px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 10px); background: var(--window); border-top: 1px solid var(--line); }
+.compose textarea { flex: 1; min-height: 44px; max-height: 148px; padding: 10px 14px; border-radius: 22px; border: 1px solid var(--line-2); background: var(--surface); resize: none; outline: none; line-height: 1.35; }
+.round { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none; background: var(--ink); color: var(--inverse); }
+.round:disabled { opacity: 0.3; }
+.round.stop { background: var(--surface-3); color: var(--bad); }
+.round svg { width: 20px; height: 20px; }
+.status { padding: 6px 16px 0; font-size: 12.5px; color: var(--ink-3); min-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* new chat sheet */
+.sheet { position: fixed; inset: 0; display: none; align-items: flex-end; background: rgba(0, 0, 0, 0.36); z-index: 5; }
+.sheet.on { display: flex; }
+.sheet .box { width: 100%; max-width: 720px; margin: 0 auto; max-height: 86%; overflow: auto; padding: 16px 16px calc(env(safe-area-inset-bottom) + 16px); border-radius: 22px 22px 0 0; background: var(--window); }
+.sheet h3 { margin: 2px 0 10px; font-size: 18px; }
+.folders { display: flex; flex-wrap: wrap; gap: 8px; }
+.folders button { min-height: 44px; padding: 0 14px; border-radius: 12px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-2); }
+.folders button.on { box-shadow: inset 0 0 0 2px var(--ink); }
+.sheet textarea { margin-top: 12px; min-height: 96px; resize: none; }
+
+/* inbox, notifications, stop from the list */
+.sect { margin: 6px 2px 8px; font-size: 13px; font-weight: 650; color: var(--ink-3); letter-spacing: 0.01em; }
+.sect + .card, .card + .card { margin-top: 8px; }
+#inbox .card { margin-bottom: 8px; }
+#inbox:not(:empty) { margin-bottom: 14px; }
+.row-chat { display: flex; align-items: stretch; gap: 8px; margin-bottom: 8px; }
+.row-chat .chat { margin-bottom: 0; flex: 1; min-width: 0; }
+.mini { flex: none; min-width: 64px; min-height: 44px; padding: 0 12px; border-radius: 16px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); color: var(--bad); font-size: 14px; font-weight: 600; }
+.mini:active { background: var(--surface-2); }
+.tip .quiet { margin-top: 10px; }
+.tip strong { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="app">
+  <section class="view" id="v-pair">
+    <div class="scroll"><div class="pad"><div class="pair">
+      <img src="/icon.png" alt="">
+      <h2>Ensemble</h2>
+      <p id="pair-words">Enter the code shown on your computer, under Settings, Phone and remote.</p>
+      <div id="pair-form">
+      <input class="field code" id="code" inputmode="text" autocapitalize="characters" autocomplete="one-time-code" autocorrect="off" spellcheck="false" maxlength="9" placeholder="XXXX-XXXX" aria-label="Pairing code">
+      <label class="label" for="name">Name of this device</label>
+      <input class="field" id="name" maxlength="40" autocomplete="off" aria-label="Name of this device">
+      <button class="primary" id="pair" disabled>Pair this device</button>
+      </div>
+      <div class="err" id="pair-err" role="alert"></div>
+      <p class="fine" id="pair-fine">Pairing works while this phone can reach your computer: on the same Wi-Fi, or over a private network such as Tailscale.</p>
+    </div></div></div>
+  </section>
+
+  <section class="view" id="v-list">
+    <header class="bar">
+      <h1>Ensemble<span class="sub" id="list-sub">&nbsp;</span></h1>
+      <span class="dot" id="conn" title="Connection"></span>
+      <button class="icon" id="new" aria-label="New chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    </header>
+    <div class="banner" id="offline" hidden>Cannot reach your computer. Is Ensemble running, and is this phone on the same network?</div>
+    <div class="scroll"><div class="pad"><div id="inbox"></div><div id="chats"></div><div class="tip" id="notify" hidden></div><div class="tip" id="home-tip" hidden></div></div></div>
+  </section>
+
+  <section class="view" id="v-chat">
+    <header class="bar">
+      <button class="icon" id="back" aria-label="Back to chats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1><span id="chat-title"></span><span class="sub" id="chat-sub">&nbsp;</span></h1>
+      <span class="dot" id="chat-dot"></span>
+    </header>
+    <div class="banner" id="cut" hidden></div>
+    <div class="scroll" id="feed"><div class="pad"><div class="rows" id="rows"></div></div></div>
+    <div class="status" id="status"></div>
+    <form class="compose" id="compose">
+      <textarea id="text" rows="1" placeholder="Message the lead" autocapitalize="sentences" autocorrect="on" spellcheck="true" enterkeyhint="enter" aria-label="Message the lead"></textarea>
+      <button type="button" class="round stop" id="stop" hidden aria-label="Stop the team"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg></button>
+      <button type="submit" class="round" id="send" disabled aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></svg></button>
+    </form>
+  </section>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="box">
+    <h3>New chat</h3>
+    <div class="label" style="margin-top:0">In which folder</div>
+    <div class="folders" id="folders"></div>
+    <textarea class="field" id="first" placeholder="What should the team do?" autocapitalize="sentences" aria-label="First message"></textarea>
+    <button class="primary" id="start" disabled>Start</button>
+    <div class="err" id="sheet-err" role="alert"></div>
+  </div>
+</div>
+
+<script src="/tunnel.js"></script>
+<script>
+(() => {
+  'use strict'
+  const $ = (id) => document.getElementById(id)
+  // Everything shown comes from data, so everything is put on the page as text, never as markup.
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag)
+    if (cls) n.className = cls
+    if (text !== undefined && text !== null) n.textContent = text
+    return n
+  }
+  const KEY = 'ensemble.remote.token'
+  let token = null
+  try { token = localStorage.getItem(KEY) } catch { /* private mode: paired for this visit only */ }
+  let chats = []
+  let folders = []
+  let current = null // the open chat's id
+  let rows = [] // the open chat's rows, oldest first
+  let stream = null
+  let retry = 0
+  let online = false
+  // Through the relay ("From anywhere"): the tunnel, and what this phone keeps to resume it.
+  let tunnel = null
+  let push = null // { key, on, kinds } from /state
+  let inbox = []
+  let inboxReady = false
+  const paired = () => !!token || !!tunnel
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+  const rid = () => { const u = crypto.getRandomValues(new Uint8Array(12)); return btoa(String.fromCharCode(...u)).replace(/[+/=]/g, (c) => (c === '+' ? '-' : c === '/' ? '_' : '')) }
+
+  // This phone's relay pairing: the room, the computer's key and this phone's own key pair (its
+  // private half cannot be read out, even by this page). Kept in IndexedDB, which can hold such keys.
+  const idb = (fn) => new Promise((resolve, reject) => {
+    const open = indexedDB.open('ensemble', 1)
+    open.onupgradeneeded = () => open.result.createObjectStore('kv')
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const tx = open.result.transaction('kv', 'readwrite')
+      const req = fn(tx.objectStore('kv'))
+      tx.oncomplete = () => resolve(req && req.result)
+      tx.onerror = () => reject(tx.error)
+    }
+  })
+  const getPairing = () => idb((st) => st.get('relay')).catch(() => null)
+  const putPairing = (rec) => idb((st) => st.put(rec, 'relay'))
+  const dropPairing = () => idb((st) => st.delete('relay')).catch(() => null)
+
+  // The page keeps the size of what is really visible, so the message box stays above the keyboard.
+  const fit = () => document.documentElement.style.setProperty('--vh', `${(window.visualViewport ? window.visualViewport.height : window.innerHeight)}px`)
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit)
+  window.addEventListener('resize', fit)
+  fit()
+
+  const show = (name) => {
+    for (const v of document.querySelectorAll('.view')) v.classList.toggle('on', v.id === `v-${name}`)
+  }
+
+  class Unpaired extends Error {}
+  async function api(method, path, body) {
+    if (tunnel) {
+      // Through the relay: sealed end to end; sent again by itself after a reconnect, under the same id.
+      const r = await tunnel.request(method, `/api${path}`, body)
+      if (r.status === 401) throw new Unpaired()
+      if (r.status < 200 || r.status >= 300) throw new Error((r.json && r.json.error) || 'That did not work.')
+      return r.json || {}
+    }
+    // A request that changes something carries an id: sent again after a lost connection, it is done once.
+    const id = method !== 'GET' ? rid() : ''
+    for (let i = 0; ; i++) {
+      try {
+        const res = await fetch(`/api${path}`, {
+          method,
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(id ? { 'X-Request-Id': id } : {}) },
+          body: body ? JSON.stringify(body) : undefined,
+          cache: 'no-store',
+        })
+        let data = {}
+        try { data = await res.json() } catch { /* an empty answer */ }
+        if (res.status === 401) throw new Unpaired()
+        if (!res.ok) throw new Error(data.error || 'That did not work.')
+        return data
+      } catch (e) {
+        // Only a request that never got an answer (no signal) is tried again, and only a few times.
+        if (!(e instanceof TypeError) || i >= 3) throw e
+        await sleep(700 * (i + 1))
+      }
+    }
+  }
+
+  function unpair() {
+    token = null
+    try { localStorage.removeItem(KEY) } catch { /* nothing kept */ }
+    closeStream()
+    if (tunnel) {
+      tunnel.close()
+      tunnel = null
+      void dropPairing()
+      relayWords()
+    }
+    current = null
+    show('pair')
+  }
+
+  const fail = (e) => {
+    if (e instanceof Unpaired) return unpair()
+    setOnline(false)
+  }
+
+  function setOnline(v) {
+    online = v
+    $('conn').className = `dot${v ? ' live' : ''}`
+    $('offline').hidden = v
+  }
+
+  // ----- pairing -----
+
+  const guessName = () => (/iPhone/.test(navigator.userAgent) ? 'iPhone' : /iPad/.test(navigator.userAgent) ? 'iPad' : /Android/.test(navigator.userAgent) ? 'Android phone' : 'Phone')
+  const cleanCode = (v) => v.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+  $('name').value = guessName()
+  $('code').addEventListener('input', () => {
+    const c = cleanCode($('code').value)
+    $('code').value = c.length > 4 ? `${c.slice(0, 4)}-${c.slice(4)}` : c
+    $('pair').disabled = c.length !== 8
+    $('pair-err').textContent = ''
+  })
+  async function pair() {
+    const code = cleanCode($('code').value)
+    if (code.length !== 8) return
+    $('pair').disabled = true
+    $('pair-err').textContent = ''
+    try {
+      const r = await api('POST', '/pair', { code, name: $('name').value.trim() || guessName() })
+      token = r.token
+      try { localStorage.setItem(KEY, token) } catch { /* private mode */ }
+      $('code').value = ''
+      await enter()
+    } catch (e) {
+      $('pair-err').textContent = e instanceof Unpaired ? 'That code is not right.' : e.message === 'Failed to fetch' || e.name === 'TypeError' ? 'Cannot reach your computer.' : e.message
+      $('pair').disabled = cleanCode($('code').value).length !== 8
+    }
+  }
+  $('pair').addEventListener('click', pair)
+  $('code').addEventListener('keydown', (e) => { if (e.key === 'Enter') pair() })
+
+  // ----- the list of chats -----
+
+  const ago = (ts) => {
+    const s = Math.max(0, (Date.now() - ts) / 1000)
+    if (s < 60) return 'now'
+    if (s < 3600) return `${Math.floor(s / 60)} min`
+    if (s < 86400) return `${Math.floor(s / 3600)} h`
+    return `${Math.floor(s / 86400)} d`
+  }
+
+  function drawList() {
+    const box = $('chats')
+    box.replaceChildren()
+    const working = chats.filter((c) => c.working).length
+    const needs = chats.reduce((n, c) => n + c.needs, 0)
+    $('list-sub').textContent = needs ? `${needs} waiting for you` : working ? `${working} ${working === 1 ? 'chat' : 'chats'} at work` : 'Nothing running'
+    if (!chats.length) {
+      box.append(el('div', 'empty', 'No chats yet. Start one on your computer first.'))
+      return
+    }
+    for (const c of chats) {
+      const b = el('button', 'chat')
+      b.append(el('span', `dot${c.working ? ' work' : ''}`))
+      const main = el('span', 'main')
+      main.append(el('div', 'title', c.title))
+      if (c.line || c.snippet) main.append(el('div', 'snip', c.working && c.line ? c.line : flat(c.snippet)))
+      const meta = el('div', 'meta')
+      if (c.needs) meta.append(el('span', 'tag warn', c.needs === 1 ? 'Needs your answer' : `${c.needs} need your answer`))
+      if (c.cut) meta.append(el('span', 'tag warn', 'Cut short'))
+      if (c.goal) meta.append(el('span', 'tag', `Goal: ${c.goal.line}`))
+      meta.append(el('span', '', `${c.folder} · ${ago(c.updatedAt)}`))
+      main.append(meta)
+      b.append(main)
+      b.addEventListener('click', () => openChat(c.id))
+      if (!c.working) {
+        box.append(b)
+        continue
+      }
+      // A chat at work (a watch run included) can be stopped from the list.
+      const row = el('div', 'row-chat')
+      const stop = el('button', 'mini', 'Stop')
+      stop.setAttribute('aria-label', `Stop ${c.title}`)
+      stop.addEventListener('click', async () => {
+        stop.disabled = true
+        try { await api('POST', `/chat/${c.id}/stop`, {}) } catch (e) { fail(e) }
+        stop.disabled = false
+      })
+      row.append(b, stop)
+      box.append(row)
+    }
+  }
+
+  // ----- the inbox: what needs you first, then what watches found -----
+
+  const until = (ts) => { const d = new Date(ts); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }
+
+  function inboxCard(it) {
+    const card = el('div', 'card')
+    card.append(el('div', 'what', it.title))
+    if (it.body) card.append(el('div', 'detail', it.body))
+    const ap = it.approval
+    const lapsed = ap && ap.expiresAt && ap.expiresAt < Date.now()
+    if (ap && ap.expiresAt && !lapsed) card.append(el('div', 'done', `Waits for your answer until ${until(ap.expiresAt)}`))
+    if (lapsed) card.append(el('div', 'done', 'No longer waiting'))
+    const acts = el('div', 'acts')
+    const finish = () => api('POST', `/inbox/${it.id}`, { done: true }).then((r) => { if (r.items) { inbox = r.items; drawInbox() } })
+    if (ap && !lapsed) {
+      const deny = el('button', '', 'Deny')
+      const allow = el('button', 'go', 'Allow once')
+      const answer = async (ok) => {
+        deny.disabled = allow.disabled = true
+        try {
+          await api('POST', `/chat/${ap.chatId}/answer`, { requestId: ap.requestId, allow: ok })
+          await finish()
+        } catch (e) { deny.disabled = allow.disabled = false; fail(e) }
+      }
+      deny.addEventListener('click', () => answer(false))
+      allow.addEventListener('click', () => answer(true))
+      acts.append(deny, allow)
+    } else {
+      if (it.chatId) {
+        const openIt = el('button', '', 'Open')
+        openIt.addEventListener('click', () => { void api('POST', `/inbox/${it.id}`, { read: true }).catch(() => null); openChat(it.chatId) })
+        acts.append(openIt)
+      }
+      const done = el('button', '', 'Done')
+      done.addEventListener('click', async () => { done.disabled = true; try { await finish() } catch (e) { done.disabled = false; fail(e) } })
+      acts.append(done)
+    }
+    card.append(acts)
+    return card
+  }
+
+  function drawInbox() {
+    const box = $('inbox')
+    box.replaceChildren()
+    const open = inbox.filter((i) => !i.done)
+    const needs = open.filter((i) => i.kind === 'needs-you')
+    const found = open.filter((i) => i.kind !== 'needs-you')
+    if (needs.length) {
+      box.append(el('div', 'sect', 'Needs you'))
+      for (const it of needs) box.append(inboxCard(it))
+    }
+    if (found.length) {
+      box.append(el('div', 'sect', 'Found for you'))
+      for (const it of found.slice(0, 20)) box.append(inboxCard(it))
+    }
+    if (needs.length || found.length) box.append(el('div', 'sect', 'Chats'))
+  }
+
+  async function loadInbox() {
+    if (!inboxReady) return
+    try {
+      const r = await api('GET', '/inbox')
+      inbox = r.items || []
+      drawInbox()
+    } catch (e) { fail(e) }
+  }
+
+  // ----- notifications (a Home Screen app over HTTPS: the relay, or Tailscale's name) -----
+
+  const standalone = () => window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches
+  const canPush = () => window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window
+
+  function drawNotify() {
+    const box = $('notify')
+    box.replaceChildren()
+    const iphone = /iPhone|iPad/.test(navigator.userAgent)
+    // On an iPhone, notifications need the Home Screen app; the home tip says how to get it.
+    if (!push || !canPush() || (iphone && !standalone())) { box.hidden = true; return }
+    box.hidden = false
+    if (push.on && Notification.permission === 'granted') {
+      box.append(el('strong', '', 'Notifications are on. '), document.createTextNode('You hear from Ensemble when something needs you, a goal finishes or a watch finds something.'))
+      const off = el('button', 'quiet', 'Turn off')
+      off.addEventListener('click', async () => {
+        off.disabled = true
+        try {
+          const reg = await navigator.serviceWorker.ready
+          const sub = await reg.pushManager.getSubscription()
+          if (sub) await sub.unsubscribe()
+          await api('POST', '/push', { off: true })
+          push.on = false
+        } catch (e) { fail(e) }
+        drawNotify()
+      })
+      box.append(el('div'), off)
+      return
+    }
+    box.append(el('strong', '', 'Get a notification '), document.createTextNode('when something needs your answer, a goal finishes, or a watch finds something. It says only that, never what the chat is about.'))
+    const on = el('button', 'quiet', 'Turn on notifications')
+    // Asked only on a tap, as iPhones require.
+    on.addEventListener('click', async () => {
+      on.disabled = true
+      try {
+        if ((await Notification.requestPermission()) !== 'granted') throw new Error('Notifications are not allowed for this app. You can allow them in Settings, Notifications.')
+        const reg = await navigator.serviceWorker.ready
+        const key = Uint8Array.from(atob(push.key.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((push.key.length + 3) % 4)), (c) => c.charCodeAt(0))
+        const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }))
+        await api('POST', '/push', { subscription: sub.toJSON() })
+        push.on = true
+      } catch (e) {
+        if (e instanceof Unpaired) return unpair()
+        $('list-sub').textContent = e.message || 'Notifications could not be turned on.'
+      }
+      drawNotify()
+    })
+    box.append(el('div'), on)
+  }
+
+  async function loadList() {
+    const s = await api('GET', '/state')
+    chats = s.chats
+    folders = s.folders
+    push = s.push || null
+    inboxReady = !!s.inbox
+    setOnline(true)
+    drawList()
+    drawNotify()
+  }
+
+  function putChat(c) {
+    const i = chats.findIndex((x) => x.id === c.id)
+    if (i >= 0) chats[i] = c
+    else chats.unshift(c)
+    chats.sort((a, b) => b.updatedAt - a.updatedAt)
+    if (current === c.id) drawHead(c)
+    else if (!current) drawList()
+  }
+
+  // ----- one chat -----
+
+  const feed = $('feed')
+  const nearEnd = () => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 140
+  const toEnd = () => { feed.scrollTop = feed.scrollHeight }
+
+  function drawHead(c) {
+    $('chat-title').textContent = c.title
+    $('chat-sub').textContent = c.goal ? `Goal: ${c.goal.line}` : c.folder
+    $('chat-dot').className = `dot${c.working ? ' work' : ''}`
+    $('status').textContent = c.working ? c.line || 'Working' : ''
+    $('stop').hidden = !c.working
+    $('text').placeholder = c.working ? 'Steer the lead while it works' : 'Message the lead'
+    const cut = $('cut')
+    cut.hidden = !c.cut
+    if (c.cut && !cut.firstChild) {
+      cut.append(el('span', '', 'Work here was cut short. '))
+      const b = el('button', 'quiet', 'Pick it up')
+      b.addEventListener('click', async () => {
+        b.disabled = true
+        try { await api('POST', `/chat/${current}/resume`, {}) } catch (e) { fail(e) }
+        b.disabled = false
+      })
+      cut.append(b)
+    }
+    if (!c.cut) cut.replaceChildren()
+  }
+
+  // ----- replies: Markdown, drawn with a few rules -----
+  // Every piece goes on the page as text, never as markup, so nothing in a reply can become code here.
+  // Links show their words only: a tap never leaves the page.
+
+  function inline(parent, text) {
+    const re = /(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))/g
+    let at = 0
+    let m
+    while ((m = re.exec(text))) {
+      if (m.index > at) parent.append(document.createTextNode(text.slice(at, m.index)))
+      const t = m[0]
+      if (t.startsWith('**') || t.startsWith('__')) parent.append(el('strong', '', t.slice(2, -2)))
+      else if (t.startsWith('`')) parent.append(el('code', '', t.slice(1, -1)))
+      else parent.append(el('span', 'link', /^\[([^\]]+)\]/.exec(t)[1]))
+      at = m.index + t.length
+    }
+    if (at < text.length) parent.append(document.createTextNode(text.slice(at)))
+  }
+
+  const cells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((x) => x.trim())
+
+  function markdown(text) {
+    const box = el('div', 'md')
+    const lines = String(text || '').split('\n')
+    let para = []
+    const flush = () => {
+      if (!para.length) return
+      const p = el('p')
+      inline(p, para.join(' '))
+      box.append(p)
+      para = []
+    }
+    for (let i = 0; i < lines.length; ) {
+      const line = lines[i]
+      if (/^\s*```/.test(line)) {
+        flush()
+        const body = []
+        i++
+        while (i < lines.length && !/^\s*```/.test(lines[i])) body.push(lines[i++])
+        i++ // the closing fence, or the end while the reply is still being written
+        box.append(el('pre', '', body.join('\n')))
+        continue
+      }
+      if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
+        flush()
+        const wrap = el('div', 'tw')
+        const table = el('table')
+        const head = el('tr')
+        for (const c of cells(line)) { const th = el('th'); inline(th, c); head.append(th) }
+        table.append(head)
+        i += 2
+        while (i < lines.length && /^\s*\|/.test(lines[i])) {
+          const tr = el('tr')
+          for (const c of cells(lines[i])) { const td = el('td'); inline(td, c); tr.append(td) }
+          table.append(tr)
+          i++
+        }
+        wrap.append(table)
+        box.append(wrap)
+        continue
+      }
+      const h = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/.exec(line)
+      const li = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/.exec(line)
+      if (h) {
+        flush()
+        const d = el('div', 'h')
+        inline(d, h[1])
+        box.append(d)
+      } else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+        flush()
+        box.append(el('hr'))
+      } else if (li) {
+        flush()
+        const d = el('div', 'li')
+        d.style.paddingLeft = `${Math.min(3, Math.floor(li[1].replace(/\t/g, '  ').length / 2)) * 16}px`
+        d.append(el('span', 'b', /\d/.test(li[2]) ? li[2] : '•'))
+        const t = el('span')
+        inline(t, li[3])
+        d.append(t)
+        box.append(d)
+      } else if (/^\s*>/.test(line)) {
+        flush()
+        const q = el('div', 'quote')
+        inline(q, line.replace(/^\s*>\s?/, ''))
+        box.append(q)
+      } else if (!line.trim()) flush()
+      else para.push(line.trim())
+      i++
+    }
+    flush()
+    return box
+  }
+
+  // The words of a reply without its marks, for one line in the list.
+  const flat = (s) => String(s || '').replace(/```[\s\S]*?(```|$)/g, ' ').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^\s*([-*+]|\d{1,3}[.)])\s+/gm, '').replace(/[*_`#>|]+/g, '').replace(/\s+/g, ' ').trim()
+
+  const STATUS = { allowed: 'Allowed', denied: 'Denied', expired: 'No longer waiting', answered: 'Answered' }
+
+  function approval(r) {
+    const card = el('div', 'card')
+    if (r.who) card.append(el('div', 'who', `${r.who} asks`))
+    card.append(el('div', 'what', r.text))
+    if (r.detail) card.append(el('div', 'detail', r.detail))
+    // Asked in a run nobody is watching: why, line by line, and until when it waits.
+    if (Array.isArray(r.risk)) for (const line of r.risk) card.append(el('div', 'detail', `• ${line}`))
+    const lapsed = r.exp && r.exp < Date.now()
+    if (r.st !== 'pending' || lapsed) {
+      card.append(el('div', 'done', lapsed && r.st === 'pending' ? STATUS.expired : STATUS[r.st] || r.st))
+      return card
+    }
+    if (r.exp) card.append(el('div', 'done', `Waits for your answer until ${until(r.exp)}. Asked while nobody was watching, so it covers this one step only.`))
+    const acts = el('div', 'acts')
+    const deny = el('button', '', 'Deny')
+    const allow = el('button', 'go', 'Allow once')
+    const answer = async (ok) => {
+      deny.disabled = allow.disabled = true
+      try { await api('POST', `/chat/${current}/answer`, { requestId: r.requestId, allow: ok }) } catch (e) { deny.disabled = allow.disabled = false; fail(e) }
+    }
+    deny.addEventListener('click', () => answer(false))
+    allow.addEventListener('click', () => answer(true))
+    acts.append(deny, allow)
+    card.append(acts)
+    return card
+  }
+
+  function question(r) {
+    const card = el('div', 'card')
+    if (r.who) card.append(el('div', 'who', `${r.who} asks`))
+    if (r.st !== 'pending') {
+      for (const q of r.questions || []) card.append(el('div', 'what', q.question))
+      card.append(el('div', 'done', STATUS[r.st] || r.st))
+      return card
+    }
+    const picked = new Map()
+    const send = el('button', 'go', 'Send answer')
+    send.disabled = true
+    const ready = () => { send.disabled = !(r.questions || []).every((q) => (picked.get(q.question) || []).length) }
+    for (const q of r.questions || []) {
+      card.append(el('div', 'qtext', q.question))
+      const buttons = []
+      for (const o of q.options) {
+        const b = el('button', 'opt')
+        b.append(el('span', '', o.label))
+        if (o.description) b.append(el('small', '', o.description))
+        b.addEventListener('click', () => {
+          const have = picked.get(q.question) || []
+          const next = q.multiSelect ? (have.includes(o.label) ? have.filter((x) => x !== o.label) : [...have, o.label]) : [o.label]
+          picked.set(q.question, next)
+          for (const [i, x] of buttons.entries()) x.classList.toggle('on', next.includes(q.options[i].label))
+          other.value = ''
+          ready()
+        })
+        buttons.push(b)
+        card.append(b)
+      }
+      const other = el('input', 'field')
+      other.placeholder = 'Or type your own answer'
+      other.style.marginTop = '8px'
+      other.addEventListener('input', () => {
+        picked.set(q.question, other.value.trim() ? [other.value.trim()] : [])
+        for (const x of buttons) x.classList.remove('on')
+        ready()
+      })
+      card.append(other)
+    }
+    const acts = el('div', 'acts')
+    send.addEventListener('click', async () => {
+      send.disabled = true
+      const answers = {}
+      for (const q of r.questions) answers[q.question] = (picked.get(q.question) || []).join(', ')
+      try { await api('POST', `/chat/${current}/answer`, { requestId: r.requestId, answers }) } catch (e) { send.disabled = false; fail(e) }
+    })
+    acts.append(send)
+    card.append(acts)
+    return card
+  }
+
+  function drawRows() {
+    const stick = nearEnd()
+    const box = $('rows')
+    box.replaceChildren()
+    let steps = null
+    const flush = () => {
+      if (!steps) return
+      const wrap = el('div', 'steps')
+      const head = el('button')
+      const last = steps[steps.length - 1]
+      head.append(el('span', `dot${last.st === 'running' ? ' work' : ''}`), el('span', 'last', last.text), el('span', 'n', steps.length > 1 ? `${steps.length} steps` : ''))
+      const list = el('ol')
+      for (const s of steps) list.append(el('li', s.st === 'error' ? 'error' : '', s.text))
+      head.addEventListener('click', () => wrap.classList.toggle('open'))
+      wrap.append(head, list)
+      box.append(wrap)
+      steps = null
+    }
+    for (const r of rows) {
+      if (r.gone) continue
+      if (r.k === 'step') {
+        (steps = steps || []).push(r)
+        continue
+      }
+      flush()
+      if (r.k === 'user') {
+        const b = el('div', 'me', r.text)
+        if (r.st === 'queued') b.append(el('span', 'q', 'Waiting its turn'))
+        box.append(b)
+      } else if (r.k === 'assistant') {
+        if (!r.text && r.st !== 'streaming') continue
+        const b = el('div', 'them')
+        const md = markdown(r.text)
+        b.append(md)
+        if (r.st === 'streaming') {
+          const last = md.lastElementChild
+          ;(last && (last.tagName === 'P' || last.classList.contains('h')) ? last : md).append(el('span', 'caret'))
+        }
+        box.append(b)
+      } else if (r.k === 'approval') box.append(approval(r))
+      else if (r.k === 'question') box.append(question(r))
+      else if (r.k === 'notice') box.append(el('div', `note${r.st === 'warn' ? ' warn' : r.st === 'error' ? ' error' : ''}`, r.text))
+    }
+    flush()
+    if (stick) toEnd()
+  }
+
+  // Words arriving while the lead writes are drawn at most a few times a second.
+  let due = 0
+  const drawSoon = () => {
+    if (due) return
+    due = setTimeout(() => { due = 0; drawRows() }, 120)
+  }
+
+  async function openChat(id) {
+    current = id
+    rows = []
+    $('rows').replaceChildren()
+    const known = chats.find((c) => c.id === id)
+    if (known) drawHead(known)
+    show('chat')
+    connect()
+    try {
+      const d = await api('GET', `/chat/${id}`)
+      if (current !== id) return
+      rows = d.rows
+      putChat(d.chat)
+      drawRows()
+      toEnd()
+    } catch (e) { fail(e) }
+  }
+
+  $('back').addEventListener('click', () => {
+    current = null
+    show('list')
+    drawList()
+    connect()
+    loadList().catch(fail)
+  })
+
+  const text = $('text')
+  const grow = () => {
+    text.style.height = 'auto'
+    text.style.height = `${Math.min(148, text.scrollHeight + 2)}px`
+    $('send').disabled = !text.value.trim()
+  }
+  // Typing and the keyboard's dictation both arrive as input events.
+  text.addEventListener('input', grow)
+  text.addEventListener('change', grow)
+  $('compose').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const said = text.value.trim()
+    if (!said || !current) return
+    $('send').disabled = true
+    try {
+      await api('POST', `/chat/${current}/send`, { text: said })
+      text.value = ''
+      grow()
+      toEnd()
+    } catch (err) {
+      $('send').disabled = false
+      if (err instanceof Unpaired) return unpair()
+      $('status').textContent = err.message
+    }
+  })
+  $('stop').addEventListener('click', async () => {
+    $('stop').disabled = true
+    try { await api('POST', `/chat/${current}/stop`, {}) } catch (e) { fail(e) }
+    $('stop').disabled = false
+  })
+
+  // ----- a new chat -----
+
+  let folder = null
+  $('new').addEventListener('click', () => {
+    const box = $('folders')
+    box.replaceChildren()
+    folder = folders[0] ? folders[0].key : null
+    for (const f of folders) {
+      const b = el('button', f.key === folder ? 'on' : '', f.label)
+      b.addEventListener('click', () => {
+        folder = f.key
+        for (const x of box.children) x.classList.toggle('on', x === b)
+      })
+      box.append(b)
+    }
+    if (!folders.length) box.append(el('span', 'fine', 'Start the first chat on your computer; then its folder shows up here.'))
+    $('sheet-err').textContent = ''
+    $('sheet').classList.add('on')
+    $('first').focus()
+  })
+  $('sheet').addEventListener('click', (e) => { if (e.target === $('sheet')) $('sheet').classList.remove('on') })
+  $('first').addEventListener('input', () => { $('start').disabled = !$('first').value.trim() || !folder })
+  $('start').addEventListener('click', async () => {
+    $('start').disabled = true
+    try {
+      const r = await api('POST', '/chats', { folder, text: $('first').value.trim() })
+      $('first').value = ''
+      $('sheet').classList.remove('on')
+      putChat(r.chat)
+      openChat(r.chat.id)
+    } catch (e) {
+      if (e instanceof Unpaired) return unpair()
+      $('sheet-err').textContent = e.message
+      $('start').disabled = false
+    }
+  })
+
+  // ----- live updates -----
+
+  function closeStream() {
+    if (stream) stream.close()
+    stream = null
+  }
+
+  /** The event stream's text blocks, from Wi-Fi or from the tunnel: the same lines either way. */
+  function feeder() {
+    let buf = ''
+    return (text) => {
+      buf += text
+      let at
+      while ((at = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, at)
+        buf = buf.slice(at + 2)
+        if (/^event: bye/m.test(block)) return unpair()
+        const line = block.split('\n').find((l) => l.startsWith('data: '))
+        if (!line) continue
+        try { onEvent(JSON.parse(line.slice(6))) } catch { /* a line that is not for us */ }
+      }
+    }
+  }
+
+  function onEvent(ev) {
+    if (ev.t === 'chat') return putChat(ev.chat)
+    if (ev.t === 'inbox') {
+      inbox = ev.items || []
+      if (!current) drawInbox()
+      return
+    }
+    if (ev.t === 'gone') {
+      chats = chats.filter((c) => c.id !== ev.chatId)
+      if (current === ev.chatId) $('back').click()
+      else if (!current) drawList()
+      return
+    }
+    if (ev.chatId !== current) return
+    if (ev.t === 'row') {
+      const i = rows.findIndex((r) => r.id === ev.row.id)
+      if (i >= 0) rows[i] = ev.row
+      else rows.push(ev.row)
+      drawSoon()
+    } else if (ev.t === 'patch') {
+      const r = rows.find((x) => x.id === ev.id)
+      if (!r) return
+      if ('text' in ev.patch) r.text = ev.patch.text
+      if ('st' in ev.patch) r.st = ev.patch.st || undefined
+      if (ev.patch.gone) r.gone = true
+      drawSoon()
+    } else if (ev.t === 'delta') {
+      const r = rows.find((x) => x.id === ev.id)
+      if (!r || r.k !== 'assistant') return
+      r.text = (r.text || '') + ev.text
+      r.st = 'streaming'
+      drawSoon()
+    }
+  }
+
+  async function connect() {
+    closeStream()
+    if (!paired()) return
+    const chat = current
+    const path = `/api/events${chat ? `?chat=${encodeURIComponent(chat)}` : ''}`
+    if (tunnel) {
+      // The tunnel opens its streams again by itself after a reconnect.
+      stream = tunnel.stream(path, feeder())
+      return
+    }
+    const ctrl = new AbortController()
+    const mine = (stream = { close: () => ctrl.abort() })
+    try {
+      const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal, cache: 'no-store' })
+      if (res.status === 401) return unpair()
+      if (!res.ok || !res.body) throw new Error('no stream')
+      retry = 0
+      setOnline(true)
+      const reader = res.body.getReader()
+      const dec = new TextDecoder()
+      const feed = feeder()
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        feed(dec.decode(value, { stream: true }))
+      }
+    } catch { /* cut off: tried again below */ }
+    if (stream !== mine || !paired()) return
+    // The connection dropped (the phone slept, the Wi-Fi blinked): come back, and read what was missed.
+    setOnline(false)
+    retry = Math.min(retry + 1, 6)
+    setTimeout(() => {
+      if (stream !== mine) return
+      refresh()
+    }, 600 * retry)
+  }
+
+  async function refresh() {
+    if (tunnel) tunnel.wake()
+    else connect()
+    try {
+      if (current) {
+        const d = await api('GET', `/chat/${current}`)
+        rows = d.rows
+        putChat(d.chat)
+        drawRows()
+      } else {
+        await loadList()
+        await loadInbox()
+      }
+    } catch (e) { fail(e) }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && paired()) refresh() })
+
+  // ----- start -----
+
+  async function enter() {
+    show('list')
+    try {
+      await loadList()
+      await loadInbox()
+    } catch (e) {
+      if (e instanceof Unpaired) return unpair()
+      setOnline(false)
+    }
+    connect()
+    if (window.isSecureContext && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => null)
+    // In Safari (not yet on the home screen): say how to keep it one tap away.
+    const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches
+    if (!standalone && /iPhone|iPad/.test(navigator.userAgent)) {
+      $('home-tip').hidden = false
+      $('home-tip').textContent = 'To keep this one tap away: tap Share, then Add to Home Screen, and open it from there. If it asks for a code, show a new one on your computer.'
+    }
+  }
+
+  // ----- from anywhere: through the relay -----
+
+  /** On the relay's own page, pairing starts from the computer's QR code: no code is typed here. */
+  function relayWords(err) {
+    $('pair-form').hidden = true
+    $('pair-words').textContent = 'Scan the code in Ensemble on your computer: Settings, Phone and remote, From anywhere.'
+    $('pair-fine').textContent = 'Everything between this phone and your computer is encrypted end to end. The relay passes it on without being able to read it.'
+    $('pair-err').textContent = err || ''
+  }
+
+  async function startRelay(link, rec) {
+    const identity = rec ? { privateKey: rec.privateKey, pub: rec.pub } : await EnsembleTunnel.createIdentity()
+    const base = { relay: location.origin, room: link ? link.room : rec.room, pcPub: link ? link.pcPub : rec.pcPub }
+    if (link) {
+      relayWords()
+      $('pair-words').textContent = 'Pairing with your computer…'
+      show('pair')
+    }
+    let first = true
+    tunnel = EnsembleTunnel.open({
+      ...base,
+      identity,
+      deviceId: rec ? rec.deviceId : null,
+      pair: link ? { code: link.code, name: guessName() } : null,
+      onState: (st, why) => {
+        if (st === 'ready') {
+          setOnline(true)
+          $('offline').textContent = 'Cannot reach your computer. Is Ensemble running, and is this phone on the same network?'
+          // Back after a gap (the phone slept, the network changed): read what was missed.
+          if (!first) void refresh()
+          first = false
+        } else if (st === 'pc-offline') {
+          setOnline(false)
+          $('offline').textContent = 'Your computer is not connected to the relay right now. Ensemble has to be running on it.'
+        } else if (st === 'offline') setOnline(false)
+        else if (st === 'unknown') {
+          // Said in the clear, so it is not proof: the pairing is kept, and scanning a new code replaces it.
+          tunnel = null
+          relayWords('Your computer does not know this phone right now. If you removed it there, show a new code in Ensemble on the computer and scan it again.')
+          show('pair')
+        } else if (st === 'refused') {
+          tunnel = null
+          void dropPairing()
+          relayWords(why || 'The computer did not accept this pairing. Show a new code there and scan it again.')
+          show('pair')
+        }
+      },
+      onPaired: async (device) => {
+        await putPairing({ ...base, privateKey: identity.privateKey, pub: identity.pub, deviceId: device.id })
+        void enter()
+      },
+      onBye: () => unpair(),
+    })
+    if (rec) void enter()
+  }
+
+  // A pairing link opened while this page is already open (a second scan) starts pairing too.
+  window.addEventListener('hashchange', () => {
+    const l = window.EnsembleTunnel ? EnsembleTunnel.readLink(location.hash) : null
+    if (!l) return
+    history.replaceState(null, '', location.pathname)
+    if (tunnel) tunnel.close()
+    tunnel = null
+    void startRelay(l, null)
+  })
+  const relayLink = window.EnsembleTunnel ? EnsembleTunnel.readLink(location.hash) : null
+  if (relayLink) {
+    // The QR link's room, key and code never reach any server: they are after the #, and are removed from the address now.
+    history.replaceState(null, '', location.pathname)
+    void startRelay(relayLink, null)
+    return
+  }
+  const fromLink = cleanCode(decodeURIComponent(location.hash.replace(/^#/, '')))
+  if (fromLink.length === 8) {
+    history.replaceState(null, '', location.pathname)
+    if (!token) {
+      $('code').value = `${fromLink.slice(0, 4)}-${fromLink.slice(4)}`
+      $('pair').disabled = false
+      show('pair')
+      pair()
+      return
+    }
+  }
+  if (token) {
+    enter()
+    return
+  }
+  // A phone paired through this relay before: resume. On a relay page with no pairing: say how to pair.
+  void getPairing().then(async (rec) => {
+    if (rec && rec.relay === location.origin && rec.deviceId) return startRelay(null, rec)
+    show('pair')
+    try {
+      const r = await fetch('/relay.json', { cache: 'no-store' })
+      if (r.ok && (await r.json()).relay) relayWords()
+    } catch { /* the computer's own page: the code form stays */ }
+  })
+})()
+</script>
+</body>
+</html>

@@ -1,3 +1,5 @@
+// First, so a measuring run can hear React's commits (see lib/perf.ts). Does nothing otherwise.
+import './lib/perf'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './styles/index.css'

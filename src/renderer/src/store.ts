@@ -5,6 +5,7 @@ import type {
   Account,
   AccountStatus,
   AccountUsage,
+  Capacity,
   AgentPhase,
   AgentState,
   Attachment,
@@ -34,10 +35,10 @@ import { appendStream, takeStream } from './lib/streams'
  * 'flow' is the Team view (who is talking to whom); 'team' is everyone's chat side by side;
  * 'now' is mission control: every chat that is being worked on, at once.
  */
-export type View = 'chat' | 'flow' | 'team' | 'live' | 'memory' | 'library' | 'now'
+export type View = 'chat' | 'flow' | 'team' | 'live' | 'memory' | 'library' | 'now' | 'inbox'
 
 /** Views that are not about one chat, and so stay up whichever chat is open. */
-export const isGlobalView = (v: View): boolean => v === 'memory' || v === 'library' || v === 'now'
+export const isGlobalView = (v: View): boolean => v === 'memory' || v === 'library' || v === 'now' || v === 'inbox'
 
 /** One thing an agent was seen doing, for the trail of its recent steps. */
 export interface Step {
@@ -75,6 +76,8 @@ interface State {
   accounts: Account[]
   statuses: Record<string, AccountStatus>
   usage: Record<string, AccountUsage>
+  /** How many more agents this computer can carry now, as measured by the engine. Null until the first measurement. */
+  capacity: Capacity | null
   chats: Chat[]
   folders: Folder[]
   /** Everyone who can appear in a chat, by id: the accounts, and the agents that were started inside chats. */
@@ -226,6 +229,31 @@ function withAgents<T>(rec: Record<string, T>, chats: Chat[]): Record<string, T>
   return out
 }
 
+const sameJson = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * The chat as it came from the app, with its agents, goal and loops replaced by the ones already
+ * held wherever they did not change (exported for scripts/checks/speed.ts).
+ */
+export function keepSameParts(was: Chat | undefined, next: Chat): Chat {
+  if (!was) return next
+  const out = { ...next }
+  if (next.agents && was.agents) {
+    const old = new Map(was.agents.map((a) => [a.id, a]))
+    let same = next.agents.length === was.agents.length
+    const agents = next.agents.map((a, i) => {
+      const o = old.get(a.id)
+      const keep = o && sameJson(o, a) ? o : a
+      if (keep !== was.agents?.[i]) same = false
+      return keep
+    })
+    out.agents = same ? was.agents : agents
+  }
+  if (next.goal && was.goal && sameJson(was.goal, next.goal)) out.goal = was.goal
+  if (next.loops && was.loops && sameJson(was.loops, next.loops)) out.loops = was.loops
+  return out
+}
+
 /** Lines that say nothing about what an agent is doing, and so are left out of its trail. */
 const DULL = new Set(['Thinking', 'Writing', 'Waking up', 'Working'])
 /** Which reply each trail belongs to, so a new reply starts a new trail. */
@@ -259,17 +287,22 @@ export const useStore = create<State>((set, get) => {
         return { statuses: withAgents({ ...s.statuses, [ev.status.accountId]: ev.status }, s.chats) }
       case 'account-usage':
         return { usage: withAgents({ ...s.usage, [ev.usage.accountId]: ev.usage }, s.chats) }
+      case 'capacity':
+        return { capacity: ev.capacity }
       case 'login':
         return { logins: { ...s.logins, [ev.progress.accountId]: ev.progress } }
       case 'chat': {
-        const chats = sortChats([...s.chats.filter((c) => c.id !== ev.chat.id), ev.chat])
-        // The app handed the lead over by itself: whoever was looking at the old lead now follows the new one.
-        const cover = ev.chat.cover
         const was = s.chats.find((c) => c.id === ev.chat.id)
-        const follow = cover && was?.cover?.itemId !== cover.itemId && s.focus[ev.chat.id] === cover.from
-        const focus = follow ? { ...s.focus, [ev.chat.id]: cover.to } : s.focus
-        // Only a chat with agents of its own changes who can be looked up.
-        if (!ev.chat.agents?.length) return { chats, focus }
+        // Everything arrives as new objects; what did not change is kept as it was, so the parts
+        // of the window that show the team do not all redraw on every update to the chat.
+        const chat = keepSameParts(was, ev.chat)
+        const chats = sortChats([...s.chats.filter((c) => c.id !== chat.id), chat])
+        // The app handed the lead over by itself: whoever was looking at the old lead now follows the new one.
+        const cover = chat.cover
+        const follow = cover && was?.cover?.itemId !== cover.itemId && s.focus[chat.id] === cover.from
+        const focus = follow ? { ...s.focus, [chat.id]: cover.to } : s.focus
+        // Only a chat with agents of its own changes who can be looked up, and only when they changed.
+        if (!chat.agents?.length || chat.agents === was?.agents) return { chats, focus }
         return { chats, focus, members: membersOf(s.accounts, chats), statuses: withAgents(s.statuses, chats), usage: withAgents(s.usage, chats) }
       }
       case 'chat-removed':
@@ -329,7 +362,8 @@ export const useStore = create<State>((set, get) => {
         later.push(() => get().toast(ev.text, ev.level))
         return null
       case 'focus-chat':
-        later.push(() => void get().openChat(ev.chatId, ev.accountId))
+        // A notice for an inbox item that has no chat of its own (chatId '') opens the inbox.
+        later.push(() => (ev.chatId ? void get().openChat(ev.chatId, ev.accountId) : get().setView('inbox')))
         return null
       case 'summon':
         later.push(() => {
@@ -447,10 +481,12 @@ export const useStore = create<State>((set, get) => {
       goalRounds: 12,
       goalCheck: 'fresh',
       handover: true,
+      remote: false,
     },
     accounts: [],
     statuses: {},
     usage: {},
+    capacity: null,
     chats: [],
     folders: [],
     members: {},
@@ -496,6 +532,7 @@ export const useStore = create<State>((set, get) => {
         accounts: b.accounts,
         statuses: withAgents(Object.fromEntries(b.statuses.map((s) => [s.accountId, s])), b.chats),
         usage: withAgents(Object.fromEntries(b.usage.map((u) => [u.accountId, u])), b.chats),
+        capacity: b.capacity || null,
         chats: sortChats(b.chats),
         folders: b.folders || [],
         members: membersOf(b.accounts, b.chats),

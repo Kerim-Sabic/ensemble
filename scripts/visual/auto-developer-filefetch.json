@@ -1,0 +1,8 @@
+[
+  {
+    "size": [900, 600],
+    "theme": "light",
+    "js": "const base = new URL('./assets/', location.href).href; const names = ['ort-wasm-simd-threaded.asyncify-CxOG5pUO.wasm', 'voice-worker-DuoPtjlZ.js']; const out = { page: location.protocol }; for (const n of names) { try { const r = await fetch(base + n); const b = await r.arrayBuffer(); out['fetch ' + n] = r.status + ' ' + b.byteLength } catch (e) { out['fetch ' + n] = 'ERR ' + e.message } } try { const x = new XMLHttpRequest(); x.open('GET', base + names[1], false); x.send(); out.xhr = x.status + ' ' + (x.responseText || '').length } catch (e) { out.xhr = 'ERR ' + e.message } const src = `self.onmessage = async (e) => { const o = {}; try { const r = await fetch(e.data); o.fetch = r.status + ' ' + (await r.arrayBuffer()).byteLength } catch (err) { o.fetch = 'ERR ' + err.message } try { const m = await import(e.data.replace(/[^/]+$/, 'voice-worker-DuoPtjlZ.js')); o.imp = 'ok' } catch (err) { o.imp = 'ERR ' + err.message } postMessage(o) }`; try { const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })), { type: 'module' }); out.worker = await new Promise((res) => { w.onmessage = (e) => res(e.data); w.onerror = (e) => res('worker error ' + e.message); w.postMessage(base + names[0]); setTimeout(() => res('worker timeout'), 8000) }) } catch (e) { out.worker = 'ERR ' + e.message } return JSON.stringify(out)",
+    "wait": 200
+  }
+]

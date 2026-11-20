@@ -42,6 +42,8 @@ export interface SpawnInfo {
   at: number
   /** Sent home: it no longer takes work, but what it did stays readable. */
   gone?: boolean
+  /** Moved to another account while it was not working (to share the work evenly); it is told with its next turn. */
+  moved?: { from: string }
 }
 
 /** The account an agent's sign-in, allowance and status belong to. */
@@ -131,8 +133,14 @@ export interface Settings {
   claudePath: string | null
   onboarded: boolean
   memoryEnabled: boolean
+  /** Memory with receipts: after a chat goes quiet, one short look back on the lightest model proposes notes, each resting on an exact quote. */
+  memoryReview?: boolean
+  /** At most this many of those looks a day. */
+  memoryReviewsPerDay?: number
   smartTitles: boolean
   notifications: boolean
+  /** The daily limits on work nobody is watching (watches, memory reviews). Unset: DEFAULT_CAPS in watches.ts. */
+  unattended?: import('./watches').UnattendedCaps
   sidebarCollapsed: boolean
   /** Offer a likely next message after each reply. */
   suggestions: boolean
@@ -187,6 +195,12 @@ export interface Settings {
    * Off: the lead is only offered a switch, as before.
    */
   handover: boolean
+  /** Phone and remote: a small server on the local network a paired phone can reach. Off until switched on. */
+  remote: boolean
+  /** Voice in the message box: the language spoken (the speech model's name for it) and whether a few spoken commands act. Unset: English, commands on. */
+  voice?: { language: string; commands: boolean }
+  /** The version of the app this data was last opened with. A different one means an update was installed. */
+  version?: string
 }
 
 /** What the team has learned about one model family. */
@@ -219,17 +233,21 @@ export interface Folder {
 export interface Chat {
   id: string
   title: string
+  /** Set on a chat a watch started for a finding: the work in it is unattended. */
+  watchId?: string
   titleLocked?: boolean
   cwd: string
   createdAt: number
   updatedAt: number
   permission: PermissionLevel
   pinned?: boolean
+  /** In a shared project (joined by a code): its name, who else is in it, and whether it is connected. */
+  shared?: import('./rooms').ChatShared
   snippet?: string
   /** Who leads this chat, when it is not the team's usual lead. */
   leadId?: string | null
   /** Set when the lead changed mid-chat. The new lead is caught up with its next message. */
-  handoff?: { from: string; reason: 'limit' | 'manual' } | null
+  handoff?: { from: string; reason: 'limit' | 'manual'; /** Tasks the new lead itself was on, now part of leading. */ own?: string[] } | null
   /** Set when a teammate took over as lead by itself because the lead ran out of usage. */
   cover?: Cover | null
   /**
@@ -316,6 +334,12 @@ export interface Goal {
   log: { round: number; ts: number; met: boolean; note: string }[]
   /** A check is being made right now. */
   checking?: boolean
+  /**
+   * What an active goal is waiting for, when it is not the lead's own reply: 'team' (work the team
+   * still has under way), 'retry' (a reply failed and is tried again shortly). On a paused goal,
+   * 'allowance': it carries on by itself when the lead's usage allowance is back.
+   */
+  waiting?: 'team' | 'retry' | 'allowance' | null
   /**
    * The way of working the goal was set in, when it was Ultra or Go crazy: every round runs that
    * way (its note, its cap and depth) until the goal ends.
@@ -470,6 +494,11 @@ export type Item =
       input?: unknown
       canRemember?: boolean
       status: 'pending' | 'allowed' | 'always' | 'denied' | 'expired'
+      /** Asked by the guard in a run nobody is watching: it covers this one call only, "always" is not offered, and it lapses at `expiresAt`. */
+      unattended?: boolean
+      expiresAt?: number
+      /** Why it asks and what the run has touched, a line each, for the card. */
+      risk?: string[]
     })
   | (ItemBase & {
       /** An agent needs the user to sign in to a site in its browser, and waits. */
@@ -609,6 +638,41 @@ export interface MemoryNote {
   author: string
   createdAt: number
   updatedAt: number
+  /** Memory with receipts (src/shared/memory.ts). Notes from before receipts have none of these. */
+  kind?: import('./memory').NoteKind
+  trust?: import('./memory').NoteTrust
+  status?: import('./memory').NoteStatus
+  /** The project folder it belongs to (scopeKey form), or none for everywhere. */
+  scope?: string | null
+  source?: import('./memory').NoteSource
+  /** Earlier states, newest last, so a change can be undone. */
+  versions?: import('./memory').NoteVersion[]
+  /** For a waiting note that would change or retire another one when confirmed. */
+  replaces?: string
+  retires?: boolean
+  forgottenAt?: number
+}
+
+/** What goes into a chat's prompts from memory right now, for the window. */
+export interface MemoryCore {
+  ids: string[]
+  words: number
+  budget: number
+  leftOut: number
+  waiting: number
+}
+
+/** One row found in earlier chats. */
+export interface HistoryHit {
+  chatId: string
+  title: string
+  itemId: string
+  accountId: string
+  /** Who said it: 'you' or the agent's name. */
+  who: string
+  ts: number
+  text: string
+  score: number
 }
 
 export interface AccountCandidate {
@@ -812,10 +876,33 @@ export interface Bootstrap {
     canBrowse: boolean
     canControl: boolean
   }
+  /** What this computer can carry: see Capacity. */
+  capacity?: Capacity
+}
+
+/**
+ * How many more agents this computer can carry now, and what each costs, from what was measured
+ * (estimated until there are measurements). `text` is the plain line to show the user.
+ */
+export interface Capacity {
+  more: number
+  /** Memory per agent, MB (the high figure). */
+  mb: number
+  /** Share of a processor core per agent at work. */
+  core: number
+  /** Whether the processor share was measured (else it is the old estimate). */
+  coreMeasured?: boolean
+  measured: boolean
+  text: string
 }
 
 /** Everything the main process pushes to the window. */
 export type HubEvent =
+  | { type: 'capacity'; capacity: Capacity }
+  /** The watches changed (made, changed, ran, removed). */
+  | { type: 'watches'; watches: import('./watches').Watch[] }
+  /** The inbox changed: a finding, something that needs the user, a watch that keeps failing. */
+  | { type: 'inbox'; items: import('./watches').InboxItem[] }
   | { type: 'settings'; settings: Settings }
   | { type: 'accounts'; accounts: Account[] }
   | { type: 'account-status'; status: AccountStatus }
@@ -867,6 +954,51 @@ export interface SendRequest {
 }
 
 export type PermissionDecision = 'allow' | 'always' | 'deny'
+
+/** A phone or another computer paired for "Phone and remote". */
+export interface RemoteDevice {
+  id: string
+  name: string
+  createdAt: number
+  lastSeen: number
+  /** It has a live connection open right now. */
+  online?: boolean
+  /** How it was paired: on this network (Wi-Fi, Tailscale) or through the relay ("From anywhere"). */
+  via?: 'wifi' | 'relay'
+  /** It gets notifications. */
+  notifications?: boolean
+}
+
+/** "From anywhere" in the "Phone and remote" settings: Tailscale, HTTPS for its name, the relay, notifications. */
+export interface RemoteReach {
+  tailscale: { installed: boolean; running: boolean; name: string | null; url: string | null; httpsReady: boolean }
+  https: { on: boolean; cert: { name: string; expires: number } | null; url: string | null }
+  relay: { url: string; on: boolean; connected: boolean; error: string | null; link: string | null }
+  push: { needs: boolean; goals: boolean; found: boolean; phones: number }
+  /** Set when the user's "Get the HTTPS certificate" did not work. */
+  certError?: string
+}
+
+export interface RemoteReachPatch {
+  relayUrl?: string
+  relayOn?: boolean
+  https?: boolean
+  push?: Partial<Record<'needs' | 'goals' | 'found', boolean>>
+}
+
+/** Where "Phone and remote" stands, for the settings section. */
+export interface RemoteInfo {
+  on: boolean
+  listening: boolean
+  port: number | null
+  /** Why it could not start, when it could not. */
+  error?: string
+  /** The addresses a phone can open: on the same Wi-Fi, or over a private network such as Tailscale. */
+  addresses: { url: string; label: string; kind: 'wifi' | 'private' | 'this' }[]
+  devices: RemoteDevice[]
+  /** A pairing under way: the one-time code and when it stops working. */
+  pairing: { code: string; expiresAt: number } | null
+}
 
 /** The typed bridge exposed on window.ensemble. */
 export interface EnsembleApi {
@@ -932,6 +1064,38 @@ export interface EnsembleApi {
   setChatLead(id: string, accountId: string, retry?: boolean): Promise<Chat>
   /** Takes back a message of yours that is waiting and has not started. False when it already started or is gone. */
   dequeue(chatId: string, accountId: string, itemId: string): Promise<boolean>
+  /** Phone and remote: whether it is on, where a phone can reach it, the paired devices, and a pairing under way. */
+  remoteInfo(): Promise<RemoteInfo>
+  /** Makes a fresh one-time code for pairing a device. The one before it stops working. */
+  remotePair(): Promise<RemoteInfo>
+  /** Removes a paired device. Its access ends at once. */
+  remoteRemove(deviceId: string): Promise<RemoteInfo>
+  /** "From anywhere": where it stands (reads Tailscale's status; changes nothing). */
+  remoteReach(): Promise<RemoteReach>
+  remoteReachSet(patch: RemoteReachPatch): Promise<RemoteReach>
+  /** The user's own action: runs `tailscale cert` for this computer's name. Never called by itself. */
+  remoteTailscaleCert(): Promise<RemoteReach>
+  /** Shared projects: where one stands (null when the chat is in none). */
+  roomInfo(chatId: string): Promise<import('./rooms').RoomInfo | null>
+  /** Shares a chat's project and gives the join code. Switches "Phone and remote" on when it is off. */
+  roomShare(chatId: string, myName: string, projectName?: string): Promise<import('./rooms').RoomInfo>
+  /** Joins a shared project with its code: connects to the other computer and makes a chat for it. */
+  roomJoin(code: string, myName: string): Promise<import('./rooms').RoomInfo>
+  /** Removes one person from a project shared from here. Their access ends at once and the code changes. */
+  roomRemove(chatId: string, memberId: string): Promise<import('./rooms').RoomInfo | null>
+  /** Stops sharing a project (host), or leaves one that was joined (member). */
+  roomStop(chatId: string): Promise<void>
+  roomLeave(chatId: string): Promise<void>
+  /** Adds a note to the shared project memory. Returns a line saying what happened. */
+  roomNote(chatId: string, title: string, body: string): Promise<string>
+  /** A chat's execution trace: what the team did, written down as it happened. Oldest first. */
+  trace(chatId: string, q?: { agent?: string; since?: number; until?: number; limit?: number }): Promise<import('./trace').TraceRecord[]>
+  /** What changed, what ran, what passed and what is still uncertain, for a reply, a task or the chat's goal. */
+  evidence(chatId: string, ref: import('./trace').EvidenceRef): Promise<import('./trace').Evidence>
+  /** Where a chat's trace file is on disk. */
+  tracePath(chatId: string): Promise<string>
+  /** Unattended work today against its daily limits (src/main/guard.ts). */
+  unattendedToday(): Promise<{ runs: number; byAccount: Record<string, number>; caps: import('./watches').UnattendedCaps }>
   /**
    * A message for an agent that is working: it reaches the work under way instead of waiting for
    * it to end. 'steered' when it did; 'sent' when the agent was not working, or the message is a
@@ -944,6 +1108,12 @@ export interface EnsembleApi {
   dismissRecovery(id: string): Promise<void>
   exportChat(id: string): Promise<string | null>
   folderChanges(id: string): Promise<FolderChanges>
+  /** First run: a folder's top-level names and whether it is a git repository (read only). */
+  folderProbe(dir: string | null): Promise<import('./firstrun').FolderProbe>
+  /** First run: the app's own folder for a first task (not made yet) and recent git projects. Writes nothing. */
+  firstFolders(): Promise<import('./firstrun').FirstFolders>
+  /** First run: makes the app's own folder (Documents\Ensemble) and returns its path. */
+  makeFirstFolder(): Promise<string>
   fileDiff(id: string, path: string): Promise<string>
   /** Puts files back to how they were before a reply. `apply: false` only previews. */
   rewind(chatId: string, accountId: string, turnId: string, apply: boolean): Promise<RewindPreview>
@@ -994,12 +1164,32 @@ export interface EnsembleApi {
   switchDemo(on: boolean): Promise<void>
   /** Turns the chat's Ultra on or off. The chat also arrives through the usual `chat` event. */
   setUltra(chatId: string, on: boolean): Promise<Chat>
+  /** From GitHub (read only): the repository of a folder or a pasted address, with its open issues, open pull requests and failed runs. */
+  githubList(q: { cwd?: string | null; address?: string | null }): Promise<import('./github').GhList>
+  /** From GitHub (read only): one issue, pull request or failed run in full, to build verified work from. */
+  githubItem(q: { repo: string; kind: 'issue' | 'pull' | 'run'; number: number }): Promise<import('./github').GhItem>
+  /** Watches: jobs Ensemble runs by itself. Each change also arrives as a `watches` event. */
+  watches(): Promise<import('./watches').Watch[]>
+  /** Makes a watch, or changes one (`input.id`). The window speaks for the user: it may turn on a watch an agent made, and make a 'command' watch. */
+  saveWatch(input: import('./watches').WatchInput): Promise<import('./watches').Watch>
+  removeWatch(id: string): Promise<void>
+  /** Looks now, whatever the schedule; resolves when the run is over. */
+  runWatch(id: string): Promise<import('./watches').Watch>
+  /** The inbox, newest first. Each change also arrives as an `inbox` event. */
+  inbox(): Promise<import('./watches').InboxItem[]>
+  markInbox(id: string, patch: { read?: boolean; done?: boolean }): Promise<import('./watches').InboxItem[]>
   respondPermission(requestId: string, decision: PermissionDecision, note?: string): Promise<void>
   respondQuestion(requestId: string, answers: Record<string, string> | null): Promise<void>
   cancelTask(chatId: string, taskId: string): Promise<void>
 
-  saveMemory(note: { id?: string; title: string; body: string }): Promise<MemoryNote>
+  saveMemory(note: { id?: string; title: string; body: string; kind?: import('./memory').NoteKind; scope?: string | null }): Promise<MemoryNote>
   deleteMemory(id: string): Promise<void>
+  /** Memory with receipts: forget (the words are removed from every file), undo the last change, answer a waiting note, what a chat's prompts carry, look back at a chat now. */
+  forgetMemory(id: string): Promise<void>
+  undoMemory(id: string): Promise<MemoryNote | null>
+  decideMemory(id: string, yes: boolean): Promise<MemoryNote | null>
+  memoryCore(chatId?: string | null): Promise<MemoryCore>
+  reviewMemory(chatId: string): Promise<string>
 
   /** Restarts Ensemble on the downloaded version. */
   installUpdate(): Promise<void>

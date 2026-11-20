@@ -1,0 +1,55 @@
+[
+ {
+  "note": "How to run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\shoot-own.ps1 -Name surfaces -Script scripts\\visual\\auto-surfaces-guard.json -Fresh -TimeoutSec 120 . Demo mode. Puts sample guard approvals (permission items with unattended, expiresAt, risk) into the lead's transcript and shoots the cards: pending with the why and risk lines, a web grant, the exact call unfolded, a lapsed one, a declined one, and an ordinary attended card for comparison. Nothing is answered: the request ids are made up."
+ },
+ {
+  "size": [
+   1440,
+   900
+  ],
+  "theme": "light",
+  "wait": 2500
+ },
+ {
+  "js": "const btn = (re) => [...document.querySelectorAll('button')].find(b => re.test((b.textContent || '').trim()) && !b.disabled); const sl = (ms) => new Promise(r => setTimeout(r, ms)); btn(/^Continue/)?.click(); await sl(2500); btn(/^Start with an empty chat/)?.click(); await sl(2500); const S = () => window.__ensemble.getState(); S().newChat(); await sl(400); await S().send('Check the pricing page and open an issue if the CI is red.'); const t = Date.now(); const key = () => S().chatId + ':' + (S().focus[S().chatId] || S().chats.find(c => c.id === S().chatId)?.leadId); while (Date.now() - t < 30000 && !(S().items[key()] || []).some(i => i.kind === 'turn')) await sl(300); return 'chat ' + S().chatId + ' rows ' + (S().items[key()] || []).length;"
+ },
+ {
+  "js": "const S = () => window.__ensemble.getState(); const s = S(); const c = s.chats.find(x => x.id === s.chatId); const k = s.chatId + ':' + (s.focus[s.chatId] || c.leadId); const now = Date.now(); const H = 3600e3; const base = { ts: now }; const why = { out: 'It reaches outside this chat or cannot be undone, and nobody is watching this run.', web: 'This run has read untrusted content, and a request to the web can carry out what it has read, so it needs your OK first.', taint: 'This run has read untrusted content: GitHub (acme/pricing-site), status.example.com. What it read may be steering it.', priv: 'This run has read private data (your vault, memory, other chats or files outside its folder).' }; const items = [ { ...base, id: 'g1', kind: 'permission', requestId: 'demo-g1', toolName: 'mcp__github__issue_write', title: 'Use github: issue_write {owner: \"acme\", repo: \"pricing-site\", title: \"CI failing on main since 06:12\"…}', detail: [why.out, why.taint].join(' '), input: { method: 'create', owner: 'acme', repo: 'pricing-site', title: 'CI failing on main since 06:12', body: 'The last 2 runs of the deploy workflow failed at the build step (exit 1).\\nFirst failure: run 4821, 06:12.\\nLog excerpt: Error: Cannot find module ./pricing.json' }, canRemember: false, status: 'pending', unattended: true, expiresAt: now + 11.6 * H, risk: [why.out, why.taint] }, { ...base, id: 'g2', kind: 'permission', requestId: 'demo-g2', toolName: 'WebFetch', title: 'Read status.example.com/history', detail: '', input: { url: 'https://status.example.com/history', prompt: 'Which incidents in the last 24 hours?' }, canRemember: false, status: 'pending', unattended: true, expiresAt: now + 38 * 60e3, risk: [why.web, 'Lets this run read pages on status.example.com until it ends.', why.taint, why.priv] }, { ...base, id: 'g3', kind: 'permission', requestId: 'demo-g3', toolName: 'mcp__team__notify_user', title: 'Send a notice to your phone', input: { text: 'CI is red' }, canRemember: false, status: 'expired', unattended: true, expiresAt: now - 60e3, risk: [why.out] }, { ...base, id: 'g4', kind: 'permission', requestId: 'demo-g4', toolName: 'mcp__github__create_pull_request', title: 'Use github: create_pull_request', input: { title: 'Fix pricing.json path' }, canRemember: false, status: 'denied', unattended: true, expiresAt: now + H, risk: [why.out] }, { ...base, id: 'g5', kind: 'permission', requestId: 'demo-g5', toolName: 'Bash', title: 'Run a command', detail: 'It wants to run this in the chat folder.', input: { command: 'pnpm test --filter pricing' }, canRemember: true, status: 'pending' } ]; window.__ensemble.setState({ items: { ...s.items, [k]: [...(s.items[k] || []), ...items] } }); return 'injected ' + items.length + ' into ' + k;",
+  "wait": 1200
+ },
+ {
+  "js": "const v = document.querySelector('[data-view-scope]'); const sc = v && v.parentElement; if (sc) sc.scrollTop = sc.scrollHeight; await new Promise(r => setTimeout(r, 600)); return 'scrolled ' + (sc ? sc.scrollTop : 'no scroller');"
+ },
+ {
+  "shot": "auto-surfaces-guard-light.png"
+ },
+ {
+  "js": "const b = [...document.querySelectorAll('button')].find(x => /Show the exact call/.test(x.textContent || '')); b?.click(); await new Promise(r => setTimeout(r, 500)); const v = document.querySelector('[data-view-scope]'); const sc = v && v.parentElement; const card = [...document.querySelectorAll('pre')].find(p => /pricing-site/.test(p.textContent || '')); card?.scrollIntoView({ block: 'center' }); await new Promise(r => setTimeout(r, 400)); return b ? 'opened' : 'no exact-call button';"
+ },
+ {
+  "shot": "auto-surfaces-guard-call-light.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 800
+ },
+ {
+  "js": "const el = [...document.querySelectorAll('div')].find(d => d.children.length === 0 && /^Use github: issue_write/.test(d.textContent || '')); el?.scrollIntoView({ block: 'start' }); const v = document.querySelector('[data-view-scope]'); const sc = v && v.parentElement; if (sc) sc.scrollTop -= 140; await new Promise(r => setTimeout(r, 600)); return el ? 'at the first card' : 'card not found';"
+ },
+ {
+  "shot": "auto-surfaces-guard-dark.png"
+ },
+ {
+  "size": [
+   900,
+   760
+  ],
+  "wait": 900
+ },
+ {
+  "js": "const el = [...document.querySelectorAll('div')].find(d => d.children.length === 0 && /^Use github: issue_write/.test(d.textContent || '')); el?.scrollIntoView({ block: 'start' }); const v = document.querySelector('[data-view-scope]'); const sc = v && v.parentElement; if (sc) sc.scrollTop -= 140; await new Promise(r => setTimeout(r, 600)); return el ? 'at the first card' : 'card not found';"
+ },
+ {
+  "shot": "auto-surfaces-guard-900-dark.png"
+ }
+]

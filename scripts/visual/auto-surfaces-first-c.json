@@ -1,0 +1,32 @@
+[
+{
+"size": [
+1280,
+860
+],
+"theme": "light",
+"wait": 1800
+},
+{
+"js": "\nwindow.__S = () => window.__ensemble.getState();\nwindow.__sleep = (ms) => new Promise(r => setTimeout(r, ms));\nwindow.__clicks = 0;\nwindow.__screens = [];\nwindow.__app = 0;\nwindow.__root = () => document.querySelector('.fixed.inset-0.z-40') || document;\nwindow.__btn = (re) => [...window.__root().querySelectorAll('button')].find(b => re.test((b.textContent || '').trim()) && !b.disabled);\nwindow.__click = (re) => { const b = window.__btn(re); if (b) { window.__clicks++; b.click(); } return !!b; };\nwindow.__h1 = () => window.__root().querySelector('h1')?.textContent || '';\nwindow.__titles = () => [...window.__root().querySelectorAll('button .text-\\\\[14px\\\\].font-semibold')].map(x => x.textContent).join(' / ');\nwindow.__until = async (f, ms) => { const t = performance.now(); while (performance.now() - t < ms) { if (f()) return performance.now() - t; await window.__sleep(50); } return -1; };\nwindow.__running = () => { const s = window.__S(); if (!s.chatId) return false; const chat = s.chats.find(c => c.id === s.chatId); const k = s.chatId + ':' + (chat?.leadId || s.settings.leadId); const st = s.agents[k]; return !!st && st.phase && st.phase !== 'idle'; };\nreturn 'helpers';\n",
+"wait": 50
+},
+{
+"js": "window.__t0 = performance.now(); window.__screens.push(window.__h1()); return 'screen 1: ' + window.__h1();",
+"wait": 50
+},
+{
+"js": "const t = performance.now(); const ok = window.__click(/^Continue/); const ms = await window.__until(() => /Research and compare|Explain this project/.test(window.__titles()) && !!window.__btn(/^Choose a project folder|^Change$/), 15000); window.__app += ms; window.__screens.push(window.__h1()); return 'continue ' + ok + ' | task screen ready in ' + Math.round(ms) + ' ms | ' + window.__h1() + ' | tasks: ' + window.__titles() + ' | folder line: ' + (window.__root().querySelector('.rounded-\\\\[16px\\\\]')?.textContent || '').slice(0, 200);",
+"wait": 50
+},
+{
+"js": "const chipsNow = () => [...window.__root().querySelectorAll('button[title]')].filter(b => b.className.includes('rounded-full')); const wait = await window.__until(() => chipsNow().length > 0, 15000); const chips = chipsNow(); const c = chips.find(b => b.textContent === 'horalix') || chips[0]; window.__clicks++; c && c.click(); const ms = await window.__until(() => /Explain this project|Explain what is here/.test(window.__titles()), 8000); window.__app += ms; return 'recent list shown ' + Math.round(wait) + ' ms after the step began | chip ' + (c && c.textContent) + ' | recent offered: ' + chips.map(b => b.textContent).join(', ') + ' | tasks: ' + window.__titles() + ' | ready in ' + Math.round(ms) + ' ms';",
+"wait": 50,
+"shot": "auto-surfaces-first-c1-chip-light.png"
+},
+{
+"js": "const t = performance.now(); const ok = window.__click(new RegExp('^' + \"Explain\")); const ms = await window.__until(() => window.__running(), 20000); window.__app += ms; const s = window.__S(); const chat = s.chats.find(c => c.id === s.chatId); const p = chat ? await window.ensemble.folderProbe(chat.cwd) : null; return 'started ' + ok + ' | lead working ' + Math.round(ms) + ' ms after the click | clicks: ' + window.__clicks + ' | screens: ' + window.__screens.length + ' (' + window.__screens.join(' > ') + ') | app wait in total ' + Math.round(window.__app) + ' ms | since the first screen ' + Math.round((performance.now() - window.__t0) / 1000) + ' s with screenshots | chat folder ' + (chat && chat.cwd) + ' exists ' + (p && !p.missing) + ' entries ' + (p && JSON.stringify(p.entries)) + ' | onboarded ' + s.settings.onboarded;",
+"wait": 1500,
+"shot": "auto-surfaces-first-c2-running-light.png"
+}
+]

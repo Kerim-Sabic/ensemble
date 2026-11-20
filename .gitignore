@@ -13,3 +13,4 @@ build/.preview/
 *.tmp.mjs
 .env
 
+.wrangler/

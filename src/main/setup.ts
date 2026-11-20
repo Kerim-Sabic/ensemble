@@ -6,12 +6,14 @@ import { execFile } from 'node:child_process'
 import type { HubEvent, SetupStatus } from '@shared/types'
 import { findClaude, findCodex } from './locate'
 import { exists } from './util'
+import { here, obsidianPlaces } from './platform'
 
 /**
  * First-run checks and the one thing a new person may be missing: Claude Code itself.
- * The installer below follows Anthropic's own Windows install script (claude.ai/install.ps1):
- * the same download location, the same checksum from the release manifest, then the
- * binary's own `install` step, which puts `claude.exe` in ~/.local/bin.
+ * The installer below follows Anthropic's own install scripts (claude.ai/install.ps1 on
+ * Windows, claude.ai/install.sh on macOS): the same download location, the same checksum from
+ * the release manifest, then the binary's own `install` step, which puts `claude` (`claude.exe`
+ * on Windows) in ~/.local/bin. On a Mac that folder is on Ensemble's PATH (platform.ts, guiPath).
  */
 
 const DOWNLOADS = 'https://downloads.claude.ai/claude-code-releases'
@@ -21,13 +23,8 @@ export const NEW_USER = process.env.ENSEMBLE_DEMO_NEWUSER === '1'
 let demoInstalled = false
 
 function obsidianInstalled(): boolean {
-  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local')
-  return [
-    path.join(local, 'Programs', 'Obsidian', 'Obsidian.exe'),
-    path.join(local, 'Obsidian', 'Obsidian.exe'),
-    process.env.APPDATA ? path.join(process.env.APPDATA, 'obsidian', 'obsidian.json') : '',
-    '/Applications/Obsidian.app',
-  ].some((p) => p && exists(p))
+  // Windows: the two install folders and %APPDATA%\obsidian; macOS: /Applications and Application Support (platform.ts).
+  return obsidianPlaces(here()).some((p) => exists(p))
 }
 
 function gitBashFound(): boolean {

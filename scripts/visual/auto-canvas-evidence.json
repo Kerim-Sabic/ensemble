@@ -1,0 +1,104 @@
+[
+ {
+  "size": [
+   1320,
+   900
+  ],
+  "theme": "light",
+  "wait": 1800
+ },
+ {
+  "js": "\nconst st = window.__ensemble;\nfor (let i = 0; i < 10; i++) {\n  if (st.getState().settings.onboarded) break;\n  const all = [...document.querySelectorAll('button')].filter(b => !b.disabled);\n  const find = re => all.find(b => re.test(b.textContent.trim()));\n  const b = find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble)/) || find(/^Skip/);\n  if (!b) break;\n  b.click();\n  await new Promise(r => setTimeout(r, 900));\n}\nreturn 'onboarded: ' + st.getState().settings.onboarded",
+  "wait": 800
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId || s.accounts[0].id; const c = await window.ensemble.createChat({ cwd: null }); window.__c = window.__c || {}; window.__c[\"goal\"] = c.id; await s.openChat(c.id); await window.ensemble.send({ chatId: c.id, to: lead, text: 'Add a pricing page', goal: { doneWhen: 'the tests pass and the page was opened' } }); await new Promise(r => setTimeout(r, 22000)); return \"goal\" + ' started'",
+  "wait": 300
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const id = window.__c[\"goal\"];\nconst rows = Object.entries(s.items).filter(([k]) => k.startsWith(id + ':')).map(([k, v]) => k.split(':')[1] + ': ' + v.filter(i => i.kind === 'turn').map(t => t.status + '/' + (t.steps || 0) + 's/' + Math.round(t.durationMs / 100) / 10 + 's').join(' '));\nconst blocks = [...document.querySelectorAll('[data-evidence]')].map(b => b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 200));\nconst goal = s.chats.find(c => c.id === id)?.goal;\nreturn \"goal\" + ' | goal ' + (goal ? goal.status + ' r' + goal.round : '-') + ' | turns: ' + rows.join(' ; ') + ' | blocks: ' + JSON.stringify(blocks)",
+  "wait": 100
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId || s.accounts[0].id; const c = await window.ensemble.createChat({ cwd: null }); window.__c = window.__c || {}; window.__c[\"stopped\"] = c.id; await s.openChat(c.id); await window.ensemble.send({ chatId: c.id, to: lead, text: 'Add a pricing page with a monthly and yearly toggle', mode: 'thorough' }); await new Promise(r => setTimeout(r, 6000)); return \"stopped\" + ' started'",
+  "wait": 0
+ },
+ {
+  "js": "await window.ensemble.stop(window.__c.stopped); await new Promise(r => setTimeout(r, 2500)); return 'stopped'",
+  "wait": 300
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const id = window.__c[\"stopped\"];\nconst rows = Object.entries(s.items).filter(([k]) => k.startsWith(id + ':')).map(([k, v]) => k.split(':')[1] + ': ' + v.filter(i => i.kind === 'turn').map(t => t.status + '/' + (t.steps || 0) + 's/' + Math.round(t.durationMs / 100) / 10 + 's').join(' '));\nconst blocks = [...document.querySelectorAll('[data-evidence]')].map(b => b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 200));\nconst goal = s.chats.find(c => c.id === id)?.goal;\nreturn \"stopped\" + ' | goal ' + (goal ? goal.status + ' r' + goal.round : '-') + ' | turns: ' + rows.join(' ; ') + ' | blocks: ' + JSON.stringify(blocks)",
+  "wait": 100
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId || s.accounts[0].id; const c = await window.ensemble.createChat({ cwd: null }); window.__c = window.__c || {}; window.__c[\"verified\"] = c.id; await s.openChat(c.id); await window.ensemble.send({ chatId: c.id, to: lead, text: 'Add a pricing page with a monthly and yearly toggle', mode: 'thorough' }); await new Promise(r => setTimeout(r, 30000)); return \"verified\" + ' started'",
+  "wait": 300
+ },
+ {
+  "js": "const s = window.__ensemble.getState(); const id = window.__c[\"verified\"];\nconst rows = Object.entries(s.items).filter(([k]) => k.startsWith(id + ':')).map(([k, v]) => k.split(':')[1] + ': ' + v.filter(i => i.kind === 'turn').map(t => t.status + '/' + (t.steps || 0) + 's/' + Math.round(t.durationMs / 100) / 10 + 's').join(' '));\nconst blocks = [...document.querySelectorAll('[data-evidence]')].map(b => b.textContent.replace(/\\s+/g, ' ').trim().slice(0, 200));\nconst goal = s.chats.find(c => c.id === id)?.goal;\nreturn \"verified\" + ' | goal ' + (goal ? goal.status + ' r' + goal.round : '-') + ' | turns: ' + rows.join(' ; ') + ' | blocks: ' + JSON.stringify(blocks)",
+  "wait": 100
+ },
+ {
+  "theme": "light",
+  "wait": 400
+ },
+ {
+  "js": "const id = window.__c[\"goal\"]; await window.__ensemble.getState().openChat(id); window.__ensemble.getState().setView && window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 900)); return 'viewing ' + \"goal\"",
+  "wait": 300
+ },
+ {
+  "js": "await new Promise(r => setTimeout(r, 400));\nlet b = [...document.querySelectorAll('[data-evidence] > button')].pop();\nif (!b) { const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence\\s*$/.test(x.textContent || '')); const last = bs[bs.length - 1]; if (last) { last.click(); await new Promise(r => setTimeout(r, 900)); b = [...document.querySelectorAll('[data-evidence] > button')].pop() } }\nif (!b) return 'no evidence block';\nif (b.getAttribute('aria-expanded') !== 'true') b.click();\nawait new Promise(r => setTimeout(r, 500));\nconst box = b.parentElement;\nlet sc = box.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nif (sc) sc.scrollTop += box.getBoundingClientRect().top - sc.getBoundingClientRect().top - 140;\nawait new Promise(r => setTimeout(r, 300));\nreturn 'open: ' + box.textContent.replace(/\\s+/g, ' ').trim().slice(0, 700)",
+  "wait": 400,
+  "shot": "canvas-evidence-light-goal.png"
+ },
+ {
+  "js": "const id = window.__c[\"stopped\"]; await window.__ensemble.getState().openChat(id); window.__ensemble.getState().setView && window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 900)); return 'viewing ' + \"stopped\"",
+  "wait": 300
+ },
+ {
+  "js": "await new Promise(r => setTimeout(r, 400));\nlet b = [...document.querySelectorAll('[data-evidence] > button')].pop();\nif (!b) { const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence\\s*$/.test(x.textContent || '')); const last = bs[bs.length - 1]; if (last) { last.click(); await new Promise(r => setTimeout(r, 900)); b = [...document.querySelectorAll('[data-evidence] > button')].pop() } }\nif (!b) return 'no evidence block';\nif (b.getAttribute('aria-expanded') !== 'true') b.click();\nawait new Promise(r => setTimeout(r, 500));\nconst box = b.parentElement;\nlet sc = box.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nif (sc) sc.scrollTop += box.getBoundingClientRect().top - sc.getBoundingClientRect().top - 140;\nawait new Promise(r => setTimeout(r, 300));\nreturn 'open: ' + box.textContent.replace(/\\s+/g, ' ').trim().slice(0, 700)",
+  "wait": 400,
+  "shot": "canvas-evidence-light-stopped.png"
+ },
+ {
+  "js": "const id = window.__c[\"verified\"]; await window.__ensemble.getState().openChat(id); window.__ensemble.getState().setView && window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 900)); return 'viewing ' + \"verified\"",
+  "wait": 300
+ },
+ {
+  "js": "await new Promise(r => setTimeout(r, 400));\nlet b = [...document.querySelectorAll('[data-evidence] > button')].pop();\nif (!b) { const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence\\s*$/.test(x.textContent || '')); const last = bs[bs.length - 1]; if (last) { last.click(); await new Promise(r => setTimeout(r, 900)); b = [...document.querySelectorAll('[data-evidence] > button')].pop() } }\nif (!b) return 'no evidence block';\nif (b.getAttribute('aria-expanded') !== 'true') b.click();\nawait new Promise(r => setTimeout(r, 500));\nconst box = b.parentElement;\nlet sc = box.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nif (sc) sc.scrollTop += box.getBoundingClientRect().top - sc.getBoundingClientRect().top - 140;\nawait new Promise(r => setTimeout(r, 300));\nreturn 'open: ' + box.textContent.replace(/\\s+/g, ' ').trim().slice(0, 700)",
+  "wait": 400,
+  "shot": "canvas-evidence-light-verified.png"
+ },
+ {
+  "theme": "dark",
+  "wait": 400
+ },
+ {
+  "js": "const id = window.__c[\"goal\"]; await window.__ensemble.getState().openChat(id); window.__ensemble.getState().setView && window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 900)); return 'viewing ' + \"goal\"",
+  "wait": 300
+ },
+ {
+  "js": "await new Promise(r => setTimeout(r, 400));\nlet b = [...document.querySelectorAll('[data-evidence] > button')].pop();\nif (!b) { const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence\\s*$/.test(x.textContent || '')); const last = bs[bs.length - 1]; if (last) { last.click(); await new Promise(r => setTimeout(r, 900)); b = [...document.querySelectorAll('[data-evidence] > button')].pop() } }\nif (!b) return 'no evidence block';\nif (b.getAttribute('aria-expanded') !== 'true') b.click();\nawait new Promise(r => setTimeout(r, 500));\nconst box = b.parentElement;\nlet sc = box.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nif (sc) sc.scrollTop += box.getBoundingClientRect().top - sc.getBoundingClientRect().top - 140;\nawait new Promise(r => setTimeout(r, 300));\nreturn 'open: ' + box.textContent.replace(/\\s+/g, ' ').trim().slice(0, 700)",
+  "wait": 400,
+  "shot": "canvas-evidence-dark-goal.png"
+ },
+ {
+  "js": "const id = window.__c[\"stopped\"]; await window.__ensemble.getState().openChat(id); window.__ensemble.getState().setView && window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 900)); return 'viewing ' + \"stopped\"",
+  "wait": 300
+ },
+ {
+  "js": "await new Promise(r => setTimeout(r, 400));\nlet b = [...document.querySelectorAll('[data-evidence] > button')].pop();\nif (!b) { const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence\\s*$/.test(x.textContent || '')); const last = bs[bs.length - 1]; if (last) { last.click(); await new Promise(r => setTimeout(r, 900)); b = [...document.querySelectorAll('[data-evidence] > button')].pop() } }\nif (!b) return 'no evidence block';\nif (b.getAttribute('aria-expanded') !== 'true') b.click();\nawait new Promise(r => setTimeout(r, 500));\nconst box = b.parentElement;\nlet sc = box.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nif (sc) sc.scrollTop += box.getBoundingClientRect().top - sc.getBoundingClientRect().top - 140;\nawait new Promise(r => setTimeout(r, 300));\nreturn 'open: ' + box.textContent.replace(/\\s+/g, ' ').trim().slice(0, 700)",
+  "wait": 400,
+  "shot": "canvas-evidence-dark-stopped.png"
+ },
+ {
+  "js": "const id = window.__c[\"verified\"]; await window.__ensemble.getState().openChat(id); window.__ensemble.getState().setView && window.__ensemble.getState().setView('chat'); await new Promise(r => setTimeout(r, 900)); return 'viewing ' + \"verified\"",
+  "wait": 300
+ },
+ {
+  "js": "await new Promise(r => setTimeout(r, 400));\nlet b = [...document.querySelectorAll('[data-evidence] > button')].pop();\nif (!b) { const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence\\s*$/.test(x.textContent || '')); const last = bs[bs.length - 1]; if (last) { last.click(); await new Promise(r => setTimeout(r, 900)); b = [...document.querySelectorAll('[data-evidence] > button')].pop() } }\nif (!b) return 'no evidence block';\nif (b.getAttribute('aria-expanded') !== 'true') b.click();\nawait new Promise(r => setTimeout(r, 500));\nconst box = b.parentElement;\nlet sc = box.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;\nif (sc) sc.scrollTop += box.getBoundingClientRect().top - sc.getBoundingClientRect().top - 140;\nawait new Promise(r => setTimeout(r, 300));\nreturn 'open: ' + box.textContent.replace(/\\s+/g, ' ').trim().slice(0, 700)",
+  "wait": 400,
+  "shot": "canvas-evidence-dark-verified.png"
+ }
+]

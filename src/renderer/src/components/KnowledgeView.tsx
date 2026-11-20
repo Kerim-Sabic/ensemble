@@ -206,11 +206,11 @@ export function KnowledgeView() {
           onChange={setTab}
           options={[
             { value: 'vault', label: vault?.name || 'Vault' },
-            { value: 'notebook', label: 'Team notebook' },
+            { value: 'notebook', label: 'What I learned' },
           ]}
         />
         <span className="min-w-0 flex-1 truncate text-[12px] text-ink-3">
-          {tab === 'vault' ? vault?.path || '' : 'Short standing facts every teammate starts each chat with.'}
+          {tab === 'vault' ? vault?.path || '' : 'What the team keeps between chats, each with where it came from.'}
         </span>
       </div>
       <div className="min-h-0 flex-1">{tab === 'notebook' ? <MemoryView /> : vault ? <VaultBrowser /> : <NoVault />}</div>

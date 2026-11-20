@@ -1,0 +1,56 @@
+[
+ {
+  "size": [
+   1280,
+   1000
+  ],
+  "theme": "light",
+  "wait": 2000
+ },
+ {
+  "js": "for (let i=0;i<10;i++){ if (window.__ensemble.getState().settings.onboarded) break; const all=[...document.querySelectorAll('button')].filter(b=>!b.disabled); const find=re=>all.find(b=>re.test(b.textContent.trim())); const b=find(/^(Continue|Start using|Start with|Get started|Start working|Done|Finish|Open Ensemble|Try the demo)/)||find(/^Skip/); if(!b) break; b.click(); await new Promise(r=>setTimeout(r,900)); } const s=window.__ensemble.getState(); return 'onboarded ' + s.settings.onboarded + ' chat ' + s.chatId",
+  "wait": 800
+ },
+ {
+  "js": "const s=window.__ensemble.getState(); await s.send('Always reply in plain English, without jargon. I prefer small pull requests over big ones. What is in this folder?'); return 'sent ' + s.chatId",
+  "wait": 1500
+ },
+ {
+  "js": "const S=()=>window.__ensemble.getState(); const t0=Date.now(); while(Date.now()-t0<60000){ await new Promise(r=>setTimeout(r,800)); const s=S(); const busy=Object.values(s.agents).filter(a=>a.chatId===s.chatId && a.phase!=='idle' && a.phase!=='error').length; if(!busy && (s.items[s.chatId]||[]).length) break; } const line = await window.ensemble.reviewMemory(S().chatId); return line",
+  "wait": 800
+ },
+ {
+  "js": "window.__ensemble.getState().setView('memory'); await new Promise(r=>setTimeout(r,600)); const b=[...document.querySelectorAll('button')].find(b=>b.textContent.trim()==='What I learned'); if (b) b.click(); await new Promise(r=>setTimeout(r,500)); const sc=[...document.querySelectorAll('.overflow-y-auto')].find(e=>e.textContent.includes('What I learned')); if (sc) sc.scrollTop=0; return 'tab ' + !!b + ' notes ' + window.__ensemble.getState().memory.length",
+  "wait": 800,
+  "shot": "memory-filled-light.png"
+ },
+ {
+  "js": "const w=[...document.querySelectorAll('span')].find(d=>d.textContent==='Waiting for your yes'); if (w) w.scrollIntoView({block:'center'}); return 'waiting shown ' + !!w",
+  "wait": 600,
+  "shot": "memory-waiting-light.png"
+ },
+ {
+  "js": "await window.ensemble.updateSettings({ theme: 'dark' }); await new Promise(r=>setTimeout(r,500)); return 'dark'",
+  "wait": 600,
+  "shot": "memory-waiting-dark.png"
+ },
+ {
+  "js": "const sc=[...document.querySelectorAll('.overflow-y-auto')].find(e=>e.textContent.includes('What I learned')); if (sc) sc.scrollTop=0; return 'top'",
+  "wait": 500,
+  "shot": "memory-filled-dark.png"
+ },
+ {
+  "js": "const n=window.__ensemble.getState().memory.find(m=>m.title==='Package manager'); await window.ensemble.saveMemory({ id: n.id, title: 'Package manager', body: 'Use bun in every project.', kind: 'preference', scope: null }); await new Promise(r=>setTimeout(r,500)); return 'changed ' + window.__ensemble.getState().memory.find(m=>m.id===n.id).body",
+  "wait": 600,
+  "shot": "memory-changed-dark.png"
+ },
+ {
+  "js": "const n=window.__ensemble.getState().memory.find(m=>m.title==='Package manager'); const card=[...document.querySelectorAll('div')].filter(d=>d.textContent.includes('Use bun in every project') && d.querySelector('button')).pop(); const b=card && [...card.querySelectorAll('button')].find(b=>b.textContent.trim()==='Undo'); if (b) b.click(); await new Promise(r=>setTimeout(r,600)); return 'undo clicked ' + !!b + ' body now ' + window.__ensemble.getState().memory.find(m=>m.id===n.id).body",
+  "wait": 600
+ },
+ {
+  "js": "await window.ensemble.updateSettings({ theme: 'light' }); await new Promise(r=>setTimeout(r,500)); return 'light'",
+  "wait": 600,
+  "shot": "memory-after-undo-light.png"
+ }
+]

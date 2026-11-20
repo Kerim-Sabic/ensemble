@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import { Hub } from '../src/main/hub'
 import { readVerdict } from '../src/main/autopilot'
 import { countdown, everyLabel, goalLine, loopLine, namesLine, parseCommand, parseEvery, span, APP_COMMANDS, GOCRAZY_NEEDS_ULTRA, effectiveMode, MAX_DEPTH_GOCRAZY, MAX_DEPTH_ULTRA, MAX_DEPTH_USUAL, SPAWN_CAP_GOCRAZY, SPAWN_CAP_ULTRA, CRAZY_FLOOR, isSmallTalk } from '../src/shared/auto'
-import { leadBriefing, memberBriefing, modeNote, modeReminder, crazyFollowUp, type BriefingContext } from '../src/main/prompts'
+import { leadBriefing, memberBriefing, modeNote, modeReminder, crazyFollowUp, branchFollowUp, branchNote, type BriefingContext } from '../src/main/prompts'
 import { codexConfig } from '../src/main/providers/codex'
 import { AccountManager } from '../src/main/accounts'
 import { askClaudeOnce, onceResult } from '../src/main/providers/claude'
@@ -16,7 +16,34 @@ import type { Account, Chat, HubEvent, Item, PermissionLevel } from '../src/shar
 import * as iui from '../src/shared/iui' // Live answers checks (Canvas), near the end
 import { handoverLine, supplyOf, supplyWords } from '../src/shared/failover' // automatic handover checks (Failover)
 import { IUI_BRIEFING } from '../src/main/iui' // Live answers checks (Canvas)
+import { CHECKS } from './checks' // one checks file per piece of work
+import type { Ctx } from './checks/ctx'
 
+// Several people run this at the same time. Every run gets a temp folder of its own, and
+// os.tmpdir() answers with it from here on, so no check (here or under scripts/checks) can
+// delete or read another run's files, whatever folder name it uses.
+{
+  const runs = path.join(os.tmpdir(), 'ensemble-auto-runs')
+  const mine = path.join(runs, String(process.pid))
+  fs.mkdirSync(mine, { recursive: true })
+  // Folders left by runs that ended more than an hour ago are cleared away.
+  for (const d of fs.readdirSync(runs)) {
+    try {
+      const p = path.join(runs, d)
+      if (p !== mine && Date.now() - fs.statSync(p).mtimeMs > 3600e3) fs.rmSync(p, { recursive: true, force: true })
+    } catch {
+      /* in use, or already gone */
+    }
+  }
+  os.tmpdir = () => mine
+  process.on('exit', () => {
+    try {
+      fs.rmSync(mine, { recursive: true, force: true })
+    } catch {
+      /* a file still held open on Windows: the next run clears it */
+    }
+  })
+}
 const dataDir = path.join(os.tmpdir(), 'ensemble-auto-test')
 fs.rmSync(dataDir, { recursive: true, force: true })
 const work = path.join(os.tmpdir(), 'ensemble-auto-work')
@@ -100,6 +127,21 @@ check('APP_COMMANDS lists ultra and gocrazy', APP_COMMANDS.some((c) => c.name ==
   same('small talk, as the app reads it', ['Thanks!', 'Chose: Use version B', 'status?', 'Any news?', 'build the landing page', 'fix it', 'Research our competitors and write it up'].map(isSmallTalk), [true, true, true, true, false, false, false])
   const follow = crazyFollowUp({ started: 2, floor: 8, room: 30, depth: 8 })
   check('the one follow-up: the count, the floor, the live room and depth, the team tool, and what to do when refused', /only 2 agents/.test(follow) && /at least 8/.test(follow) && /up to 30 more agents/.test(follow) && /down to 8 levels/.test(follow) && /mcp__team__spawn_agent/.test(follow) && /If a spawn was refused/.test(follow))
+  {
+    const withMates = modeNote('ultra', { lead: true, team: true, spawn: true, cap: 16, models: team, mates: ['A', 'B'] })
+    const noMates = modeNote('ultra', { lead: true, team: true, spawn: true, cap: 16, models: team, mates: [] })
+    check('ultra note: names the teammates that lead branches, with assign_task', /Your teammates lead branches: A, B\. Each is a full agent/.test(withMates) && /assign_task \(to: its name\)/.test(withMates) && /every one of them/.test(withMates))
+    check('ultra note: no teammates, no branches sentence', !/teammates lead branches/.test(noMates) && !/teammates lead branches/.test(modeNote('ultra', { lead: true, team: true, spawn: true, cap: 16, models: team })))
+    check('go crazy note with teammates: they take regions first', /The teammates named above take regions first/.test(modeNote('gocrazy', { lead: true, team: true, spawn: true, cap: 24, models: team, mates: ['A'] })) && !/take regions first/.test(crazy))
+    const one = branchFollowUp({ crazy: false, mates: ['A'], depth: 3 })
+    const two = branchFollowUp({ crazy: true, mates: ['A', 'B'], depth: 8 })
+    check('branch follow-up, one teammate: singular wording, Ultra', /^<way-of-working mode="ultra">\nYour reply left this teammate without any part of the work: A\. It is a full agent/.test(one) && /Give it a branch/.test(one), one.slice(0, 160))
+    check('branch follow-up, two teammates: plural wording, Go crazy, the depth', /^<way-of-working mode="gocrazy">\nYour reply left these teammates without any part of the work: A, B\. Each is a full agent/.test(two) && /Give each of them a branch/.test(two) && /down to 8 levels/.test(two), two.slice(0, 160))
+    check('branch follow-up has a way out: a small job, or the user asked to leave them out', /If the request is small enough to finish well without them, or the user asked to leave them out, say so in one line instead/.test(one) && /say so in one line instead/.test(two))
+    check('the Go crazy follow-up names the idle teammates when there are any', /take regions first, with assign_task \(to: the name\): A, B\./.test(crazyFollowUp({ started: 2, floor: 8, room: 30, depth: 8, mates: ['A', 'B'] })) && !/take regions first/.test(follow))
+    const bn = branchNote({ crazy: false, room: 5, depth: 3 })
+    check('branch note: the teammate leads its branch on its own account, with agents of its own', /You lead this branch of the work, on your own account/.test(bn) && /you can start 5 right now/.test(bn) && /in Ultra/.test(bn))
+  }
   const codex = codexConfig({ team: { url: 'http://127.0.0.1:1/mcp/x' } }) as { agents?: { enabled?: boolean }; features?: Record<string, boolean>; mcp_servers?: Record<string, unknown> }
   check("ChatGPT agents get the team's tool server and none of Codex's own agent tools", codex.agents?.enabled === false && codex.features?.multi_agent === false && codex.features?.sleep_tool === false && !!codex.mcp_servers?.team)
   check('go crazy note: a brain in regions (sub-leads with teams, lateral links, feedback loops, memory, attention, integrator)', /like a brain, in regions/.test(crazy) && /3 to 5 region leads/.test(crazy) && /Lateral links/.test(crazy) && /Feedback loops/.test(crazy) && /memory \(keeps the board current/.test(crazy) && /Attention/.test(crazy) && /integrator/.test(crazy))
@@ -173,6 +215,11 @@ const until = (what: string, test: () => boolean, ms = 60_000): Promise<void> =>
     waiters.push({ test, resolve: () => (clearTimeout(t), resolve()) })
   })
 const pause = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+/** Whoever leads a Go crazy region: the holder of its "Region: <name>" task (the latest one in the chat). */
+const ownerOf = (h: Hub, c: Chat, region: string): Account | undefined => {
+  const t = [...h.tasksOf(c.id)].reverse().find((x) => x.title === `Region: ${region}`)
+  return t ? h.accounts.get(t.to) : undefined
+}
 
 await hub.start()
 for (const c of await hub.accounts.discover()) if (c.signedIn) hub.accounts.add({ name: c.suggestedName, provider: c.provider, configDir: c.configDir })
@@ -400,7 +447,18 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     check('ultra design run: a ChatGPT agent makes the moodboard and the hero, and the builders build with them', !!img && img.status === 'done' && hub.accounts.get(img.to)?.provider === 'chatgpt' && builtWith.length > 0 && builtWith.every((t) => (t.after || []).includes(img.id) && /designs\/assets\//.test(t.brief)), img ? `${img.status} on ${hub.accounts.get(img.to)?.provider}` : 'no image task')
     const staged = hub.tasksOf(chat.id).filter((t) => /^(Scout|Build|Judge):/.test(t.title))
     const on = (kind: string): string => staged.filter((t) => t.title.startsWith(kind)).map((t) => `${t.model}`).join(',')
-    check('ultra: scouts on the fast models (Haiku and Luna), builders and judges on the strongest', staged.length >= 7 && /haiku/i.test(on('Scout')) && /luna/i.test(on('Scout')) && /fable/i.test(on('Build')) && /astra/i.test(on('Build')), `scouts ${on('Scout')} builders ${on('Build')} judges ${on('Judge')}`)
+    check('ultra: scouts on the fast models (Haiku and Luna), builders and judges on the strongest', staged.length >= 7 && /haiku/i.test(on('Scout')) && /luna/i.test(on('Scout')) && /fable|opus/i.test(on('Build')) && /astra/i.test(on('Build')), `scouts ${on('Scout')} builders ${on('Build')} judges ${on('Judge')}`)
+    {
+      const mates = hub['branchMates'](chat) as Account[]
+      const fromLead = hub.tasksOf(chat.id).filter((t) => t.from === leadId)
+      const gave = mates.filter((m) => fromLead.some((t) => t.to === m.id && /^(Build|Judge):/.test(t.title)))
+      check("ultra: every teammate that can take work gets a branch in the lead's first reply", mates.length >= 2 && gave.length === mates.length, `${gave.map((m) => m.name).join(', ')} of ${mates.map((m) => m.name).join(', ')}`)
+      check('ultra: so no follow-up was needed', !rows(chat).some((i) => i.kind === 'notice' && /had no part of the work|asked once/.test(i.text)))
+      const own = (chat.agents || []).filter((a) => mates.some((m) => a.spawned?.by === m.id))
+      check('ultra: a teammate runs its branch with agents of its own (depth 2)', own.length > 0 && own.every((a) => a.spawned?.depth === 2), own.map((a) => `${a.name}@${a.spawned?.depth} by ${hub.accounts.get(a.spawned!.by)?.name}`).join(', '))
+      const astra = fromLead.find((t) => t.title.startsWith('Build:') && /astra/i.test(t.model || ''))
+      check('ultra: the Astra version goes to the ChatGPT teammate, the other to a Claude teammate on its strongest model there', hub.accounts.get(astra?.to || '')?.provider === 'chatgpt' && fromLead.some((t) => t.title.startsWith('Build:') && /fable|opus/i.test(t.model || '') && hub.accounts.get(t.to)?.provider === 'claude'), fromLead.map((t) => `${t.title}:${t.model}@${hub.accounts.get(t.to)?.name}`).join(', '))
+    }
     const swept = await hub.sweepIdle(chat, 0)
     check('ultra: agents left idle after the run are sent home', swept.length > 0 && (chat.agents || []).every((a) => a.spawned?.gone), swept.join(', '))
     check('and the lead is told who went', rows(chat).some((i) => i.kind === 'notice' && /home after a few minutes idle/.test(i.text)))
@@ -410,6 +468,23 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     hub.send({ chatId: chat.id, to: leadId, text: 'Thanks' })
     await until('the thank-you to be answered', () => idle(chat) && rows(chat).some((i) => i.kind === 'assistant' && /Glad it helps/.test(i.text)), 30_000)
     same('a thank-you in Ultra gets a direct answer and starts nobody', (chat.agents || []).length, agentsBefore)
+    hub.send({ chatId: chat.id, to: leadId, text: 'Where are we?' })
+    await until('the status question to be answered', () => idle(chat) && rows(chat).some((i) => i.kind === 'assistant' && /Nothing is running/.test(i.text)), 30_000)
+    check('small talk in Ultra (a thank-you, a status question) gets no follow-up', !rows(chat).some((i) => i.kind === 'notice' && /had no part of the work/.test(i.text)) && (chat.agents || []).length === agentsBefore)
+    {
+      // The guard itself: small talk is never watched, so even a lead that put work out answering it is not sent back.
+      const floors = hub['floors'] as Map<string, unknown>
+      const talk = hub.createChat({ cwd: work })
+      hub.setUltra(talk.id, true)
+      hub.send({ chatId: talk.id, to: leadId, text: 'Thanks!' })
+      const smallWatched = floors.has(talk.id)
+      await until('the thank-you in a fresh Ultra chat', () => idle(talk), 30_000)
+      hub.send({ chatId: talk.id, to: leadId, text: 'Design the landing page' })
+      const bigWatched = floors.has(talk.id)
+      await hub.stop(talk.id)
+      await until('that chat to stop', () => idle(talk), 30_000)
+      same('small talk in Ultra is not watched for a follow-up; a substantial request is', [smallWatched, bigWatched], [false, true])
+    }
     const ultraText = rows(chat).find((i) => i.kind === 'assistant' && /Version B won/.test(i.text))?.text || ''
     const ub = blocksOk(ultraText)
     check('ultra: the answer is Live answer blocks that all parse (compare, chart, choices) plus the winner in an app', ub.n === 3 && !ub.bad.length && /"type":"compare"/.test(ultraText) && /"type":"chart"/.test(ultraText) && /"type":"choices"/.test(ultraText) && /```app title="[^"]+" height=520\n<!doctype html>[\s\S]*<\/html>\n```/.test(ultraText), JSON.stringify(ub))
@@ -451,15 +526,19 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     const depthOf = (a: Account): number => a.spawned?.depth || 0
     const byName = (c: Chat, n: string): Account | undefined => (c.agents || []).find((a) => a.name === n)
     const deep = (crazy.agents || []).filter((a) => depthOf(a) >= 2)
-    const regions = (crazy.agents || []).filter((a) => depthOf(a) === 1)
-    const teams = regions.filter((r) => (crazy.agents || []).some((a) => a.spawned?.by === r.id))
-    check('go crazy: 3 to 5 regions, each a lead at depth 1 with a team of its own', teams.length >= 3 && teams.length <= 5, regions.map((r) => `${r.name}:${(crazy.agents || []).filter((a) => a.spawned?.by === r.id).length}`).join(', '))
-    check('go crazy: scouts, builders and judges are in their regions (depth 2)', ['Scout 1', 'Scout 8', 'Builder A', 'Builder D', 'Judge 1', 'Judge 3', 'Archivist'].every((n) => depthOf(byName(crazy, n) || ({} as Account)) === 2) && byName(crazy, 'Scout 1')?.spawned?.by === byName(crazy, 'Research lead')?.id && byName(crazy, 'Builder A')?.spawned?.by === byName(crazy, 'Build lead')?.id, deep.map((a) => `${a.name}@${depthOf(a)}`).join(', '))
+    // A region is led by whoever holds its "Region:" task: a teammate (an account) or an agent the lead started.
+    const owners = ['research', 'building', 'judging', 'memory'].map((r) => ownerOf(hub, crazy, r)).filter((o): o is Account => !!o)
+    const teams = owners.filter((r) => (crazy.agents || []).some((a) => a.spawned?.by === r.id))
+    check('go crazy: 3 to 5 regions, each led at depth 1 (a teammate or an agent) with a team of its own', teams.length >= 3 && teams.length <= 5 && owners.every((o) => hub['depthOf'](crazy, o) === 1), owners.map((r) => `${r.name}:${(crazy.agents || []).filter((a) => a.spawned?.by === r.id).length}`).join(', '))
+    const crazyMates = hub['branchMates'](crazy) as Account[]
+    check('go crazy: the teammates lead regions (research, building and judging first)', crazyMates.length >= 2 && crazyMates.every((m) => owners.some((o) => o.id === m.id)) && ['research', 'building'].every((r) => !ownerOf(hub, crazy, r)?.spawned), owners.map((o) => `${o.name}${o.spawned ? ' (agent)' : ' (teammate)'}`).join(', '))
+    check('go crazy: no follow-up was needed', !rows(crazy).some((i) => i.kind === 'notice' && /asked once|had no part of the work/.test(i.text)))
+    check('go crazy: scouts, builders and judges hang under the region leads (depth 2)', ['Scout 1', 'Scout 8', 'Builder A', 'Builder D', 'Judge 1', 'Judge 3', 'Archivist'].every((n) => depthOf(byName(crazy, n) || ({} as Account)) === 2) && byName(crazy, 'Scout 1')?.spawned?.by === ownerOf(hub, crazy, 'research')?.id && byName(crazy, 'Builder A')?.spawned?.by === ownerOf(hub, crazy, 'building')?.id && byName(crazy, 'Judge 1')?.spawned?.by === ownerOf(hub, crazy, 'judging')?.id, deep.map((a) => `${a.name}@${depthOf(a)}`).join(', '))
     check('go crazy: builders start a critic and a tester, a judge a verifier (depth 3)', ['Critic A', 'Critic B', 'Critic C', 'Critic D', 'Tester A', 'Tester B', 'Verifier'].every((n) => depthOf(byName(crazy, n) || ({} as Account)) === 3), deep.map((a) => `${a.name}@${depthOf(a)}`).join(', '))
     const fc = byName(crazy, 'Fact-checker A')
     check('go crazy: a critic starts a fact-checker (depth 4)', !!fc && depthOf(fc) === 4 && fc.spawned?.by === byName(crazy, 'Critic A')?.id)
-    const buildLead = byName(crazy, 'Build lead')
-    const memoryLead = byName(crazy, 'Memory lead')
+    const buildLead = ownerOf(hub, crazy, 'building')
+    const memoryLead = ownerOf(hub, crazy, 'memory')
     const lateral = buildLead && memoryLead ? (hub.openChat(crazy.id).items[buildLead.id] || []).some((i) => i.kind === 'outgoing' && i.to === memoryLead.id) : false
     check('go crazy: a lateral message between regions (building tells memory)', lateral)
     check('go crazy: the memory region keeps the board (findings and decisions)', /Findings/.test(hub['boardText'](crazy) as string) && /Decisions/.test(hub['boardText'](crazy) as string))
@@ -1073,6 +1152,166 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     await pause(300)
     check('Stop prevents the follow-up', !rows(stopped).some((i) => i.kind === 'notice' && /asked once/.test(i.text)))
 
+    // Ultra, with a lead that leaves the teammates out: asked once, it hands each a part and starts nothing again.
+    const out = hub.createChat({ cwd: work })
+    hub.setUltra(out.id, true)
+    hub.send({ chatId: out.id, to: leadId, text: 'Design the landing page without the teammates' })
+    await until('the Ultra run without the teammates, the follow-up and the answer', () => idle(out) && rows(out).some((i) => i.kind === 'assistant' && /Version B won/.test(i.text)) && rows(out).some((i) => i.kind === 'assistant' && /cross-check/.test(i.text)), 120_000)
+    same('ultra: a lead that leaves the teammates out gets exactly one follow-up', rows(out).filter((i) => i.kind === 'notice' && /had no part of the work, so .+ was asked once to give/.test(i.text)).length, 1)
+    const outMates = hub['branchMates'](out) as Account[]
+    check('and then every teammate gets a part', outMates.length >= 2 && outMates.every((m) => hub.tasksOf(out.id).some((t) => t.to === m.id && t.from === leadId && t.title === 'Judge: cross-check')), hub.tasksOf(out.id).filter((t) => !hub.accounts.get(t.to)?.spawned).map((t) => `${t.title}@${hub.accounts.get(t.to)?.name}`).join(', '))
+    const outTasks = hub.tasksOf(out.id)
+    same('and no second run is started (4 scouts, 2 builds, 1 judge, as before)', ['Scout:', 'Build:', 'Judge: round'].map((k) => outTasks.filter((t) => t.title.startsWith(k)).length), [4, 2, 1])
+    check('and the lead started its agents as before, not twice', (out.agents || []).filter((a) => a.spawned?.by === leadId).length <= 8, String((out.agents || []).filter((a) => a.spawned?.by === leadId).length))
+    const outStop = hub.createChat({ cwd: work })
+    hub.setUltra(outStop.id, true)
+    hub.send({ chatId: outStop.id, to: leadId, text: 'Design the landing page without the teammates' })
+    // Stop once the lead has started agents, so the look is armed: Stop must take it back.
+    await until('the lead to hand work out (the look timer armed)', () => (hub['floorTimers'] as Map<string, unknown>).has(outStop.id) && (outStop.agents || []).length >= 2, 60_000)
+    await hub.stop(outStop.id)
+    same('Stop after the lead handed work out clears the watch and its timer', [(hub['floors'] as Map<string, unknown>).has(outStop.id), (hub['floorTimers'] as Map<string, unknown>).has(outStop.id)], [false, false])
+    await until('the stopped Ultra chat to settle', () => idle(outStop), 30_000)
+    await pause(300)
+    check('and no teammates follow-up comes after it', !rows(outStop).some((i) => i.kind === 'notice' && /had no part of the work/.test(i.text)))
+
+    // The look during a long first reply: the lead handed work out and is still in its turn.
+    {
+      const floors = hub['floors'] as Map<string, { itemId: string; at: number }>
+      const timers = hub['floorTimers'] as Map<string, unknown>
+      const asked = (c: Chat): number => rows(c).filter((i) => i.kind === 'notice' && /had no part of the work/.test(i.text)).length
+      type Fake = { chat: Chat; steered: string[]; queued: string[]; ses: Record<string, unknown> }
+      // A chat whose lead is mid-turn on `turnItem` (the session looks busy) while `watched` is the message being watched.
+      const mid = (steers: boolean, watched: string, turnItem: string, mode: 'ultra' | 'gocrazy' = 'ultra'): Fake => {
+        const c = hub.createChat({ cwd: work })
+        hub.setUltra(c.id, true)
+        if (mode === 'gocrazy') hub['markUltra'](c, 'gocrazy')
+        const ses = hub['session'](c, leadAcc) as unknown as Record<string, unknown>
+        const steered: string[] = []
+        const queued: string[] = []
+        ses.steer = (t: string) => (steers ? (steered.push(t), true) : false)
+        ses.enqueue = (p: { text: string }) => void queued.push(p.text)
+        ses.current = { kind: 'human', text: 'Design the landing page', origin: { kind: 'human' }, itemIds: [turnItem] }
+        floors.set(c.id, { itemId: watched, at: Date.now() - 1 })
+        return { chat: c, steered, queued, ses }
+      }
+      const done = (x: Fake): void => {
+        x.ses.current = null
+        hub['running'].delete(x.chat.id)
+      }
+      const real = hub.floorLookMs
+      // The timer says nothing to the window when it finds nothing to say, so it is waited for by looking.
+      const fired = async (id: string): Promise<void> => {
+        for (let i = 0; i < 300 && timers.has(id); i++) await pause(10)
+      }
+      hub.floorLookMs = 30
+      // The timer itself: a hand-out arms it; it fires while the watched turn runs, and steers the follow-up in.
+      const a = mid(true, 'w-a', 'w-a')
+      hub['spawn'](a.chat, leadAcc, { name: 'Early scout', role: 'scouts' })
+      check('a hand-out by the lead in a watched reply arms the look timer', timers.has(a.chat.id))
+      await fired(a.chat.id)
+      check('the timer looks during the turn: one notice, the follow-up steered into that turn', asked(a.chat) === 1 && a.steered.length === 1 && /^<way-of-working mode="ultra">\nYour reply left these teammates/.test(a.steered[0]) && !a.queued.length && !floors.has(a.chat.id), `${asked(a.chat)} notices, ${a.steered.length} steered, ${a.queued.length} queued`)
+      hub['crazyFloor'](hub['session'](a.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-a'] }, { status: 'done' })
+      check('and the end of that turn does not ask again', asked(a.chat) === 1 && a.steered.length === 1 && !a.queued.length)
+      // The watched message is queued behind another turn: a hand-out in that turn arms the timer, but the look waits for its own turn.
+      const w = mid(true, 'w-queued', 'w-other')
+      hub['spawn'](w.chat, leadAcc, { name: 'Early scout', role: 'scouts' })
+      await fired(w.chat.id)
+      check('the timer never judges a turn that is not the watched one', asked(w.chat) === 0 && !w.steered.length && floors.has(w.chat.id))
+      hub['crazyFloor'](hub['session'](w.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-other'] }, { status: 'done' })
+      check('nor does the end of that other turn', asked(w.chat) === 0 && floors.has(w.chat.id))
+      // Mid-turn words cannot be taken: nothing is said yet; the end of the reply looks again and lines the follow-up up then.
+      const b = mid(false, 'w-b', 'w-b')
+      hub['spawn'](b.chat, leadAcc, { name: 'Early scout', role: 'scouts' })
+      await fired(b.chat.id)
+      check('where the program cannot take words mid-turn, nothing is said yet and the watch stays', asked(b.chat) === 0 && !b.queued.length && floors.has(b.chat.id))
+      hub['crazyFloor'](hub['session'](b.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-b'] }, { status: 'done' })
+      check('and at the end of the reply it is asked once, lined up next', asked(b.chat) === 1 && b.queued.length === 1 && /Your reply left these teammates/.test(b.queued[0]))
+      // At the end of the reply the teammates had got their parts after all: nothing is said.
+      const late = mid(false, 'w-late', 'w-late')
+      hub['spawn'](late.chat, leadAcc, { name: 'Early scout', role: 'scouts' })
+      await fired(late.chat.id)
+      for (const m of hub['branchMates'](late.chat) as Account[]) hub.tasksOf(late.chat.id).push({ id: `t${hub.tasksOf(late.chat.id).length + 1}`, chatId: late.chat.id, title: 'Build: version A', brief: 'x', from: leadId, to: m.id, status: 'done', createdAt: Date.now() })
+      hub['crazyFloor'](hub['session'](late.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-late'] }, { status: 'done' })
+      check('teammates given parts later in the same reply are not asked for', asked(late.chat) === 0 && !late.queued.length && !floors.has(late.chat.id))
+      // The turn ends before the timer fires (stopped, here): the timer is cleared and nothing follows.
+      const c = mid(true, 'w-c', 'w-c')
+      hub['spawn'](c.chat, leadAcc, { name: 'Early scout', role: 'scouts' })
+      hub['crazyFloor'](hub['session'](c.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-c'] }, { status: 'interrupted' })
+      check('a turn that ended clears the look timer, and no follow-up comes', !timers.has(c.chat.id) && !floors.has(c.chat.id) && asked(c.chat) === 0 && !c.steered.length && !c.queued.length)
+      hub['floorSoon'](c.chat)
+      check('and a later hand-out sets no timer once the reply is no longer watched', !timers.has(c.chat.id))
+      // A teammate still on its branch from an earlier message is not "without a part".
+      const e = mid(false, 'w-e', 'w-e')
+      const mates = hub['branchMates'](e.chat) as Account[]
+      const [onBranch, ...rest] = mates
+      hub.tasksOf(e.chat.id).push({ id: 't1', chatId: e.chat.id, title: 'Build: version A', brief: 'x', from: leadId, to: onBranch.id, status: 'running', holding: true, createdAt: Date.now() - 60_000 })
+      hub['spawn'](e.chat, leadAcc, { name: 'Early scout', role: 'scouts' })
+      hub['crazyFloor'](hub['session'](e.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-e'] }, { status: 'done' })
+      const eNote = rows(e.chat).find((i) => i.kind === 'notice' && /had no part of the work/.test(i.text))
+      check('a teammate still on an earlier branch (task held open) is not asked for again', !!eNote && eNote.kind === 'notice' && !eNote.text.includes(onBranch.name) && rest.every((m) => eNote.text.includes(m.name)), eNote && eNote.kind === 'notice' ? eNote.text : 'no notice')
+      check('and the next Ultra note does not name it', !(hub['branchMates'](e.chat, true) as Account[]).some((m) => m.id === onBranch.id) && rest.every((m) => (hub['branchMates'](e.chat, true) as Account[]).some((x) => x.id === m.id)))
+      // Go crazy: teammates handed regions count as regions before their agents exist; with none, the old floor still holds.
+      const crazyAsked = (x: Chat): number => rows(x).filter((i) => i.kind === 'notice' && /asked once to start the regions/.test(i.text)).length
+      const g = mid(false, 'w-g', 'w-g', 'gocrazy')
+      for (const m of hub['branchMates'](g.chat) as Account[]) hub.tasksOf(g.chat.id).push({ id: `t${hub.tasksOf(g.chat.id).length + 1}`, chatId: g.chat.id, title: 'Region: research', brief: 'x', from: leadId, to: m.id, status: 'running', createdAt: Date.now() })
+      hub['spawn'](g.chat, leadAcc, { name: 'Memory lead', role: 'leads memory' })
+      hub['crazyFloor'](hub['session'](g.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-g'] }, { status: 'done' })
+      check('go crazy: 3 teammates handed regions and 1 agent started is enough, before their teams exist', crazyAsked(g.chat) === 0 && !g.queued.length, `${crazyAsked(g.chat)} asked, ${g.queued.length} queued`)
+      const g2 = mid(false, 'w-g2', 'w-g2', 'gocrazy')
+      hub['spawn'](g2.chat, leadAcc, { name: 'Only scout', role: 'scouts' })
+      hub['crazyFloor'](hub['session'](g2.chat, leadAcc), { kind: 'human', text: '', origin: { kind: 'human' }, itemIds: ['w-g2'] }, { status: 'done' })
+      check('go crazy: 1 agent and no regions handed out is still sent back once', crazyAsked(g2.chat) === 1 && g2.queued.length === 1 && /only 1 agent/.test(g2.queued[0]))
+      hub.floorLookMs = real
+      for (const x of [a, w, b, late, c, e, g, g2]) {
+        for (const t of hub.tasksOf(x.chat.id)) if (t.status === 'running' || t.status === 'queued') t.status = 'cancelled'
+        floors.delete(x.chat.id)
+        done(x)
+      }
+    }
+
+    // What a teammate is told with a task in Ultra: it leads that branch. A started agent is not told; nor is anyone with Ultra off.
+    {
+      const sentTo = (c: Chat, who: Account): string[] => {
+        const got: string[] = []
+        const ses = hub['session'](c, who) as { enqueue: (p: { text: string }, front?: boolean) => void }
+        ses.enqueue = (p) => void got.push(p.text)
+        return got
+      }
+      const mate = hub.accounts.accounts.find((a) => a.enabled && a.id !== leadId && hub.accounts.statuses.get(a.id)?.state === 'ready')!
+      const on = hub.createChat({ cwd: work })
+      hub.setUltra(on.id, true)
+      const toMate = sentTo(on, mate)
+      hub['assign'](on, leadAcc, { to: mate.name, title: 'Note check', brief: 'Say hello.' })
+      hub['spawn'](on, leadAcc, { name: 'Note agent', role: 'checks the note' })
+      const agent = (on.agents || []).find((a) => a.name === 'Note agent')!
+      const toAgent = sentTo(on, agent)
+      hub['assign'](on, leadAcc, { to: 'Note agent', title: 'Note check', brief: 'Say hello.' })
+      const offChat = hub.createChat({ cwd: work })
+      const toMateOff = sentTo(offChat, mate)
+      hub['assign'](offChat, leadAcc, { to: mate.name, title: 'Note check', brief: 'Say hello.' })
+      check('ultra: a task to a teammate carries "You lead this branch"', toMate.length === 1 && /You lead this branch of the work, on your own account/.test(toMate[0]) && /<\/task>/.test(toMate[0]), (toMate[0] || '').slice(0, 200))
+      check('a task to a started agent does not', toAgent.length === 1 && !/You lead this branch/.test(toAgent[0]), (toAgent[0] || '').slice(0, 200))
+      // Started again (resumed, refilled, a stronger model): told already, so not told again. Moved to a new owner: told.
+      {
+        const t = hub.tasksOf(on.id).find((x) => x.to === mate.id && x.title === 'Note check')!
+        hub['begin'](t, 'you had started this task when the app closed unexpectedly at 12:00.')
+        check('a task started again with the same teammate is not given the branch note again', toMate.length === 2 && !/You lead this branch/.test(toMate[1]) && /closed unexpectedly/.test(toMate[1]), (toMate[1] || '').slice(0, 160))
+        const others = hub.accounts.accounts.filter((a) => a.enabled && a.id !== leadId && a.id !== mate.id && hub.accounts.statuses.get(a.id)?.state === 'ready')
+        const sent = new Map(others.map((a) => [a.id, sentTo(on, a)]))
+        const keep = hub.accounts.usage.get(mate.id)
+        hub.accounts.setUsage(mate.id, { session: { utilization: 1, resetsAt: Date.now() + 3600e3, status: 'rejected' }, weekly: { utilization: 0.4, resetsAt: Date.now() + 80 * 3600e3 } })
+        hub['begin'](t, 'the usage allowance ran out while this was under way, and it has refilled now.')
+        if (keep) hub.accounts.setUsage(mate.id, keep)
+        const got = sent.get(t.to) || []
+        check('a task that moves to a new owner is: the new owner leads it', t.to !== mate.id && got.length === 1 && /You lead this branch/.test(got[0]), `${hub.accounts.get(t.to)?.name}: ${(got[0] || '').slice(0, 120)}`)
+      }
+      check('and with Ultra off a teammate is not told either', toMateOff.length === 1 && !/You lead this branch/.test(toMateOff[0]), (toMateOff[0] || '').slice(0, 200))
+      for (const c of [on, offChat]) {
+        for (const t of hub.tasksOf(c.id)) if (t.status === 'running' || t.status === 'queued') t.status = 'cancelled'
+        hub['running'].delete(c.id)
+      }
+    }
+
     const spawnTool = (hub['toolsFor'](hub['session'](stopped, leadAcc)) as { name: string; run: (a: Record<string, unknown>) => Promise<string> }[]).find((t) => t.name === 'spawn_agent')
     const refusedWhy = spawnTool ? await spawnTool.run({ name: 'Nope', role: 'tries a model nobody has', model: 'gpt-9-imaginary' }) : ''
     check("a refused spawn's reason is the tool's answer the lead reads", /cannot run "gpt-9-imaginary"/.test(refusedWhy) || /no .* account|cannot run/i.test(refusedWhy), refusedWhy)
@@ -1136,7 +1375,14 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     // The whole team works, not just the lead's account: the agents are spread over all four accounts.
     const perAccount = gpt.accounts.accounts.map((a) => live.filter((x) => x.spawned?.base === a.id).length)
     console.log(`  (agents per account, ${gpt.accounts.accounts.map((a) => a.name).join('/')}: ${perAccount.join('/')})`)
-    check('ChatGPT only: the agents are spread over all four accounts', perAccount.every((n) => n >= Math.floor(live.length / 4) - 2) && Math.max(...perAccount) - Math.min(...perAccount) <= 3, perAccount.join('/'))
+    check('ChatGPT only: the agents are spread over all four accounts', perAccount.every((n) => n >= 1 && n >= Math.floor(live.length / 4) - 2) && Math.max(...perAccount) - Math.min(...perAccount) <= 3, perAccount.join('/'))
+    {
+      const gOwners = ['research', 'building', 'judging', 'memory'].map((r) => ownerOf(gpt, gc, r)).filter((o): o is Account => !!o)
+      const gMates = gpt['branchMates'](gc) as Account[]
+      check('ChatGPT only: G2, G3 and G4 lead regions (research, building, judging), the lead starts the rest', gMates.length === 3 && gMates.every((m) => gOwners.some((o) => o.id === m.id)) && ['research', 'building', 'judging'].every((r) => !ownerOf(gpt, gc, r)?.spawned), gOwners.map((o) => `${o.name}${o.spawned ? ' (agent)' : ''}`).join(', '))
+      const under = (n: string, region: string): boolean => (gc.agents || []).find((a) => a.name === n)?.spawned?.by === ownerOf(gpt, gc, region)?.id
+      check('ChatGPT only: scouts, builders and judges hang under the teammates that lead them', under('Scout 1', 'research') && under('Builder A', 'building') && under('Judge 1', 'judging'), ['Scout 1', 'Builder A', 'Judge 1'].map((n) => `${n} by ${gpt.accounts.get((gc.agents || []).find((a) => a.name === n)?.spawned?.by || '')?.name}`).join(', '))
+    }
     // A lead that names its own account for every agent does not get to leave the rest of the team idle.
     const pile = gpt.createChat({ cwd: work })
     gpt.setUltra(pile.id, true)
@@ -1146,7 +1392,7 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     const piled = gpt.accounts.accounts.map((a) => (pile.agents || []).filter((x) => x.spawned?.base === a.id).length)
     check('agents all asked onto the lead\'s own account are still spread over the team', (pile.agents || []).length === 12 && Math.max(...piled) - Math.min(...piled) <= 2, piled.join('/'))
     check('and the lead is told why', replies.some((r) => /placed on another to keep the whole team working/.test(r)))
-    check('ChatGPT only: the regions run, every agent on a ChatGPT account, down to depth 4', live.length >= 25 && live.every((a) => a.provider === 'chatgpt') && live.some((a) => a.spawned?.depth === 4) && live.filter((a) => a.spawned?.depth === 1).length >= 3, `${live.length} agents, deepest ${Math.max(...live.map((a) => a.spawned?.depth || 0))}`)
+    check('ChatGPT only: the regions run, every agent on a ChatGPT account, down to depth 4', live.length >= 25 && live.every((a) => a.provider === 'chatgpt') && live.some((a) => (a.spawned?.depth || 0) >= 4) && ['research', 'building', 'judging', 'memory'].filter((r) => ownerOf(gpt, gc, r)).length >= 3, `${live.length} agents, deepest ${Math.max(...live.map((a) => a.spawned?.depth || 0))}`)
     const gtasks = gpt.tasksOf(gc.id).filter((t) => t.createdAt >= gFrom)
     check('ChatGPT only: scouts on Luna, builders on Astra', gtasks.filter((t) => t.title.startsWith('Scout')).every((t) => /luna/i.test(t.model || '')) && gtasks.filter((t) => t.title.startsWith('Build')).every((t) => /astra/i.test(t.model || '')), gtasks.map((t) => `${t.title}:${t.model}`).slice(0, 6).join(', '))
     check('ChatGPT only: no follow-up was needed', !gRows(gc).some((i) => i.kind === 'notice' && /asked once/.test(i.text)))
@@ -1155,7 +1401,263 @@ ${member ? hub.briefingFor(chat.id, member.id) : ''}
     gpt.send({ chatId: gfew.id, to: gLead.id, text: '/gocrazy design the landing page with only two agents' })
     await until('the ChatGPT lead to be asked once and start the regions', () => gIdle(gfew) && gRows(gfew).some((i) => i.kind === 'assistant' && /both judging rounds/.test(i.text)), 120_000)
     same('ChatGPT only: a lead that starts 2 gets exactly one follow-up', gRows(gfew).filter((i) => i.kind === 'notice' && /asked once/.test(i.text)).length, 1)
+    check('ChatGPT only: and it names the idle teammates, which then take regions', /take regions first/.test((gpt['session'](gfew, gLead) as { items: Item[] }).items.map((i) => (i.kind === 'auto' || i.kind === 'user' ? (i as { text?: string }).text || '' : '')).join('\n')) || ['research', 'building', 'judging'].some((r) => { const o = ownerOf(gpt, gfew, r); return !!o && !o.spawned }), ['research', 'building', 'judging', 'memory'].map((r) => ownerOf(gpt, gfew, r)?.name).join(', '))
+
+    // Plain Ultra on the ChatGPT-only team: the teammates build and judge.
+    const gu = gpt.createChat({ cwd: work })
+    gpt.setUltra(gu.id, true)
+    gpt.send({ chatId: gu.id, to: gLead.id, text: 'Design the landing page' })
+    await until('the ChatGPT-only Ultra run', () => gIdle(gu) && gRows(gu).some((i) => i.kind === 'assistant' && /Version B won/.test(i.text)), 120_000)
+    {
+      const mates = gpt['branchMates'](gu) as Account[]
+      const fromLead = gpt.tasksOf(gu.id).filter((t) => t.from === gLead.id)
+      check("ChatGPT only, Ultra: every teammate gets a branch in the lead's first reply", mates.length === 3 && mates.every((m) => fromLead.some((t) => t.to === m.id && /^(Build|Judge):/.test(t.title))), fromLead.map((t) => `${t.title}@${gpt.accounts.get(t.to)?.name}`).join(', '))
+      check('ChatGPT only, Ultra: no follow-up was needed', !gRows(gu).some((i) => i.kind === 'notice' && /had no part of the work|asked once/.test(i.text)))
+      const own = (gu.agents || []).filter((a) => mates.some((m) => a.spawned?.by === m.id))
+      check('ChatGPT only, Ultra: a teammate starts agents of its own (depth 2)', own.length > 0 && own.every((a) => a.spawned?.depth === 2), own.map((a) => `${a.name}@${a.spawned?.depth}`).join(', '))
+    }
+    const gout = gpt.createChat({ cwd: work })
+    gpt.setUltra(gout.id, true)
+    gpt.send({ chatId: gout.id, to: gLead.id, text: 'Design the landing page without the teammates' })
+    await until('the ChatGPT-only Ultra run without the teammates', () => gIdle(gout) && gRows(gout).some((i) => i.kind === 'assistant' && /Version B won/.test(i.text)) && gRows(gout).some((i) => i.kind === 'assistant' && /cross-check/.test(i.text)), 120_000)
+    same('ChatGPT only, Ultra: left out, the teammates are asked for once, by name', gRows(gout).filter((i) => i.kind === 'notice' && /^G2, G3 and G4 had no part of the work/.test(i.text)).length, 1)
+    same('and each then cross-checks, with no second run (4 scouts, 2 builds)', [['G2', 'G3', 'G4'].every((n) => gpt.tasksOf(gout.id).some((t) => gpt.accounts.get(t.to)?.name === n && t.title === 'Judge: cross-check')), gpt.tasksOf(gout.id).filter((t) => t.title.startsWith('Scout:')).length, gpt.tasksOf(gout.id).filter((t) => t.title.startsWith('Build:')).length], [true, 4, 2])
+
+    // A teammate's branch lives on its own account while the accounts stay even.
+    {
+      const home = gpt.createChat({ cwd: work })
+      gpt.setUltra(home.id, true)
+      gpt['markUltra'](home, 'gocrazy')
+      const [g2, g3] = ['G2', 'G3'].map((n) => gpt.accounts.accounts.find((a) => a.name === n)!)
+      for (let i = 0; i < 2; i++) gpt['spawn'](home, g2, { name: `Home ${i + 1}`, role: 'one of two in G2\'s branch' })
+      const twos = (home.agents || []).filter((a) => a.spawned?.by === g2.id)
+      check("home: a teammate's 2 agents go on its own account", twos.length === 2 && twos.every((a) => a.spawned?.base === g2.id), twos.map((a) => gpt.accounts.get(a.spawned!.base)?.name).join(', '))
+      for (let i = 0; i < 6; i++) gpt['spawn'](home, g3, { name: `Six ${i + 1}`, role: 'one of six in G3\'s branch' })
+      const sixes = (home.agents || []).filter((a) => a.spawned?.by === g3.id)
+      const onG3 = sixes.filter((a) => a.spawned?.base === g3.id).length
+      check('home: 6 from one teammate are not all put on its account (the spread kicks in)', sixes.length === 6 && onG3 >= 2 && onG3 < 6, `${onG3} of ${sixes.length} on G3: ${sixes.map((a) => gpt.accounts.get(a.spawned!.base)?.name).join(', ')}`)
+      const load = (): number[] => gpt.accounts.accounts.map((acc) => (home.agents || []).filter((x) => !x.spawned?.gone && x.spawned?.base === acc.id).length)
+      const before = load()
+      gpt['spawn'](home, gLead, { name: 'Lead own', role: 'x' })
+      const leadOwn = (home.agents || []).find((x) => x.name === 'Lead own')
+      const at = gpt.accounts.accounts.findIndex((acc) => acc.id === leadOwn?.spawned?.base)
+      check("home: the lead's own agents have no home: one goes where the fewest are", at >= 0 && before[at] === Math.min(...before), `${before.join('/')} -> ${gpt.accounts.accounts[at]?.name}`)
+    }
+
+    // Sharing out agents an older version piled on one account.
+    {
+      const pile2 = gpt.createChat({ cwd: work })
+      gpt.setUltra(pile2.id, true)
+      gpt['markUltra'](pile2, 'gocrazy')
+      for (let i = 0; i < 9; i++) gpt['spawn'](pile2, gLead, { name: `Old ${i + 1}`, role: 'started by an older version' })
+      const olds = (pile2.agents || []).filter((a) => a.name.startsWith('Old '))
+      for (const a of olds) {
+        a.spawned!.base = gLead.id
+        a.configDir = gLead.configDir
+      }
+      // Old 1 is at work; Old 2 to Old 6 have had a conversation; Old 7 to Old 9 never ran.
+      const busy = olds[0]
+      gpt.tasksOf(pile2.id).push({ id: `t${gpt.tasksOf(pile2.id).length + 1}`, chatId: pile2.id, title: 'At work', brief: 'x', from: gLead.id, to: busy.id, status: 'running', createdAt: Date.now() })
+      for (const a of olds.slice(1, 6)) pile2.sessions[a.id] = { providerSessionId: `old-${a.name}` }
+      const per = (): number[] => gpt.accounts.accounts.map((acc) => (pile2.agents || []).filter((x) => !x.spawned?.gone && x.spawned?.base === acc.id).length)
+      same('respread: before, all 9 on the lead\'s account', per(), [9, 0, 0, 0])
+      const moved = gpt['respread'](pile2) as number
+      const after = per()
+      check('respread: the accounts end within 2 of each other (what a branch on its own account may be ahead)', Math.max(...after) - Math.min(...after) <= 2 && moved >= 5, `${after.join('/')} after moving ${moved}`)
+      check('respread: an agent with a running task is not moved', busy.spawned?.base === gLead.id)
+      const marked = olds.filter((a) => a.spawned?.moved)
+      check('respread: a moved agent that had a conversation is marked, one that never ran is not', marked.length > 0 && marked.every((a) => olds.slice(1, 6).includes(a) && a.spawned?.moved?.from === gLead.id) && olds.slice(6).every((a) => !a.spawned?.moved && a.spawned?.base !== gLead.id), olds.map((a) => `${a.name}:${gpt.accounts.get(a.spawned!.base)?.name}${a.spawned?.moved ? '*' : ''}`).join(' '))
+      const m = marked[0]
+      const m2 = marked[1]
+      if (m2) {
+        // Its account ran out before its next turn: the failover move tells it, and the even-share mark is spent with it.
+        const base = gpt.accounts.get(m2.spawned!.base)!
+        const keep = gpt.accounts.usage.get(base.id)
+        gpt.accounts.setUsage(base.id, { session: { utilization: 1, resetsAt: Date.now() + 3600e3, status: 'rejected' }, weekly: { utilization: 0.4, resetsAt: Date.now() + 80 * 3600e3 } })
+        const pending2 = { kind: 'peer', text: 'More work.', origin: { kind: 'human' }, itemIds: [] as string[] }
+        gpt['onTurnStart'](gpt['session'](pile2, m2), pending2)
+        gpt['running'].delete(pile2.id)
+        if (keep) gpt.accounts.setUsage(base.id, keep)
+        check('an agent marked "moved" whose account ran out gets one note (the ran-out one), and the mark is spent', (pending2.text.match(/<recovery>/g) || []).length === 1 && /ran out of usage/.test(pending2.text) && !/share the work evenly/.test(pending2.text) && !m2.spawned?.moved, pending2.text.slice(0, 200))
+      }
+      if (m) {
+        const pending = { kind: 'peer', text: 'Next piece of work.', origin: { kind: 'human' }, itemIds: [] as string[] }
+        gpt['onTurnStart'](gpt['session'](pile2, m), pending)
+        gpt['running'].delete(pile2.id)
+        check('at its next turn a moved agent is told why first, and the mark is cleared', /^<recovery>\nYou were moved from G1's account to G\d's so that the team's accounts share the work evenly/.test(pending.text) && /Next piece of work\.$/.test(pending.text) && !m.spawned?.moved, pending.text.slice(0, 160))
+      }
+      // An account that is out of allowance, or close to it, receives nobody.
+      const pile3 = gpt.createChat({ cwd: work })
+      gpt['markUltra'](pile3, 'gocrazy')
+      for (let i = 0; i < 8; i++) gpt['spawn'](pile3, gLead, { name: `Older ${i + 1}`, role: 'x' })
+      for (const a of pile3.agents || []) {
+        a.spawned!.base = gLead.id
+        a.configDir = gLead.configDir
+      }
+      const [g3, g4] = ['G3', 'G4'].map((n) => gpt.accounts.accounts.find((a) => a.name === n)!)
+      const keep3 = gpt.accounts.usage.get(g3.id)
+      const keep4 = gpt.accounts.usage.get(g4.id)
+      gpt.accounts.setUsage(g3.id, { session: { utilization: 1, resetsAt: Date.now() + 3600e3 }, weekly: { utilization: 0.4, resetsAt: Date.now() + 80 * 3600e3 } })
+      gpt.accounts.setUsage(g4.id, { session: { utilization: 0.97, resetsAt: Date.now() + 3600e3 }, weekly: { utilization: 0.4, resetsAt: Date.now() + 80 * 3600e3 } })
+      gpt['respread'](pile3)
+      const onAcc = (acc: Account): number => (pile3.agents || []).filter((x) => x.spawned?.base === acc.id).length
+      check('respread: a limited account and one running low receive nobody', gpt.accounts.supply(g4.id).state === 'low' && !!gpt.accounts.limitedUntil(g3.id) && onAcc(g3) === 0 && onAcc(g4) === 0 && Math.abs(onAcc(gLead) - onAcc(gpt.accounts.accounts.find((a) => a.name === 'G2')!)) <= 2, gpt.accounts.accounts.map((a) => `${a.name}:${onAcc(a)}`).join(' '))
+      if (keep3) gpt.accounts.setUsage(g3.id, keep3)
+      if (keep4) gpt.accounts.setUsage(g4.id, keep4)
+      // The fullest account has nobody it can move (all at work), and one agent on the next is cut mid-task:
+      // the next fullest is shared out instead, and the cut one stays where its conversation is.
+      const pile4 = gpt.createChat({ cwd: work })
+      gpt['markUltra'](pile4, 'gocrazy')
+      for (let i = 0; i < 9; i++) gpt['spawn'](pile4, gLead, { name: `Fixed ${i + 1}`, role: 'x' })
+      const g2 = gpt.accounts.accounts.find((a) => a.name === 'G2')!
+      const agents4 = pile4.agents || []
+      agents4.forEach((a, i) => {
+        a.spawned!.base = i < 5 ? gLead.id : g2.id
+        a.configDir = (i < 5 ? gLead : g2).configDir
+      })
+      for (const a of agents4.slice(0, 5)) gpt.tasksOf(pile4.id).push({ id: `t${gpt.tasksOf(pile4.id).length + 1}`, chatId: pile4.id, title: 'At work', brief: 'x', from: gLead.id, to: a.id, status: 'running', createdAt: Date.now() })
+      const cutMid = agents4[5]
+      gpt.tasksOf(pile4.id).push({ id: `t${gpt.tasksOf(pile4.id).length + 1}`, chatId: pile4.id, title: 'Cut short', brief: 'x', from: gLead.id, to: cutMid.id, status: 'interrupted', createdAt: Date.now() })
+      const moved4 = gpt['respread'](pile4) as number
+      const on4 = (acc: Account): number => agents4.filter((x) => x.spawned?.base === acc.id).length
+      check('respread: a fullest account with nobody movable is skipped, the next one is shared out', on4(gLead) === 5 && moved4 >= 1 && on4(g2) < 4, gpt.accounts.accounts.map((a) => `${a.name}:${on4(a)}`).join(' '))
+      check('respread: an agent whose task was cut short is not moved', cutMid.spawned?.base === g2.id)
+      for (const t of gpt.tasksOf(pile4.id)) if (t.status === 'running' || t.status === 'interrupted') t.status = 'cancelled'
+      // Looking at the ChatGPT accounts' allowance: one look at a time per account, however many messages come.
+      {
+        const host = gpt['host'] as { demo?: boolean }
+        const realRefresh = gpt.accounts.refreshUsage.bind(gpt.accounts)
+        const looks: string[] = []
+        const stale = new Map<string, number>()
+        for (const acc of gpt.accounts.accounts) {
+          const u = gpt.accounts.usage.get(acc.id)
+          if (u) {
+            stale.set(acc.id, u.updatedAt)
+            gpt.accounts.usage.set(acc.id, { ...u, updatedAt: 0 })
+          }
+        }
+        let release = (): void => {}
+        const held = new Promise<void>((r) => (release = r))
+        gpt.accounts.refreshUsage = async (id: string) => {
+          looks.push(id)
+          await held
+        }
+        host.demo = false
+        gpt['freshen']()
+        gpt['freshen']()
+        gpt['freshen']()
+        host.demo = true
+        same('freshen: one look at a time per ChatGPT account, not one per message', looks.length, gpt.accounts.accounts.filter((a) => a.enabled && a.provider === 'chatgpt').length)
+        release()
+        await pause(20)
+        check('and once a look is back, the next message may look again', (gpt['probing'] as Set<string>).size === 0)
+        gpt.accounts.refreshUsage = realRefresh
+        for (const [id, at] of stale) {
+          const u = gpt.accounts.usage.get(id)
+          if (u) gpt.accounts.usage.set(id, { ...u, updatedAt: at })
+        }
+      }
+    }
     await gpt.dispose()
+
+    // The first start on a new version: piled agents are shared out (data from before 3.7.2), and only the
+    // app's own "restart to update" picks up the work it cut (never an ordinary quit, never older cuts).
+    {
+      const rdir = path.join(os.tmpdir(), 'ensemble-auto-recal')
+      fs.rmSync(rdir, { recursive: true, force: true })
+      const open = async (version: string, prep?: (h: Hub) => void): Promise<Hub> => {
+        const h = new Hub({ dataDir: rdir, version, demo: true, mica: false, isFocused: () => false, notify: () => {}, emit: (ev) => { events.push(ev); for (let i = waiters.length - 1; i >= 0; i--) if (waiters[i].test()) waiters.splice(i, 1)[0].resolve() } })
+        prep?.(h)
+        await h.start()
+        return h
+      }
+      const settled = (h: Hub, c: string): boolean => { const st = h.openChat(c).states.find((x) => x.accountId === h.lead()!.id); return !!st && st.phase === 'idle' && !st.queued }
+      const pileUp = (h: Hub, n: number): Chat => {
+        const rLead = h.lead()!
+        const c = h.createChat({ cwd: work })
+        h.setUltra(c.id, true)
+        h['markUltra'](c, 'gocrazy')
+        for (let i = 0; i < n; i++) h['spawn'](c, rLead, { name: `Piled ${i + 1}`, role: 'x', model: 'haiku' })
+        for (const a of c.agents || []) {
+          a.spawned!.base = rLead.id
+          a.configDir = rLead.configDir
+        }
+        h['markUltra'](c, null)
+        return c
+      }
+      const onLead = (h: Hub, c: string): number => (h.chats.get(c)?.agents || []).filter((x) => !x.spawned?.gone && x.spawned?.base === h.lead()!.id).length
+      let h = await open('1.0.0')
+      for (const c of await h.accounts.discover()) if (c.signedIn) h.accounts.add({ name: c.suggestedName, provider: c.provider, configDir: c.configDir })
+      await h.accounts.refresh()
+      const piled = pileUp(h, 9)
+      // "Restart to update" cuts a chat in the middle of its work. The same chat also holds a task cut long ago and never picked up.
+      const cut = h.createChat({ cwd: work })
+      h.send({ chatId: cut.id, to: h.lead()!.id, text: 'Add a pricing page' })
+      await pause(400)
+      h.markUpdateRestart()
+      const ids = { piled: piled.id, cut: cut.id }
+      await h.dispose()
+      const tasksFile = path.join(rdir, 'chats', ids.cut, 'tasks.json')
+      const before = fs.existsSync(tasksFile) ? (JSON.parse(fs.readFileSync(tasksFile, 'utf8')) as { id: string; status: string }[]) : []
+      const cutThen = before.filter((t) => t.status === 'running' || t.status === 'queued').map((t) => t.id)
+      const oldId = `t${before.length + 50}`
+      fs.mkdirSync(path.dirname(tasksFile), { recursive: true })
+      fs.writeFileSync(tasksFile, JSON.stringify([...before, { id: oldId, chatId: ids.cut, title: 'Cut long ago', brief: 'An older task the user never picked up.', from: h.lead()?.id || 'main', to: h.lead()?.id || 'main', status: 'interrupted', createdAt: Date.now() - 86400e3 }]))
+      h = await open('1.0.1')
+      const rRows = (c: string): Item[] => h.openChat(c).items[h.lead()!.id] || []
+      await until('the update to be taken in', () => rRows(ids.piled).some((i) => i.kind === 'notice' && /Ensemble was updated to 1\.0\.1/.test(i.text)), 30_000)
+      const claude = h.accounts.accounts.filter((a) => a.provider === 'claude' && a.enabled && h.accounts.statuses.get(a.id)?.state === 'ready')
+      const pc = h.chats.get(ids.piled)!
+      const spread = claude.map((a) => (pc.agents || []).filter((x) => !x.spawned?.gone && x.spawned?.base === a.id).length)
+      check('update from before 3.7.2: piled agents are shared out (within 2)', claude.length >= 2 && Math.max(...spread) - Math.min(...spread) <= 2 && onLead(h, ids.piled) < 9, `${claude.map((a) => a.name).join('/')}: ${spread.join('/')}`)
+      check('update: the lead is told in its transcript', rRows(ids.piled).some((i) => i.kind === 'notice' && /Ensemble was updated to 1\.0\.1\. \d+ of this chat's agents were moved so that the accounts share the work evenly/.test(i.text)))
+      const noticeAt = (rRows(ids.cut).find((i) => i.kind === 'notice' && /picked up again by itself/.test(i.text))?.ts) || 0
+      await until('the work the update cut to run again', () => noticeAt > 0 && rRows(ids.cut).some((i) => i.kind === 'assistant' && i.ts > noticeAt), 60_000)
+      check('restart to update: the work it cut runs again by itself (the lead answers again)', noticeAt > 0 && rRows(ids.cut).some((i) => i.kind === 'assistant' && i.ts > noticeAt))
+      const after = h.tasksOf(ids.cut)
+      check('and the tasks it cut were started again', cutThen.every((id) => after.find((t) => t.id === id)?.status !== 'interrupted'), cutThen.map((id) => `${id}:${after.find((t) => t.id === id)?.status}`).join(' ') || 'no task was out')
+      check('but a task cut long ago is left alone, with its "Continue" offer', after.find((t) => t.id === oldId)?.status === 'interrupted' && !!h.chats.get(ids.cut)?.recovery?.tasks.includes(oldId) && rRows(ids.cut).some((i) => i.kind === 'notice' && i.action?.kind === 'resume' && !i.action.done), `${after.find((t) => t.id === oldId)?.status} ${JSON.stringify(h.chats.get(ids.cut)?.recovery)}`)
+      await h.stop(ids.cut)
+      await until('the resumed chat to settle', () => settled(h, ids.cut), 60_000)
+      await pause(300)
+      // An ordinary quit in the middle of work (an update waiting may install then too): nothing restarts by itself.
+      const quit = h.createChat({ cwd: work })
+      h.send({ chatId: quit.id, to: h.lead()!.id, text: 'Add a pricing page' })
+      await pause(400)
+      const quitId = quit.id
+      await h.dispose()
+      // The next start fails to take the update in: the version is not saved, so the start after tries again.
+      h = await open('1.0.2', (x) => {
+        x['recalibrate'] = () => {
+          throw new Error('cut short on purpose')
+        }
+      })
+      await h.accounts.refresh()
+      await pause(300)
+      same('a start that fails to take the update in does not save the version', h.settings.version, '1.0.1')
+      await h.dispose()
+      h = await open('1.0.2')
+      await until('the version to be saved', () => h.settings.version === '1.0.2', 30_000)
+      await pause(300)
+      check('an ordinary quit in the middle of work, even on a new version: not resumed, the "Continue" offer stays', !!h.chats.get(quitId)?.recovery && (h.openChat(quitId).items[h.lead()!.id] || []).some((i) => i.kind === 'notice' && i.action?.kind === 'resume' && !i.action.done) && !(h.openChat(quitId).items[h.lead()!.id] || []).some((i) => i.kind === 'notice' && /picked up again by itself/.test(i.text)))
+      // Same version again: nothing moves and nobody is told twice.
+      await h.dispose()
+      h = await open('1.0.2')
+      await h.accounts.refresh()
+      await pause(500)
+      same('same version again: no second notice', (h.openChat(ids.piled).items[h.lead()!.id] || []).filter((i) => i.kind === 'notice' && /Ensemble was updated/.test(i.text)).length, 1)
+      // Data from 3.7.2 on is placed evenly already: a later update does not share anything out again.
+      const piledNew = pileUp(h, 9)
+      const newId = piledNew.id
+      await h.dispose()
+      const settingsFile = path.join(rdir, 'settings.json')
+      fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')), version: '3.7.2' }))
+      h = await open('3.7.3')
+      await until('3.7.3 to be saved', () => h.settings.version === '3.7.3', 30_000)
+      await pause(300)
+      check('an update from 3.7.2 on moves nobody and says nothing', onLead(h, newId) === 9 && !(h.openChat(newId).items[h.lead()!.id] || []).some((i) => i.kind === 'notice' && /Ensemble was updated/.test(i.text)), String(onLead(h, newId)))
+      await h.dispose()
+    }
   }
 } catch (e) {
   failed.push(`stopped early: ${(e as Error).message}`)
@@ -1224,6 +1726,32 @@ console.log('\nlive answers: blocks and formulas')
     check('the briefing stays about 400 words', IUI_BRIEFING.split(/\s+/).filter(Boolean).length <= 420, String(IUI_BRIEFING.split(/\s+/).filter(Boolean).length))
   }
 // ───────────── end of Live answers checks ─────────────
+
+// ───────────── checks by piece of work, each in a file of its own under scripts/checks ─────────────
+{
+  const freshHub = async (name: string): Promise<{ hub: Hub; dataDir: string }> => {
+    const dir = path.join(os.tmpdir(), `ensemble-auto-${name.replace(/[^a-zA-Z0-9_-]/g, '')}`)
+    fs.rmSync(dir, { recursive: true, force: true })
+    const h = new Hub({ dataDir: dir, version: 'test', demo: true, mica: false, isFocused: () => false, notify: () => {}, emit: () => {} })
+    await h.start()
+    for (const c of await h.accounts.discover()) if (c.signedIn) h.accounts.add({ name: c.suggestedName, provider: c.provider, configDir: c.configDir })
+    await h.accounts.refresh()
+    return { hub: h, dataDir: dir }
+  }
+  const ctx: Ctx = { hub, freshHub, lead, leadId, work, dataDir, check, same, until, pause, rows, idle }
+  // ENSEMBLE_ONLY=<part of a section's name> runs just the sections that match, after the main file's own checks:
+  // for working on one piece while another piece's checks are mid-change. A full run has it unset.
+  const only = (process.env.ENSEMBLE_ONLY || '').toLowerCase()
+  for (const [name, run] of CHECKS) {
+    if (only && !name.toLowerCase().includes(only)) continue
+    console.log(`\n${name}`)
+    try {
+      await run(ctx)
+    } catch (e) {
+      check(`${name}: stopped early`, false, (e as Error).stack || (e as Error).message)
+    }
+  }
+}
 
 await hub.dispose()
 console.log(`\n${passed} passed, ${failed.length} failed`)

@@ -542,3 +542,21 @@ html[data-away='true'] .flow-dash {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A transcript row drawn again because it scrolled back into view arrives as it was: its
+   entrance (rise, pop, fade) played the first time it appeared and does not play again. */
+[data-seen] .animate-rise,
+[data-seen] .animate-pop,
+[data-seen] .animate-fade-in {
+  animation: none;
+}
+
+/* A row the memory feed or a link pointed at: a soft wash of the accent that fades out. */
+@keyframes row-flash {
+  from { background: color-mix(in oklab, var(--color-accent) 20%, transparent); }
+  to { background: transparent; }
+}
+.row-flash {
+  border-radius: 10px;
+  animation: row-flash 1.6s var(--ease-out) both;
+}

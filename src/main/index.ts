@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import type { Attachment, HubEvent, ScreenInput, Settings } from '@shared/types'
+import type { Attachment, HubEvent, RemoteReachPatch, ScreenInput, Settings } from '@shared/types'
 import { IMAGE_EXT, MEDIA_EXT } from '@shared/tools'
 import electronUpdater from 'electron-updater'
 import { Hub } from './hub'
@@ -15,6 +15,11 @@ import { findHands, WindowsDesktop } from './hands/desktop'
 import { DemoDesktop } from './hands/demo-desktop'
 import { hudHtml, ScreenHud } from './hands/hud'
 import { guardFrames, IUI_PRIVILEGES, registerIui } from './iui'
+import { Github } from './github'
+import { firstFolders, folderProbe, makeAppFolder } from './firstrun'
+import { guiPath, here, iconFile, loginShellPath, windowChrome } from './platform'
+import { checkDownloaded, updatePolicy } from './updatesig'
+import { MAC_SELF_UPDATE, UPDATE_PUBLIC_KEY } from './release-key'
 
 // `__dirname` is supplied by the bundler for the ESM build.
 
@@ -22,6 +27,8 @@ import { guardFrames, IUI_PRIVILEGES, registerIui } from './iui'
 // and a bar that says so. ENSEMBLE_DEMO=1 is the same team for development and screenshot runs.
 const TRIAL = process.argv.includes('--demo') || process.env.ENSEMBLE_DEMO_BAR === '1'
 const DEMO = process.env.ENSEMBLE_DEMO === '1' || TRIAL
+/** From GitHub reads only; in the demo it answers from fixtures. */
+const github = new Github(DEMO)
 const isDev = !app.isPackaged
 
 // Windows 11 22H2 and later can draw the Mica material behind the window.
@@ -35,6 +42,9 @@ app.setName('Ensemble')
 // Windows re-points Start Menu and taskbar shortcuts at whichever program last ran under an
 // identity, so a test copy must not borrow the real one.
 if (process.platform === 'win32') app.setAppUserModelId(TESTING ? 'app.ensemble.test' : 'app.ensemble.desktop')
+// A Mac app opened from Finder or the Dock starts with a bare PATH: give it (and every agent it
+// starts) the login shell's PATH plus the usual tool folders. Windows is left as it is.
+if (process.platform === 'darwin') process.env.PATH = guiPath(here(), loginShellPath())
 
 const dataDir =
   process.env.ENSEMBLE_DATA || (process.argv.includes('--demo') ? path.join(os.tmpdir(), 'ensemble-try-demo') : DEMO ? path.join(os.tmpdir(), 'ensemble-demo') : path.join(app.getPath('userData'), 'data'))
@@ -47,6 +57,13 @@ if (TESTING) app.setPath('userData', path.join(dataDir, 'profile'))
 const HIDDEN = process.env.ENSEMBLE_HIDDEN === '1'
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'media', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }, IUI_PRIVILEGES])
+
+// Voice checks without a person: a scripted test run can hear a recording as if it were the
+// microphone (ENSEMBLE_FAKE_MIC names a WAV). Never in normal use.
+if (process.env.ENSEMBLE_SCRIPT && process.env.ENSEMBLE_FAKE_MIC) {
+  app.commandLine.appendSwitch('use-fake-device-for-media-stream')
+  app.commandLine.appendSwitch('use-file-for-fake-audio-capture', `${process.env.ENSEMBLE_FAKE_MIC}%noloop`)
+}
 
 // What went wrong, written where it can be read afterwards. Kept small.
 const logFile = path.join(dataDir, 'ensemble.log')
@@ -75,7 +92,7 @@ let quitting = false
 
 const HOTKEY = 'Alt+Shift+Space'
 // Windows picks the right drawing for each size out of the .ico; a single large picture scaled down is mush at 16 pixels.
-const ICON = path.join(__dirname, '../../build', process.platform === 'win32' ? 'icon.ico' : 'icon.png')
+const ICON = path.join(__dirname, '../../build', iconFile(process.platform))
 
 // Pictures of screens that were sent to the window and not yet drawn, and screens with a newer one waiting.
 const unseen = new Map<string, number>()
@@ -208,9 +225,8 @@ function createWindow(): void {
     skipTaskbar: HIDDEN,
     title: 'Ensemble',
     icon: ICON,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#00000000', symbolColor: symbolColor(), height: 44 },
-    ...(MICA ? { backgroundMaterial: 'mica' as const } : {}),
+    // Windows: our own title bar with Windows' buttons drawn over it (and Mica); macOS: the standard frame.
+    ...windowChrome(process.platform, MICA, symbolColor()),
     backgroundColor: MICA ? '#00000000' : dark ? '#151514' : '#F2F1EE',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.cjs'),
@@ -339,8 +355,8 @@ async function runScript(w: BrowserWindow, file: string): Promise<void> {
         h.destroy()
         console.log('[shot]', s.hud)
       }
-      if (s.screen && !HIDDEN) {
-        // A real grab of the screen, so window materials and the title bar show up too.
+      if (s.screen && !HIDDEN && process.platform === 'win32') {
+        // A real grab of the screen, so window materials and the title bar show up too (PowerShell: Windows only).
         const b = w.getBounds()
         const k = screen.getDisplayMatching(b).scaleFactor
         const out = path.join(outDir, s.screen)
@@ -440,10 +456,31 @@ function registerIpc(): void {
     searchChats: (q: string) => hub.search(q),
     setChatLead: (id: string, accountId: string, retry?: boolean) => hub.setChatLead(id, accountId, !!retry),
     dequeue: async (chatId: string, accountId: string, itemId: string) => hub.dequeue(String(chatId), String(accountId), String(itemId)),
+    remoteInfo: async () => hub.remote.info(),
+    remotePair: async () => hub.remote.pair(),
+    remoteRemove: async (deviceId: string) => hub.remote.remove(String(deviceId)),
+    remoteReach: async () => hub.remote.reach(),
+    remoteReachSet: async (patch: RemoteReachPatch) => hub.remote.setReach(patch && typeof patch === 'object' ? patch : {}),
+    remoteTailscaleCert: async () => hub.remote.tailscaleCert(),
+    roomInfo: async (chatId: string) => hub.rooms.info(String(chatId)),
+    roomShare: async (chatId: string, myName: string, projectName?: string) => hub.rooms.share(String(chatId), String(myName || ''), projectName ? String(projectName) : undefined),
+    roomJoin: async (code: string, myName: string) => hub.rooms.join(String(code || ''), String(myName || '')),
+    roomRemove: async (chatId: string, memberId: string) => hub.rooms.removeMember(String(chatId), String(memberId)),
+    roomStop: async (chatId: string) => hub.rooms.stop(String(chatId)),
+    roomLeave: async (chatId: string) => hub.rooms.leave(String(chatId)),
+    roomNote: async (chatId: string, title: string, body: string) => hub.rooms.addNote(String(chatId), { title: String(title || ''), body: String(body || '') }),
+    trace: (chatId: string, q?: Parameters<typeof hub.trace>[1]) => hub.trace(String(chatId), q),
+    evidence: (chatId: string, ref: Parameters<typeof hub.evidence>[1]) => hub.evidence(String(chatId), ref),
+    unattendedToday: () => hub.guard.today(),
+    tracePath: async (chatId: string) => hub.tracePath(String(chatId)),
     steer: async (req: Parameters<typeof hub.steer>[0]) => hub.steer(req),
     resumeChat: (id: string) => hub.resumeChat(id).then(() => undefined),
     dismissRecovery: (id: string) => hub.dismissRecovery(id),
     folderChanges: (id: string) => hub.folderChanges(id),
+    folderProbe: (dir: string | null) => folderProbe(dir),
+    // Demo and test runs never write into the person's real Documents.
+    firstFolders: () => firstFolders(os.homedir(), TESTING ? path.join(dataDir, 'Documents') : app.getPath('documents')),
+    makeFirstFolder: async () => makeAppFolder(os.homedir(), TESTING ? path.join(dataDir, 'Documents') : app.getPath('documents')),
     fileDiff: (id: string, rel: string) => hub.fileDiff(id, rel),
     rewind: (chatId: string, accountId: string, turnId: string, apply: boolean) => hub.rewind(chatId, accountId, turnId, !!apply),
     listImages: () => hub.listImages(),
@@ -494,12 +531,27 @@ function registerIpc(): void {
     runLoop: (chatId: string, loopId: string) => hub.runLoop(chatId, loopId),
     enhance: (text: string, chatId?: string | null) => hub.enhance(String(text || ''), chatId || null),
     setUltra: (chatId: string, on: boolean) => hub.setUltra(chatId, !!on),
+    githubList: (q: { cwd?: string | null; address?: string | null }) => github.list({ cwd: q?.cwd ? String(q.cwd) : null, address: q?.address ? String(q.address) : null }),
+    // Watches and the inbox. The window speaks for the user: a watch saved here is the user's own.
+    watches: () => hub.watches.list(),
+    saveWatch: (input: Parameters<typeof hub.watches.saveWatch>[0]) => hub.watches.saveWatch(input, 'user'),
+    removeWatch: (id: string) => hub.watches.remove(String(id)),
+    runWatch: (id: string) => hub.watches.runNow(String(id)),
+    inbox: () => hub.watches.inbox(),
+    markInbox: (id: string, patch: { read?: boolean; done?: boolean }) => hub.watches.mark(String(id), { read: patch?.read, done: patch?.done }),
+    githubItem: (q: { repo: string; kind: 'issue' | 'pull' | 'run'; number: number }) => github.item({ repo: String(q?.repo || ''), kind: q?.kind === 'pull' || q?.kind === 'run' ? q.kind : 'issue', number: Number(q?.number) }),
     respondPermission: (id: string, decision: Parameters<typeof hub.respondPermission>[1], note?: string) => hub.respondPermission(id, decision, note),
     respondQuestion: (id: string, answers: Record<string, string> | null) => hub.respondQuestion(id, answers),
     cancelTask: (chatId: string, id: string) => hub.cancelTask(chatId, id, true).then(() => undefined),
 
-    saveMemory: (note: { id?: string; title: string; body: string }) => hub.memory.save(note, 'you'),
-    deleteMemory: (id: string) => void hub.memory.delete(id),
+    saveMemory: (note: { id?: string; title: string; body: string; kind?: 'preference' | 'fact' | 'decision' | 'lesson'; scope?: string | null }) =>
+      hub.memory.save({ id: note?.id, title: String(note?.title || ''), body: String(note?.body || ''), kind: note?.kind, scope: note?.scope ?? null, trust: 'user', source: { by: 'you', at: Date.now() } }, 'you'),
+    deleteMemory: (id: string) => void hub.memory.delete(String(id)),
+    forgetMemory: (id: string) => hub.forgetMemory(String(id)),
+    undoMemory: (id: string) => hub.undoMemory(String(id)),
+    decideMemory: (id: string, yes: boolean) => hub.decideMemory(String(id), !!yes),
+    memoryCore: (chatId?: string | null) => hub.memoryCore(chatId ? String(chatId) : null),
+    reviewMemory: (chatId: string) => hub.reviewMemory(String(chatId)),
 
     pickFolder: async () => {
       if (!win) return null
@@ -524,7 +576,18 @@ function registerIpc(): void {
       await clipboard.write([new ClipboardItem({ 'image/png': new Blob([new Uint8Array(img.toPNG())], { type: 'image/png' }) })])
     },
     installUpdate: () => {
+      // Only an update that passed this build's checks (startUpdates) may be installed.
+      if (!updateReady) {
+        note('update', 'restart refused: no checked update is ready')
+        return
+      }
       quitting = true
+      // The next start knows this restart was the app's own, and picks up the work it cuts.
+      try {
+        hub?.markUpdateRestart()
+      } catch (e) {
+        note('update', e)
+      }
       // Silent, and Ensemble opens again on the new version.
       electronUpdater.autoUpdater.quitAndInstall(true, true)
     },
@@ -551,13 +614,54 @@ function mimeOfMedia(p: string): string {
  * background and installed the next time Ensemble closes, so it never restarts in the middle
  * of the team's work; the window offers a restart for whoever wants it sooner.
  */
+let updateReady = false
+
 function startUpdates(): void {
   if (!app.isPackaged || TESTING || DEMO || process.env.ENSEMBLE_NO_UPDATES === '1') return
+  // With a project key built in (release-key.ts), an update installs only once its signature checks out.
+  const policy = updatePolicy(process.platform, UPDATE_PUBLIC_KEY, MAC_SELF_UPDATE)
+  note('update', policy.log)
+  if (!policy.run) return
   const { autoUpdater } = electronUpdater
   autoUpdater.autoDownload = true
-  autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.on('update-available', (info) => send({ type: 'update', state: 'downloading', version: info.version }))
-  autoUpdater.on('update-downloaded', (info) => send({ type: 'update', state: 'ready', version: info.version }))
+  autoUpdater.autoInstallOnAppQuit = !policy.verify
+  // A newer download replaces the file an earlier check passed, in the same place. From the moment it
+  // starts until it has passed its own check, nothing may install: not on quit, not on "restart to update".
+  // Each download gets a number: a check that ends after a newer download began speaks for a file that is gone.
+  let latest = 0
+  const hold = (): void => {
+    latest++
+    if (!policy.verify) return
+    updateReady = false
+    autoUpdater.autoInstallOnAppQuit = false
+  }
+  autoUpdater.on('update-available', (info) => {
+    hold()
+    send({ type: 'update', state: 'downloading', version: info.version })
+  })
+  autoUpdater.on('update-downloaded', (info) => {
+    hold()
+    if (!policy.verify) {
+      updateReady = true
+      send({ type: 'update', state: 'ready', version: info.version })
+      return
+    }
+    const mine = latest
+    void checkDownloaded(UPDATE_PUBLIC_KEY, info).then((v) => {
+      if (mine !== latest) return
+      if (!v.ok) {
+        updateReady = false
+        note('update', `refused ${info.version}: ${v.why}`)
+        return
+      }
+      updateReady = true
+      autoUpdater.autoInstallOnAppQuit = true
+      // electron-updater sets up its install-on-quit when the download ends, and skipped it while
+      // that was off; set it up now that the file has been checked.
+      ;(autoUpdater as unknown as { addQuitHandler?: () => void }).addQuitHandler?.()
+      send({ type: 'update', state: 'ready', version: info.version })
+    })
+  })
   autoUpdater.on('error', (e) => note('update', e))
   const check = (): void => void autoUpdater.checkForUpdates().catch((e: unknown) => note('update', e))
   setTimeout(check, 20_000)
@@ -599,6 +703,17 @@ if (!(TESTING || app.requestSingleInstanceLock())) {
     // which is what lets a player show its length and jump to any point.
     // Mini apps in answers: served from memory, locked down (see iui.ts).
     registerIui()
+    // Voice: the window may use the microphone (sound only, never the camera), and nothing else may.
+    // Other permissions are answered as Electron always did here.
+    session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+      if (permission !== 'media') return cb(true)
+      // Only the app's own page asks: not a mini app's frame inside it, not a web page.
+      const url = details.requestingUrl || ''
+      const page = url.startsWith('file:') || (isDev && !!process.env.ELECTRON_RENDERER_URL && url.startsWith(process.env.ELECTRON_RENDERER_URL))
+      const ours = !!win && !win.isDestroyed() && wc === win.webContents && details.isMainFrame && page
+      const sound = (details as { mediaTypes?: string[] }).mediaTypes?.every((t) => t === 'audio') ?? false
+      cb(ours && sound)
+    })
     protocol.handle('media', async (req) => {
       try {
         const u = new URL(req.url)
@@ -683,6 +798,8 @@ if (!(TESTING || app.requestSingleInstanceLock())) {
     tray = null
     void hub?.dispose().finally(() => app.quit())
   })
+  // macOS: clicking the Dock icon brings back a window that "keep working" only hid. Never fires on Windows.
+  app.on('activate', () => reveal())
 }
 
 

@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, ComponentType, ReactNode } from 'react'
-import { ChevronDown, Flame, ListChecks, Repeat, Rocket, ShieldCheck, Sparkle, Target, Telescope, Users, Zap, type LucideProps } from 'lucide-react'
+import { ChevronDown, Eye, Flame, GitPullRequest, ListChecks, Repeat, Rocket, ShieldCheck, Sparkle, Target, Telescope, Users, Zap, type LucideProps } from 'lucide-react'
 import type { WorkMode } from '@shared/types'
 import { cn } from '@/lib/util'
 
@@ -20,11 +20,15 @@ export const COMMAND_ICON: Record<string, ComponentType<LucideProps>> = {
   loop: Repeat,
   plan: ListChecks,
   quick: Zap,
+  team: Sparkle,
+  verified: ShieldCheck,
   thorough: ShieldCheck,
   council: Users,
   research: Telescope,
   ultra: Rocket,
   gocrazy: Flame,
+  github: GitPullRequest,
+  watch: Eye,
 }
 
 /** A small menu button in the composer, the same size and voice as the model pill. */

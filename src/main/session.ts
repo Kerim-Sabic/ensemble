@@ -78,6 +78,8 @@ export interface SessionHost {
   dropAsk(requestId: string): void
   /** Reports and notes that were waiting when the agent was stopped: kept unread for its next turn, not lost. */
   keepUnread(session: AgentSession, pending: Pending): void
+  /** True for an unattended run the user stopped (src/main/guard.ts): it is handed nothing but the user's own words. */
+  halted?(session: AgentSession): boolean
 }
 
 /** A question to the person that is still on screen. `expire` settles it as dismissed. */
@@ -86,7 +88,25 @@ export type OpenAsk = { session: AgentSession; itemId: string; expire(): void } 
   | { kind: 'question'; resolve(r: Record<string, string> | null): void }
 )
 
-const IDLE_MS = 15 * 60 * 1000
+/**
+ * How long an agent's own program (Claude Code or Codex, with the connector servers it started)
+ * stays open after its last turn. Closed after that and opened again on the next turn, which
+ * resumes the same conversation. A Claude Code process holds 250 to 380 MB here (census of the
+ * installed app, 2026-11-20) and takes about 3 s to start (claude --version, 2.6 to 3.5 s), so a
+ * team that waits holds memory only for those at work. Checks set it shorter.
+ */
+export const IDLE = { closeMs: 4 * 60 * 1000 }
+/** How often a transcript that is changing is written while its agent works (each write is the whole file); a reply's end is written at once. */
+export const SAVE_GAP_MS = 10_000
+/** Kinds of row saved at once, when they are added and when they change (an approval answered, a question settled). */
+export const SAVE_NOW_KINDS: ReadonlySet<string> = new Set(['user', 'permission', 'question', 'signin', 'auto', 'notice'])
+/**
+ * Rows that arrive in dozens in a big team (reports, handoffs, agents started, notes, questions to a
+ * teammate) are saved within SAVE_SOON_MS instead: each is also kept elsewhere that is saved sooner
+ * (the task list, the chat's agents, the goal), so a crash in that second loses a row, not the work.
+ */
+export const SAVE_SOON_KINDS: ReadonlySet<string> = new Set(['peer', 'ask', 'delegate', 'spawn', 'outgoing'])
+export const SAVE_SOON_MS = 2500
 const MAX_INPUT_JSON = 12000
 
 function trimInput(input: unknown): unknown {
@@ -192,11 +212,20 @@ export class AgentSession implements RuntimeHost {
     const inputs = tail.filter((i) => i.kind === 'user' || i.kind === 'peer')
     if (worked || inputs.length) this.unfinished = { worked, inputs }
     this.state = { chatId: chat.id, accountId: account.id, phase: 'idle', queued: 0 }
-    this.saver = new Saver(this.file, () => this.items)
+    this.saver = new Saver(this.file, () => this.items, SAVE_GAP_MS)
   }
 
-  private persist(): void {
-    this.saver.touch()
+  /**
+   * Streamed text and tool rows are saved at most every SAVE_GAP_MS. Rows that record a decision or
+   * something somebody is waiting on are saved at once (SAVE_NOW_KINDS): the person's own words,
+   * a teammate's task, report, question or note, a request for permission and its answer, a question
+   * to the person and its answer, a goal or loop row, an agent started. What a crash can lose is
+   * then streamed text and tool rows only.
+   */
+  private persist(kind?: string, quiet = false): void {
+    if (kind && !quiet && SAVE_NOW_KINDS.has(kind)) this.saver.now()
+    else if (kind && !quiet && SAVE_SOON_KINDS.has(kind)) this.saver.soon(SAVE_SOON_MS)
+    else this.saver.touch()
   }
 
   /** Draws a line under work that was cut short, once it has been dealt with. */
@@ -230,7 +259,7 @@ export class AgentSession implements RuntimeHost {
     this.items.push(item)
     this.byId.set(item.id, item)
     this.host.emit({ type: 'item', chatId: this.chat.id, accountId: this.account.id, item })
-    this.persist()
+    this.persist(item.kind)
   }
 
   patch(id: string, patch: Record<string, unknown>): void {
@@ -238,7 +267,8 @@ export class AgentSession implements RuntimeHost {
     if (!it) return
     Object.assign(it, patch)
     this.host.emit({ type: 'item-patch', chatId: this.chat.id, accountId: this.account.id, id, patch })
-    this.persist()
+    // 'queued' flips when a queued message starts: not worth a whole-file write of its own.
+    this.persist(it.kind, Object.keys(patch).every((k) => k === 'queued'))
   }
 
   private delta(id: string, text: string): void {
@@ -268,6 +298,15 @@ export class AgentSession implements RuntimeHost {
   // ----- turns -----
 
   enqueue(p: Pending, front = false): void {
+    // A run nobody is watching that the user stopped takes nothing more until they speak to it again.
+    if (p.kind !== 'user' && this.host.halted?.(this)) {
+      if (p.kind === 'team') this.host.keepUnread(this, p)
+      else {
+        for (const id of p.itemIds) this.patch(id, { queued: false })
+        p.onDone?.({ type: 'turn-end', status: 'interrupted', resultText: '', durationMs: 0 })
+      }
+      return
+    }
     if (front) this.queue.unshift(p)
     else this.queue.push(p)
     this.setState({})
@@ -461,7 +500,7 @@ export class AgentSession implements RuntimeHost {
       this.add({ id: uid('n'), kind: 'notice', ts: Date.now(), level: 'info', text: n ? `Put ${n} ${n === 1 ? 'file' : 'files'} back to how ${n === 1 ? 'it was' : 'they were'} before that reply.` : 'Files are back to how they were before that reply.' })
     }
     if (this.idleTimer) clearTimeout(this.idleTimer)
-    this.idleTimer = setTimeout(() => this.recycle(), IDLE_MS)
+    this.idleTimer = setTimeout(() => this.recycle(), IDLE.closeMs)
     return r
   }
 
@@ -644,7 +683,7 @@ export class AgentSession implements RuntimeHost {
         if (pending) this.host.onTurnEnd(this, pending, ev)
         if (this.stale) this.recycle()
         if (this.idleTimer) clearTimeout(this.idleTimer)
-        if (!this.ended) this.idleTimer = setTimeout(() => this.recycle(), IDLE_MS)
+        if (!this.ended) this.idleTimer = setTimeout(() => this.recycle(), IDLE.closeMs)
         this.pump()
         return
       }

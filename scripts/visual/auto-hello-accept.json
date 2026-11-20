@@ -1,0 +1,109 @@
+[
+  {
+    "size": [
+      1400,
+      900
+    ],
+    "theme": "light",
+    "js": "window.__t0 = Date.now(); window.__clicks = 0; window.__c = (re) => { const b = [...document.querySelectorAll('button')].find(x => re.test((x.textContent || '') + ' ' + (x.getAttribute('aria-label') || '')) && !x.disabled); if (b) { b.click(); window.__clicks++ } return !!b }; return 'start'",
+    "wait": 2500,
+    "shot": "hello-acc-01-first-screen.png"
+  },
+  {
+    "js": "return 'continue: ' + window.__c(/^\\s*Continue/)",
+    "wait": 2200,
+    "shot": "hello-acc-02-task-step.png"
+  },
+  {
+    "js": "const b = [...document.querySelectorAll('button')].find(x => /^Research and compare/.test((x.textContent||'').trim())); if (b) { b.click(); window.__clicks++ } return 'picked task: ' + !!b",
+    "wait": 3000
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const busy = Object.values(s.agents).filter(a => a.phase !== 'idle' && a.phase !== 'error').length; return 'clicks ' + window.__clicks + ' | seconds ' + ((Date.now() - window.__t0) / 1000).toFixed(1) + ' | onboarded ' + s.settings.onboarded + ' | chat ' + s.chatId + ' | busy agents ' + busy + ' | cwd ' + (s.chats.find(c => c.id === s.chatId)?.cwd || '')",
+    "wait": 300,
+    "shot": "hello-acc-03-first-task-running.png"
+  },
+  {
+    "js": "const b = [...document.querySelectorAll('button')].find(x => /^Way of working/.test(x.getAttribute('aria-label') || '')); if (b) b.click(); await new Promise(r => setTimeout(r, 500)); const m = document.querySelector('[role=menu]'); return 'menu: ' + (m ? m.innerText.replace(/\n+/g, ' | ') : 'no menu')",
+    "wait": 600,
+    "shot": "hello-acc-04-mode-menu-light.png"
+  },
+  {
+    "theme": "dark",
+    "wait": 600,
+    "shot": "hello-acc-05-mode-menu-dark.png"
+  },
+  {
+    "theme": "light",
+    "js": "document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await new Promise(r => setTimeout(r, 400)); const ta = document.querySelector('textarea'); if (!ta) return 'no textarea'; ta.focus(); const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, '/'); ta.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 600)); const pop = [...document.querySelectorAll('[role=listbox],[role=menu],[data-radix-popper-content-wrapper]')].map(x => x.innerText).join(' || '); return 'slash list: ' + pop.replace(/\n+/g, ' | ').slice(0, 900)",
+    "wait": 600,
+    "shot": "hello-acc-06-slash-list.png"
+  },
+  {
+    "js": "const ta = document.querySelector('textarea'); if (ta) { const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set; set.call(ta, ''); ta.dispatchEvent(new Event('input', { bubbles: true })) } const s = window.__ensemble.getState(); const lead = s.settings.leadId || s.accounts[0].id; const c = await window.ensemble.createChat({ cwd: null }); window.__v = c.id; await s.openChat(c.id); s.setView('chat'); await window.ensemble.send({ chatId: c.id, to: lead, text: 'Add a pricing page with a monthly and yearly toggle', mode: 'thorough' }); return 'verified sent'",
+    "wait": 40000
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const st = Object.values(s.agents).filter(a => a.chatId === window.__v && a.phase !== 'idle' && a.phase !== 'error').length; const tasks = (s.tasks[window.__v] || []).map(t => t.title + ':' + t.status); return 'working ' + st + ' | tasks ' + tasks.join(', ')",
+    "wait": 300,
+    "shot": "hello-acc-07-verified-done.png"
+  },
+  {
+    "js": "const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence/.test(x.textContent || '')); const b = bs[bs.length - 1]; if (b) { b.scrollIntoView({ block: 'start' }); b.click() } await new Promise(r => setTimeout(r, 1200)); const box = b?.parentElement?.textContent || ''; return 'evidence buttons ' + bs.length + ' | text: ' + box.replace(/\\s+/g, ' ').slice(0, 900)",
+    "wait": 800,
+    "shot": "hello-acc-08-evidence-open-light.png"
+  },
+  {
+    "theme": "dark",
+    "wait": 800,
+    "shot": "hello-acc-09-evidence-open-dark.png"
+  },
+  {
+    "theme": "light",
+    "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId || s.accounts[0].id; const c = await window.ensemble.createChat({ cwd: null }); window.__x = c.id; await s.openChat(c.id); await window.ensemble.send({ chatId: c.id, to: lead, text: 'Add a pricing page with a monthly and yearly toggle', mode: 'thorough' }); await new Promise(r => setTimeout(r, 6000)); await window.ensemble.stop(c.id); return 'stopped verified'",
+    "wait": 5000
+  },
+  {
+    "js": "const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence/.test(x.textContent || '')); const b = bs[bs.length - 1]; if (b) { b.scrollIntoView({ block: 'start' }); b.click() } await new Promise(r => setTimeout(r, 1200)); return 'stopped: evidence buttons ' + bs.length + ' | ' + (b?.parentElement?.textContent || '').replace(/\\s+/g, ' ').slice(0, 600)",
+    "wait": 800,
+    "shot": "hello-acc-10-evidence-stopped.png"
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const lead = s.settings.leadId || s.accounts[0].id; const c = await window.ensemble.createChat({ cwd: null }); await s.openChat(c.id); await window.ensemble.send({ chatId: c.id, to: lead, text: 'What should the annual discount be?', mode: 'quick' }); await new Promise(r => setTimeout(r, 4000)); const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence/.test(x.textContent || '')); return 'quick answer, nothing changed: evidence buttons ' + bs.length",
+    "wait": 500,
+    "shot": "hello-acc-11-quick-no-change.png"
+  },
+  {
+    "js": "window.__ensemble.getState().newChat(); await new Promise(r => setTimeout(r, 800)); const ok = window.__c(/From GitHub/); return 'from github: ' + ok",
+    "wait": 3000,
+    "shot": "hello-acc-12-github-issues.png"
+  },
+  {
+    "js": "const tabs = [...document.querySelectorAll('button')].filter(x => /Pull requests|Failed runs|Issues/i.test(x.textContent || '')).map(x => (x.textContent || '').trim()); const dlg = document.querySelector('[role=dialog]'); return 'tabs: ' + tabs.join(' | ') + ' || dialog: ' + (dlg?.textContent || '').replace(/\\s+/g, ' ').slice(0, 700)",
+    "wait": 300
+  },
+  {
+    "js": "window.__c(/Pull requests/); return 'pulls'",
+    "wait": 900,
+    "shot": "hello-acc-13-github-pulls.png"
+  },
+  {
+    "js": "window.__c(/Failed runs|Runs/); return 'runs'",
+    "wait": 900,
+    "shot": "hello-acc-14-github-runs.png"
+  },
+  {
+    "js": "window.__c(/Issues/); await new Promise(r => setTimeout(r, 600)); const dlg = document.querySelector('[role=dialog]'); const b = dlg ? [...dlg.querySelectorAll('button')].find(x => /Start|Work on|Fix/i.test(x.textContent || '') && !x.disabled) : null; if (b) b.click(); return 'start issue: ' + (b ? (b.textContent || '').trim() : 'no start button')",
+    "wait": 30000
+  },
+  {
+    "js": "const s = window.__ensemble.getState(); const c = s.chats.find(c => c.id === s.chatId); return 'chat ' + c?.title + ' | goal ' + c?.goal?.status + ' round ' + c?.goal?.round + ' mode ' + c?.goal?.mode",
+    "wait": 300,
+    "shot": "hello-acc-15-github-issue-run.png"
+  },
+  {
+    "js": "const bs = [...document.querySelectorAll('button')].filter(x => /^\\s*Evidence/.test(x.textContent || '')); const b = bs[bs.length - 1]; if (b) { b.scrollIntoView({ block: 'start' }); b.click() } await new Promise(r => setTimeout(r, 1200)); return 'issue evidence buttons ' + bs.length + ' | ' + (b?.parentElement?.textContent || '').replace(/\\s+/g, ' ').slice(0, 700)",
+    "wait": 800,
+    "shot": "hello-acc-16-github-evidence.png"
+  }
+]
